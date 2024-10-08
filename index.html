@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8">
+    <title>Thermostats</title>
+
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+        }
+
+        table {
+            width: 100%;
+            max-width: 700px; 
+            min-width: 300px; 
+            margin-top: 20px;
+            border-collapse: collapse;
+            text-align: left;
+        }
+
+        th {
+            background-color: #e0e0e0;
+            font-weight: bold;
+            padding: 10px;
+        }
+
+        td {
+            padding: 10px;
+        }
+    </style>
+    
+    <script>
+        async function fetchTemperatureData(house_alias, password) {
+            try {
+                const response = await fetch(`http://34.205.125.68:8000/thermostats/${house_alias}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ password: password })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+
+                const temperatureData = await response.json();
+                populateTable(temperatureData);
+            } catch (error) {
+                console.error('Error fetching temperature data:', error);
+                alert(`Error fetching temperature data for house '${house_alias}'.`);
+            }
+        }
+
+        function populateTable(data) {
+            const tbody = document.getElementById("temperature-data");
+            tbody.innerHTML = "";
+            const zones = {};
+
+            // Get setpoints and temperatures
+            data.forEach(item => {
+                const parts = item.zone.split('-');
+                const zoneBase = parts.slice(0, parts.length-1).join('-');
+
+                if (item.zone.includes('set')) {
+                    zones[zoneBase] = zones[zoneBase] || {};
+                    zones[zoneBase].setpoint = item.temperature;
+                } else if (item.zone.includes('temp')) {
+                    zones[zoneBase] = zones[zoneBase] || {};
+                    zones[zoneBase].temperature = item.temperature;
+                }
+            });
+
+            // Create rows for the table
+            for (const zone in zones) {
+                const row = document.createElement("tr");
+
+                const zoneCell = document.createElement("td");
+                zoneCell.textContent = zone;
+                row.appendChild(zoneCell);
+
+                const setpointCell = document.createElement("td");
+                setpointCell.textContent = zones[zone].setpoint !== undefined ? zones[zone].setpoint.toFixed(1) : "N/A";
+                row.appendChild(setpointCell);
+
+                const temperatureCell = document.createElement("td");
+                temperatureCell.textContent = zones[zone].temperature !== undefined ? zones[zone].temperature.toFixed(1) : "N/A";
+                row.appendChild(temperatureCell);
+
+                tbody.appendChild(row);
+            }
+        }
+
+        function HousePassword() {
+            var house_alias = prompt("Enter house alias:");
+            var password = prompt("Enter password:");
+
+            fetchTemperatureData(house_alias, password);
+            document.getElementById("houseAliasHeader").textContent = `Thermostat data for ${house_alias}`;
+            document.getElementById("content").style.display = "block";
+        }
+    </script>
+
+</head>
+
+<body onload="HousePassword()">
+    <div id="content" style="display: none;">
+        <h2 id="houseAliasHeader">Thermostat data</h2>
+        <table border="1">
+            <thead>
+                <tr>
+                    <th>Zone</th>
+                    <th>Setpoint (F)</th>
+                    <th>Temperature (F)</th>
+                </tr>
+            </thead>
+            <tbody id="temperature-data">
+            </tbody>
+        </table>
+    </div>
+</body>
+
+</html>
