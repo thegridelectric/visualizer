@@ -5,8 +5,8 @@ import dotenv
 import pendulum
 from sqlalchemy import create_engine, desc
 from sqlalchemy.orm import sessionmaker
-from gjk.config import Settings
-from gjk.models import MessageSql
+from config import Settings
+from models import MessageSql
 
 settings = Settings(_env_file=dotenv.find_dotenv())
 valid_password = settings.thermostat_api_key.get_secret_value()
