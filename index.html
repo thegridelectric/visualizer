@@ -34,7 +34,7 @@
     <script>
         async function fetchTemperatureData(house_alias, password) {
             try {
-                const response = await fetch(`http://34.205.125.68:8000/thermostats/${house_alias}`, {
+                const response = await fetch(`https://abc123.ngrok.io/thermostats/${house_alias}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
