@@ -80,7 +80,6 @@ async def get_latest_temperature(house_alias: str, request: DataRequest, start_m
     hp_odu_pwr = []
     hp_idu_pwr = []
     for message in messages:
-        print(message.from_alias)
         for channel in message.payload['ChannelReadingList']:
             if 'hp-odu-pwr' in channel['ChannelName']:
                 hp_odu_pwr.extend(channel['ValueList'])            
