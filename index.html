@@ -35,12 +35,12 @@
             padding: 10px;
             border: 1px solid #ccc;
             margin-top: 20px;
-            white-space: pre-wrap; /* Preserve whitespace */
+            white-space: pre-wrap;
         }
     </style>
     
     <script>
-        let house_alias, password; // Declare variables for global access
+        let house_alias, password; // global equivalent
 
         async function fetchTemperatureData(house_alias, password) {
             try {
@@ -124,10 +124,35 @@
                 }
 
                 const hpPowerData = await response.json();
-                console.log('HP Power Data:', hpPowerData); // Log the data to check
+                document.getElementById("hpPowerData").innerHTML = '';
+                const table = document.createElement("table");
+                table.border = "1";
+                const headerRow = document.createElement("tr");
+                const oduHeader = document.createElement("th");
+                oduHeader.textContent = "HP ODU Power";
+                headerRow.appendChild(oduHeader);
+                const iduHeader = document.createElement("th");
+                iduHeader.textContent = "HP IDU Power";
+                headerRow.appendChild(iduHeader);
+                table.appendChild(headerRow);
 
-                // Display the HP power data in JSON format
-                document.getElementById("hpPowerData").textContent = JSON.stringify(hpPowerData, null, 2);
+                const maxLength = Math.max(hpPowerData.hp_odu_pwr.length, hpPowerData.hp_idu_pwr.length);
+                for (let i = 0; i < maxLength; i++) {
+                    const row = document.createElement("tr");
+
+                    const oduCell = document.createElement("td");
+                    oduCell.textContent = hpPowerData.hp_odu_pwr[i] !== undefined ? hpPowerData.hp_odu_pwr[i] : "N/A";
+                    row.appendChild(oduCell);
+
+                    const iduCell = document.createElement("td");
+                    iduCell.textContent = hpPowerData.hp_idu_pwr[i] !== undefined ? hpPowerData.hp_idu_pwr[i] : "N/A";
+                    row.appendChild(iduCell);
+
+                    table.appendChild(row);
+                }
+                
+                document.getElementById("hpPowerData").appendChild(table);
+
             } catch (error) {
                 console.error('Error fetching HP power data:', error);
                 alert(`Error fetching HP power data for house '${house_alias}'.`);
@@ -135,15 +160,13 @@
         }
 
         function getDefaultDate() {
-            // Set the default date to October 14, 2024
-            const defaultDate = new Date('2024-10-14T00:00:00'); // New York time (EDT)
-            return defaultDate.toISOString().split('T')[0]; // Format: YYYY-MM-DD
+            const defaultDate = new Date('2024-10-14T00:00:00');
+            return defaultDate.toISOString().split('T')[0];
         }
 
         function getDefaultTime() {
-            // Set the default time to 12:00 AM
-            const defaultTime = new Date('2024-10-14T00:00:00'); // New York time (EDT)
-            return defaultTime.toTimeString().split(' ')[0].substring(0, 5); // Format: HH:MM
+            const defaultTime = new Date('2024-10-14T00:00:00');
+            return defaultTime.toTimeString().split(' ')[0].substring(0, 5);
         }
 
         function HousePassword() {
@@ -152,15 +175,13 @@
 
             fetchTemperatureData(house_alias, password);
             document.getElementById("houseAliasHeader").textContent = `Loading thermostat data for ${house_alias}...`;
-            document.getElementById("content").style.display = "block";
-
-            // Set default values for date and time
             document.getElementById('datePicker').value = getDefaultDate();
             document.getElementById('timePicker').value = getDefaultTime();
+            document.getElementById("content").style.display = "block";
         }
 
         function getData(event) {
-            event.preventDefault(); // Prevent form submission
+            event.preventDefault();
             const date = document.getElementById('datePicker').value;
             const time = document.getElementById('timePicker').value;
             const dateObject = new Date(`${date}T${time}`);
@@ -188,7 +209,7 @@
             <tbody id="temperature-data">
             </tbody>
         </table>
-        <h3>Show HP power for a given hour (New York time!)</h3>
+        <h3>Show HP power for a given hour (New York time)</h3>
         <form onsubmit="getData(event)">
             <label for="datePicker">Choose a date:</label>
             <input type="date" id="datePicker" name="datePicker">
