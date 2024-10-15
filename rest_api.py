@@ -68,8 +68,6 @@ async def get_latest_temperature(house_alias: str, request: DataRequest, start_m
 
     session = Session()
 
-    print('loading messages...')
-
     messages = session.query(MessageSql).filter(
         MessageSql.from_alias.like(f'%beech%'),
         MessageSql.message_persisted_ms >= start_ms,
@@ -92,8 +90,6 @@ async def get_latest_temperature(house_alias: str, request: DataRequest, start_m
         'hp_odu_pwr': hp_odu_pwr,
         'hp_idu_pwr': hp_idu_pwr,
     }
-
-    print(hp_power_data)
 
     return hp_power_data
 
