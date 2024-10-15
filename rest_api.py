@@ -25,11 +25,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-class ThermostatRequest(BaseModel):
+class DataRequest(BaseModel):
     password: str
 
 @app.post("/thermostats/{house_alias}")
-async def get_latest_temperature(house_alias: str, request: ThermostatRequest):
+async def get_latest_temperature(house_alias: str, request: DataRequest):
 
     if request.password != valid_password:
         raise HTTPException(status_code=403, detail="Unauthorized")
@@ -58,6 +58,45 @@ async def get_latest_temperature(house_alias: str, request: ThermostatRequest):
                 })
 
     return temperature_data
+
+
+@app.post("/hp_power/{house_alias}")
+async def get_latest_temperature(house_alias: str, request: DataRequest, start_ms: int, end_ms: int):
+
+    if request.password != valid_password:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+
+    session = Session()
+
+    print('loading messages...')
+
+    messages = session.query(MessageSql).filter(
+        MessageSql.from_alias.like(f'%beech%'),
+        MessageSql.message_persisted_ms >= start_ms,
+        MessageSql.message_persisted_ms <= end_ms,
+    ).order_by(desc(MessageSql.message_persisted_ms)).all()
+
+    if not messages:
+        raise HTTPException(status_code=404, detail="No messages found.")
+
+    hp_odu_pwr = []
+    hp_idu_pwr = []
+    for message in messages:
+        for channel in message.payload['ChannelReadingList']:
+            if 'hp-odu-pwr' in channel['ChannelName']:
+                hp_odu_pwr.extend(channel['ValueList'])            
+            elif 'hp-idu-pwr' in channel['ChannelName']:
+                hp_idu_pwr.extend(channel['ValueList'])
+
+    hp_power_data = {
+        'hp_odu_pwr': hp_odu_pwr,
+        'hp_idu_pwr': hp_idu_pwr,
+    }
+
+    print(hp_power_data)
+
+    return hp_power_data
+
 
 if __name__ == "__main__":
     import uvicorn

@@ -29,9 +29,19 @@
         td {
             padding: 10px;
         }
+
+        pre {
+            background-color: #f4f4f4;
+            padding: 10px;
+            border: 1px solid #ccc;
+            margin-top: 20px;
+            white-space: pre-wrap; /* Preserve whitespace */
+        }
     </style>
     
     <script>
+        let house_alias, password; // Declare variables for global access
+
         async function fetchTemperatureData(house_alias, password) {
             try {
                 const response = await fetch(`http://localhost:8000/thermostats/${house_alias}`, {
@@ -60,7 +70,6 @@
             const zones = {};
             let time_of_reading = '';
 
-            // Get setpoints and temperatures
             data.forEach(item => {
                 const parts = item.zone.split('-');
                 const zoneBase = parts.slice(0, parts.length-1).join('-');
@@ -78,10 +87,9 @@
             });
 
             const date = new Date(time_of_reading);
-            const formattedTime =  date.toLocaleString();
+            const formattedTime = date.toLocaleString();
             document.getElementById("houseAliasHeader").textContent = `Thermostats at ${house_alias} on ${formattedTime}`;
 
-            // Create rows for the table
             for (const zone in zones) {
                 const row = document.createElement("tr");
 
@@ -101,13 +109,66 @@
             }
         }
 
+        async function fetchHpData(house_alias, password, start_ms, end_ms) {
+            try {
+                const response = await fetch(`http://localhost:8000/hp_power/${house_alias}?start_ms=${start_ms}&end_ms=${end_ms}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ password: password })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+
+                const hpPowerData = await response.json();
+                console.log('HP Power Data:', hpPowerData); // Log the data to check
+
+                // Display the HP power data in JSON format
+                document.getElementById("hpPowerData").textContent = JSON.stringify(hpPowerData, null, 2);
+            } catch (error) {
+                console.error('Error fetching HP power data:', error);
+                alert(`Error fetching HP power data for house '${house_alias}'.`);
+            }
+        }
+
+        function getDefaultDate() {
+            // Set the default date to October 14, 2024
+            const defaultDate = new Date('2024-10-14T00:00:00'); // New York time (EDT)
+            return defaultDate.toISOString().split('T')[0]; // Format: YYYY-MM-DD
+        }
+
+        function getDefaultTime() {
+            // Set the default time to 12:00 AM
+            const defaultTime = new Date('2024-10-14T00:00:00'); // New York time (EDT)
+            return defaultTime.toTimeString().split(' ')[0].substring(0, 5); // Format: HH:MM
+        }
+
         function HousePassword() {
-            var house_alias = prompt("Enter house alias:");
-            var password = prompt("Enter password:");
+            house_alias = prompt("Enter house alias:");
+            password = prompt("Enter password:");
 
             fetchTemperatureData(house_alias, password);
             document.getElementById("houseAliasHeader").textContent = `Loading thermostat data for ${house_alias}...`;
             document.getElementById("content").style.display = "block";
+
+            // Set default values for date and time
+            document.getElementById('datePicker').value = getDefaultDate();
+            document.getElementById('timePicker').value = getDefaultTime();
+        }
+
+        function getData(event) {
+            event.preventDefault(); // Prevent form submission
+            const date = document.getElementById('datePicker').value;
+            const time = document.getElementById('timePicker').value;
+            const dateObject = new Date(`${date}T${time}`);
+            const unixMilliseconds = dateObject.getTime();
+            const unixMilliseconds_end = unixMilliseconds + 1000 * 60 * 60; // 1 hour later
+
+            console.log(`Selected datetime in Unix ms: ${unixMilliseconds}`);
+            fetchHpData(house_alias, password, unixMilliseconds, unixMilliseconds_end);
         }
     </script>
 
@@ -127,8 +188,8 @@
             <tbody id="temperature-data">
             </tbody>
         </table>
-        <!-- <h1>Select a Date</h1>
-        <form>
+        <h3>Show HP power for a given hour (New York time!)</h3>
+        <form onsubmit="getData(event)">
             <label for="datePicker">Choose a date:</label>
             <input type="date" id="datePicker" name="datePicker">
             <br><br>
@@ -137,7 +198,10 @@
             <br><br>
             <input type="submit" value="Submit">
         </form>
-        <button onclick="getData()">Click me!</button> -->
+
+        <!-- Section to display HP power data -->
+        <h3>HP Power Data:</h3>
+        <pre id="hpPowerData"></pre>
     </div>
 </body>
 
