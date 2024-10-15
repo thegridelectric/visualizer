@@ -53,7 +53,8 @@ async def get_latest_temperature(house_alias: str, request: ThermostatRequest):
             and ('temp' in channel['ChannelName'] or 'set' in channel['ChannelName'])):
                 temperature_data.append({
                     "zone": channel['ChannelName'],
-                    "temperature": channel['ValueList'][-1] / 1000
+                    "temperature": channel['ValueList'][-1] / 1000,
+                    "time": last_message.message_persisted_ms
                 })
 
     return temperature_data
