@@ -142,16 +142,23 @@ async def get_plots(house_alias: str, request: DataRequest, start_ms: int, end_m
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
         for plot_type in ['pwr', 'wt', 'pipe']:
-            plt.figure()
+            plt.figure(figsize=(12,4))
             for key in channels.keys():
                 if plot_type not in key:
                     continue
                 times = [(x - first_time) / 1000 / 60 for x in channels[key]['times']]
+                if max(times) > 120:
+                    times_hours = [x/60 for x in times]
                 values = [x / 1000 for x in channels[key]['values']] if plot_type != 'pwr' else channels[key]['values']
-                plt.plot(times, values, label=key)
+                plt.plot(times, values, label=key) if max(times)<120 else plt.plot(times_hours, values, label=key)
                 plt.title(f'Starting at {pendulum.from_timestamp(first_time / 1000, tz="America/New_York").format("YYYY-MM-DD HH:mm:ss")}')
-            plt.xlabel('Time [min]')
-            plt.ylabel('Value')
+            plt.xlabel('Time [min]') if max(times)<120 else plt.xlabel('Time [hours]')
+            if plot_type=='pwr':
+                plt.ylabel('Power [W]')
+            elif plot_type=='wt':
+                plt.ylabel('Temperature [C]')
+            elif plot_type=='pipe':
+                plt.ylabel('Temperature [C]')
             plt.legend()
 
             # Save the plot to a BytesIO object

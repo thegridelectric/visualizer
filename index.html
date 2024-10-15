@@ -54,6 +54,7 @@
         async function fetchTemperatureData(house_alias, password) {
             try {
                 const response = await fetch(`https://4fa2-34-205-125-68.ngrok-free.app/${house_alias}/thermostats`, {
+                // const response = await fetch(`http://localhost:8000/${house_alias}/thermostats`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -172,6 +173,7 @@
         async function fetchPlots(house_alias, password, start_ms, end_ms) {
             try {
                 const response = await fetch(`https://4fa2-34-205-125-68.ngrok-free.app/${house_alias}/plots?start_ms=${start_ms}&end_ms=${end_ms}`, {
+                // const response = await fetch(`http://localhost:8000/${house_alias}/plots?start_ms=${start_ms}&end_ms=${end_ms}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -204,14 +206,20 @@
             }
         }
 
-        function getDefaultDate() {
-            const defaultDate = new Date('2024-10-14T11:00:00');
-            return defaultDate.toISOString().split('T')[0];
+        function getDefaultDate(is_start) {
+            const nyDate = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
+            if (is_start){ 
+                nyDate.setHours(nyDate.getHours() - 24);
+            }
+            return nyDate.toISOString().split('T')[0];
         }
 
-        function getDefaultTime() {
-            const defaultTime = new Date('2024-10-14T11:00:00');
-            return defaultTime.toTimeString().split(' ')[0].substring(0, 5);
+        function getDefaultTime(is_start) {
+            const nyDate = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
+            if (is_start){ 
+                nyDate.setHours(nyDate.getHours() - 24);
+            }
+            return nyDate.toTimeString().split(' ')[0].substring(0, 5);
         }
 
         function HousePassword() {
@@ -220,20 +228,26 @@
 
             fetchTemperatureData(house_alias, password);
             document.getElementById("houseAliasHeader").textContent = `Loading thermostat data for ${house_alias}...`;
-            document.getElementById('datePicker').value = getDefaultDate();
-            document.getElementById('timePicker').value = getDefaultTime();
+            document.getElementById('startDatePicker').value = getDefaultDate(true);
+            document.getElementById('startTimePicker').value = getDefaultTime(true);
+            document.getElementById('endDatePicker').value = getDefaultDate();
+            document.getElementById('endTimePicker').value = getDefaultTime();
             document.getElementById("content").style.display = "block";
         }
 
         function getData(event) {
             event.preventDefault();
-            const date = document.getElementById('datePicker').value;
-            const time = document.getElementById('timePicker').value;
-            const dateObject = new Date(`${date}T${time}`);
-            const unixMilliseconds = dateObject.getTime();
-            const unixMilliseconds_end = unixMilliseconds + 1000 * 60 * 60; // 1 hour later
+            const startdate = document.getElementById('startDatePicker').value;
+            const starttime = document.getElementById('startTimePicker').value;
+            const startDateObject = new Date(`${startdate}T${starttime}`);
+            const startUnixMilliseconds = startDateObject.getTime();
 
-            fetchPlots(house_alias, password, unixMilliseconds, unixMilliseconds_end)
+            const enddate = document.getElementById('endDatePicker').value;
+            const endtime = document.getElementById('endTimePicker').value;
+            const enddateObject = new Date(`${enddate}T${endtime}`);
+            const endUnixMilliseconds = enddateObject.getTime();
+
+            fetchPlots(house_alias, password, startUnixMilliseconds, endUnixMilliseconds)
             // fetchHpData(house_alias, password, unixMilliseconds, unixMilliseconds_end);
         }
     </script>
@@ -254,13 +268,14 @@
             <tbody id="temperature-data">
             </tbody>
         </table>
-        <h3>Show HP power for a given hour (New York time)</h3>
+        <h2>Plot data (New York time)</h2>
         <form onsubmit="getData(event)">
-            <label for="datePicker">Choose a date:</label>
-            <input type="date" id="datePicker" name="datePicker">
-            <br><br>
-            <label for="timePicker">Choose a time:</label>
-            <input type="time" id="timePicker" name="timePicker">
+            <label for="startDatePicker">From</label>
+            <input type="date" id="startDatePicker" name="startDatePicker">
+            <input type="time" id="startTimePicker" name="startTimePicker">
+            <label for="endDatePicker">to</label>
+            <input type="date" id="endDatePicker" name="endDatePicker">
+            <input type="time" id="endTimePicker" name="endTimePicker">
             <br><br>
             <input type="submit" value="Submit">
         </form>
