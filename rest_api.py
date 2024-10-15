@@ -19,6 +19,7 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
+    # allow_origins=["https://thegridelectric.github.io"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -35,7 +36,7 @@ async def get_latest_temperature(house_alias: str, request: ThermostatRequest):
 
     session = Session()
     timezone = "America/New_York"
-    start = pendulum.datetime(2022, 1, 1, 0, 0, tz=timezone)
+    start = pendulum.datetime(2024, 1, 1, 0, 0, tz=timezone)
     start_ms = int(start.timestamp() * 1000)
 
     last_message = session.query(MessageSql).filter(
@@ -47,15 +48,13 @@ async def get_latest_temperature(house_alias: str, request: ThermostatRequest):
         raise HTTPException(status_code=404, detail="No messages found.")
 
     temperature_data = []
-    for elem in last_message.payload['DataChannelList']:
-        if 'zone' in elem['Name'] and 'gw' not in elem['Name'] and ('temp' in elem['Name'] or 'set' in elem['Name']):
-            zone_name = elem['Name']
-            for reading in last_message.payload['ChannelReadingList']:
-                if reading['ChannelId'] == elem['Id']:
-                    temperature_data.append({
-                        "zone": zone_name,
-                        "temperature": reading['ValueList'][0] / 1000
-                    })
+    for channel in last_message.payload['ChannelReadingList']:
+        if ('zone' in channel['ChannelName'] and 'gw' not in channel['ChannelName'] 
+            and ('temp' in channel['ChannelName'] or 'set' in channel['ChannelName'])):
+                temperature_data.append({
+                    "zone": channel['ChannelName'],
+                    "temperature": channel['ValueList'][-1] / 1000
+                })
 
     return temperature_data
 
