@@ -69,7 +69,7 @@ async def get_latest_temperature(house_alias: str, request: DataRequest, start_m
     session = Session()
 
     messages = session.query(MessageSql).filter(
-        MessageSql.from_alias.like(f'%beech%'),
+        MessageSql.from_alias.like(f'%{house_alias}%'),
         MessageSql.message_persisted_ms >= start_ms,
         MessageSql.message_persisted_ms <= end_ms,
     ).order_by(desc(MessageSql.message_persisted_ms)).all()
