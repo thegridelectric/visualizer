@@ -4,7 +4,7 @@
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta charset="UTF-8">
-    <title>Thermostats</title>
+    <title>GridWorks Dashboard</title>
 
     <style>
         body {
@@ -37,14 +37,23 @@
             margin-top: 20px;
             white-space: pre-wrap;
         }
+
+        #Plots img {
+            display: block;
+            max-width: 100%;
+            height: auto;
+            margin: 10px 0;
+        }
     </style>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     
     <script>
         let house_alias, password; // global equivalent
 
         async function fetchTemperatureData(house_alias, password) {
             try {
-                const response = await fetch(`https://4fa2-34-205-125-68.ngrok-free.app/thermostats/${house_alias}`, {
+                const response = await fetch(`https://4fa2-34-205-125-68.ngrok-free.app/${house_alias}/thermostats`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -111,7 +120,7 @@
 
         async function fetchHpData(house_alias, password, start_ms, end_ms) {
             try {
-                const response = await fetch(`https://4fa2-34-205-125-68.ngrok-free.app/hp_power/${house_alias}?start_ms=${start_ms}&end_ms=${end_ms}`, {
+                const response = await fetch(`https://4fa2-34-205-125-68.ngrok-free.app/${house_alias}?start_ms=${start_ms}&end_ms=${end_ms}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -124,6 +133,7 @@
                 }
 
                 const hpPowerData = await response.json();
+
                 document.getElementById("hpPowerData").innerHTML = '';
                 const table = document.createElement("table");
                 table.border = "1";
@@ -159,6 +169,41 @@
             }
         }
 
+        async function fetchPlots(house_alias, password, start_ms, end_ms) {
+            try {
+                const response = await fetch(`https://4fa2-34-205-125-68.ngrok-free.app/${house_alias}/plots?start_ms=${start_ms}&end_ms=${end_ms}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ password: password, start_ms: start_ms, end_ms: end_ms })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+
+                const blob = await response.blob();
+                const zip = await JSZip.loadAsync(blob);
+                const plotsDiv = document.getElementById('Plots');
+                plotsDiv.innerHTML = '';
+
+                Object.keys(zip.files).forEach(async (filename) => {
+                    const fileData = await zip.files[filename].async('blob');
+                    const imgUrl = URL.createObjectURL(fileData);
+                    
+                    const img = document.createElement('img');
+                    img.src = imgUrl;
+                    img.alt = 'Plot Image';
+                    plotsDiv.appendChild(img);
+                });
+
+            } catch (error) {
+                console.error('Error fetching plots:', error);
+                alert(`Error fetching plots for house '${house_alias}'.`);
+            }
+        }
+
         function getDefaultDate() {
             const defaultDate = new Date('2024-10-14T11:00:00');
             return defaultDate.toISOString().split('T')[0];
@@ -188,8 +233,8 @@
             const unixMilliseconds = dateObject.getTime();
             const unixMilliseconds_end = unixMilliseconds + 1000 * 60 * 60; // 1 hour later
 
-            console.log(`Selected datetime in Unix ms: ${unixMilliseconds}`);
-            fetchHpData(house_alias, password, unixMilliseconds, unixMilliseconds_end);
+            fetchPlots(house_alias, password, unixMilliseconds, unixMilliseconds_end)
+            // fetchHpData(house_alias, password, unixMilliseconds, unixMilliseconds_end);
         }
     </script>
 
@@ -219,7 +264,8 @@
             <br><br>
             <input type="submit" value="Submit">
         </form>
-        <pre id="hpPowerData"></pre>
+        <!-- <pre id="hpPowerData"></pre> -->
+        <div id="Plots"></div>
     </div>
 </body>
 

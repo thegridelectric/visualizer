@@ -7,6 +7,10 @@ from sqlalchemy import create_engine, desc
 from sqlalchemy.orm import sessionmaker
 from config import Settings
 from models import MessageSql
+import matplotlib.pyplot as plt
+import io
+import zipfile
+from fastapi.responses import StreamingResponse
 
 settings = Settings(_env_file=dotenv.find_dotenv())
 valid_password = settings.thermostat_api_key.get_secret_value()
@@ -28,7 +32,7 @@ app.add_middleware(
 class DataRequest(BaseModel):
     password: str
 
-@app.post("/thermostats/{house_alias}")
+@app.post("/{house_alias}/thermostats")
 async def get_latest_temperature(house_alias: str, request: DataRequest):
 
     if request.password != valid_password:
@@ -60,7 +64,7 @@ async def get_latest_temperature(house_alias: str, request: DataRequest):
     return temperature_data
 
 
-@app.post("/hp_power/{house_alias}")
+@app.post("/{house_alias}")
 async def get_latest_temperature(house_alias: str, request: DataRequest, start_ms: int, end_ms: int):
 
     if request.password != valid_password:
@@ -92,6 +96,75 @@ async def get_latest_temperature(house_alias: str, request: DataRequest, start_m
     }
 
     return hp_power_data
+
+@app.post('/{house_alias}/plots')
+async def get_plots(house_alias: str, request: DataRequest, start_ms: int, end_ms: int):
+
+    if request.password != valid_password:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+
+    session = Session()
+
+    messages = session.query(MessageSql).filter(
+        MessageSql.from_alias.like(f'%{house_alias}%'),
+        MessageSql.message_persisted_ms >= start_ms,
+        MessageSql.message_persisted_ms <= end_ms,
+    ).order_by(desc(MessageSql.message_persisted_ms)).all()
+
+    if not messages:
+        raise HTTPException(status_code=404, detail="No messages found.")
+    
+    channels = {}
+    for message in messages:
+        for channel in message.payload['ChannelReadingList']:
+            if 'zone' in channel['ChannelName']:
+                continue
+            if channel['ChannelName'] not in channels:
+                channels[channel['ChannelName']] = {
+                    'values': channel['ValueList'],
+                    'times': channel['ScadaReadTimeUnixMsList']
+                }
+            else:
+                channels[channel['ChannelName']]['values'].extend(channel['ValueList'])
+                channels[channel['ChannelName']]['times'].extend(channel['ScadaReadTimeUnixMsList'])
+
+    # Sort values according to time
+    first_time = 1e9**2
+    for key in channels.keys():
+        sorted_times_values = sorted(zip(channels[key]['times'], channels[key]['values']))
+        sorted_times, sorted_values = zip(*sorted_times_values)
+        channels[key]['times'] = list(sorted_times)
+        channels[key]['values'] = list(sorted_values)
+        if channels[key]['times'][0] < first_time:
+            first_time = channels[key]['times'][0]
+
+    # Create a BytesIO object for the zip file
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
+        for plot_type in ['pwr', 'wt', 'pipe']:
+            plt.figure()
+            for key in channels.keys():
+                if plot_type not in key:
+                    continue
+                times = [(x - first_time) / 1000 / 60 for x in channels[key]['times']]
+                values = [x / 1000 for x in channels[key]['values']] if plot_type != 'pwr' else channels[key]['values']
+                plt.plot(times, values, label=key)
+                plt.title(f'Starting at {pendulum.from_timestamp(first_time / 1000, tz="America/New_York").format("YYYY-MM-DD HH:mm:ss")}')
+            plt.xlabel('Time [min]')
+            plt.ylabel('Value')
+            plt.legend()
+
+            # Save the plot to a BytesIO object
+            img_buf = io.BytesIO()
+            plt.savefig(img_buf, format='png')
+            img_buf.seek(0)  # Move to the beginning of the BytesIO object
+            
+            # Write the image to the zip file
+            zip_file.writestr(f'{plot_type}_plot.png', img_buf.getvalue())
+            plt.close()
+
+    zip_buffer.seek(0)  # Move to the beginning of the BytesIO object
+    return StreamingResponse(zip_buffer, media_type='application/zip', headers={"Content-Disposition": "attachment; filename=plots.zip"})
 
 
 if __name__ == "__main__":
