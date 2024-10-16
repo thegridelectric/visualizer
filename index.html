@@ -162,24 +162,32 @@
 
         function getDefaultDate(is_start) {
             const nyDate = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
-            if (is_start){ 
-                nyDate.setHours(nyDate.getHours() - 24);
+            if (is_start) { 
+                nyDate.setDate(nyDate.getDate() - 1);
+                nyDate.setHours(20, 0, 0, 0);
             }
-            return nyDate.toISOString().split('T')[0];
+            const year = nyDate.getFullYear();
+            const month = String(nyDate.getMonth() + 1).padStart(2, '0'); // Month is 0-indexed
+            const day = String(nyDate.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
         }
 
         function getDefaultTime(is_start) {
             const nyDate = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
-            if (is_start){ 
-                nyDate.setHours(nyDate.getHours() - 24);
+            if (is_start) { 
+                nyDate.setDate(nyDate.getDate() - 1);
+                nyDate.setHours(20, 0, 0, 0);
             }
-            return nyDate.toTimeString().split(' ')[0].substring(0, 5);
+
+            const hours = String(nyDate.getHours()).padStart(2, '0');
+            const minutes = String(nyDate.getMinutes()).padStart(2, '0');
+            return `${hours}:${minutes}`;
         }
 
         function HousePassword() {
             house_alias = prompt("Enter house alias:");
             password = prompt("Enter password:");
-  
+
             // fetchTemperatureData(house_alias, password);
             document.getElementById("houseAliasHeader").textContent = `House alias: ${house_alias}`;
             document.getElementById('startDatePicker').value = getDefaultDate(true);
