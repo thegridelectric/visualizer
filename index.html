@@ -167,7 +167,7 @@
                 nyDate.setHours(20, 0, 0, 0);
             }
             const year = nyDate.getFullYear();
-            const month = String(nyDate.getMonth() + 1).padStart(2, '0'); // Month is 0-indexed
+            const month = String(nyDate.getMonth() + 1).padStart(2, '0');
             const day = String(nyDate.getDate()).padStart(2, '0');
             return `${year}-${month}-${day}`;
         }
@@ -182,6 +182,22 @@
             const hours = String(nyDate.getHours()).padStart(2, '0');
             const minutes = String(nyDate.getMinutes()).padStart(2, '0');
             return `${hours}:${minutes}`;
+        }
+
+        function setNow() {
+            const nyDate = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
+            document.getElementById('endDatePicker').value = nyDate.toISOString().split('T')[0];
+            document.getElementById('endTimePicker').value = nyDate.toTimeString().split(' ')[0].substring(0, 5);
+        }
+
+        function handleKey(event) {
+            if (event.key === "Enter") {
+                const target = document.activeElement;
+                if (target.tagName !== "BUTTON") {
+                    event.preventDefault();
+                    document.querySelector('input[type="submit"]').click();
+                }
+            }
         }
 
         function HousePassword() {
@@ -229,13 +245,14 @@
             <tbody id="temperature-data">
             </tbody>
         </table> -->
-        <form onsubmit="getData(event)">
+        <form onsubmit="getData(event)" onkeydown="handleKey(event)">
             <label for="startDatePicker">From</label>
             <input type="date" id="startDatePicker" name="startDatePicker">
             <input type="time" id="startTimePicker" name="startTimePicker">
             <label for="endDatePicker">to</label>
             <input type="date" id="endDatePicker" name="endDatePicker">
             <input type="time" id="endTimePicker" name="endTimePicker">
+            <button onclick=setNow()>Now</button>
             <br><br>
             <input type="submit" value="Submit">
         </form>
