@@ -74,7 +74,7 @@ def to_fahrenheit(t):
 async def get_plots(house_alias: str, request: DataRequest, start_ms: int, end_ms: int):
 
     if request.password != valid_password:
-        raise HTTPException(status_code=403, detail="Unauthorized")
+        return {"success": False, "message": "Invalid password. This page will reload.", "reload":True}
 
     session = Session()
 
@@ -85,7 +85,7 @@ async def get_plots(house_alias: str, request: DataRequest, start_ms: int, end_m
     ).order_by(desc(MessageSql.message_persisted_ms)).all()
 
     if not messages:
-        raise HTTPException(status_code=404, detail="No messages found.")
+        return {"success": False, "message": f"No messages found for house {house_alias} in the selected timeframe.", "reload":False}
     
     channels = {}
     for message in messages:
@@ -105,14 +105,8 @@ async def get_plots(house_alias: str, request: DataRequest, start_ms: int, end_m
         sorted_times, sorted_values = zip(*sorted_times_values)
         channels[key]['values'] = list(sorted_values)
         channels[key]['times'] = pd.to_datetime(list(sorted_times), unit='ms', utc=True)
-        if 'hp-idu' in key:
-            print(channels[key]['times'][0])
         channels[key]['times'] = channels[key]['times'].tz_convert('America/New_York')
-        if 'hp-idu' in key:
-            print(channels[key]['times'][0])
         channels[key]['times'] = [x.replace(tzinfo=None) for x in channels[key]['times']]
-        if 'hp-idu' in key:
-            print(channels[key]['times'][0])
 
     # Create a BytesIO object for the zip file
     zip_buffer = io.BytesIO()
