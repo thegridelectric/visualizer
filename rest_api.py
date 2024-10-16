@@ -12,6 +12,7 @@ import io
 import zipfile
 from fastapi.responses import StreamingResponse
 import pandas as pd
+import matplotlib.dates as mdates
 
 settings = Settings(_env_file=dotenv.find_dotenv())
 valid_password = settings.thermostat_api_key.get_secret_value()
@@ -103,26 +104,22 @@ async def get_plots(house_alias: str, request: DataRequest, start_ms: int, end_m
         sorted_times, sorted_values = zip(*sorted_times_values)
         channels[key]['times'] = list(sorted_times)
         channels[key]['values'] = list(sorted_values)
+        channels[key]['times'] = pd.to_datetime(channels[key]['times'], unit='ms', utc=True)
+        channels[key]['times'] = channels[key]['times'].tz_convert('America/New_York')
 
     # Create a BytesIO object for the zip file
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
 
-        fig, ax = plt.subplots(5,1, figsize=(12,20), sharex=True)
-        
+        fig, ax = plt.subplots(5,1, figsize=(12,22), sharex=True)
+
         # --------------------------------------
         # First plot: HP loop
         # --------------------------------------
 
-        first_plot_keys = []
         for key in channels.keys():
-
             if 'hp' in key or 'primary' in key:
-                first_plot_keys.append(key)
                 channels[key]['values'] = [x/1000 for x in channels[key]['values']]
-                channels[key]['times'] = [x/1000 for x in channels[key]['times']]
-                channels[key]['times'] = pd.to_datetime(channels[key]['times'], unit='s')
-                channels[key]['times'] = channels[key]['times'].tz_localize('America/New_York')
                 if 'wt' in key:
                     channels[key]['values'] = [to_fahrenheit(x) for x in channels[key]['values']]
 
@@ -146,16 +143,10 @@ async def get_plots(house_alias: str, request: DataRequest, start_ms: int, end_m
         # Second plot: distribution loop
         # --------------------------------------
 
-        second_plot_keys = []
         for key in channels.keys():
-
             if 'dist' in key: #or 'zone' in key:
-                second_plot_keys.append(key)
                 if 'pump' not in key and 'zone' not in key:
                     channels[key]['values'] = [x/1000 for x in channels[key]['values']]
-                channels[key]['times'] = [x/1000 for x in channels[key]['times']]
-                channels[key]['times'] = pd.to_datetime(channels[key]['times'], unit='s')
-                channels[key]['times'] = channels[key]['times'].tz_localize('America/New_York')
                 if 'wt' in key:
                     channels[key]['values'] = [to_fahrenheit(x) for x in channels[key]['values']]
                 
@@ -178,23 +169,15 @@ async def get_plots(house_alias: str, request: DataRequest, start_ms: int, end_m
         # Third plot: zones
         # --------------------------------------
 
-        third_plot_keys = []
-        for key in channels.keys():
-
-            if 'zone' in key:
-                third_plot_keys.append(key)
-                channels[key]['values'] = [x/1000 for x in channels[key]['values']]
-                channels[key]['times'] = [x/1000 for x in channels[key]['times']]
-                channels[key]['times'] = pd.to_datetime(channels[key]['times'], unit='s')
-                channels[key]['times'] = channels[key]['times'].tz_localize('America/New_York')
-
         zones = {}
-        for key in third_plot_keys:
-            if key.split('-')[0] not in zones:
-                zones[key.split('-')[0]] = [key]
-            else:
-                zones[key.split('-')[0]].append(key)
-
+        for key in channels.keys():
+            if 'zone' in key:
+                channels[key]['values'] = [x/1000 for x in channels[key]['values']]
+                if key.split('-')[0] not in zones:
+                    zones[key.split('-')[0]] = [key]
+                else:
+                    zones[key.split('-')[0]].append(key)
+            
         ax22 = ax[2].twinx()
         colors = {}
         for zone in zones:
@@ -219,17 +202,12 @@ async def get_plots(house_alias: str, request: DataRequest, start_ms: int, end_m
         # Fourth plot: buffer
         # --------------------------------------
 
-        fourth_plot_keys = []
         for key in channels.keys():
             if 'buffer' in key:
-                fourth_plot_keys.append(key)
                 if 'pipe' in key:
                     channels[key]['values'] = [to_fahrenheit(x/1000) for x in channels[key]['values']]
                 else:
                     channels[key]['values'] = [x/1000 for x in channels[key]['values']]
-                channels[key]['times'] = [x/1000 for x in channels[key]['times']]
-                channels[key]['times'] = pd.to_datetime(channels[key]['times'], unit='s')
-                channels[key]['times'] = channels[key]['times'].tz_localize('America/New_York')
 
         ax[3].plot(channels['buffer-hot-pipe']['times'], channels['buffer-hot-pipe']['values'], 
                 color='tab:red', alpha=0.7, label='Buffer hot pipe')
@@ -244,17 +222,12 @@ async def get_plots(house_alias: str, request: DataRequest, start_ms: int, end_m
         # Fifth plot: storage
         # --------------------------------------
 
-        fifth_plot_keys = []
         for key in channels.keys():
             if 'store' in key:
-                fifth_plot_keys.append(key)
                 if 'pipe' in key:
                     channels[key]['values'] = [to_fahrenheit(x/1000) for x in channels[key]['values']]
                 else:
                     channels[key]['values'] = [x/1000 for x in channels[key]['values']]
-                channels[key]['times'] = [x/1000 for x in channels[key]['times']]
-                channels[key]['times'] = pd.to_datetime(channels[key]['times'], unit='s')
-                channels[key]['times'] = channels[key]['times'].tz_localize('America/New_York')
 
         ax[4].plot(channels['store-hot-pipe']['times'], channels['store-hot-pipe']['values'], 
                 color='tab:red', alpha=0.7, label='Storage hot pipe')
@@ -271,14 +244,13 @@ async def get_plots(house_alias: str, request: DataRequest, start_ms: int, end_m
         ax24.legend(loc='upper right')
         ax[4].set_title('Storage')
 
+        for axis in ax:
+            axis.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d %H:%M'))
+            axis.xaxis.set_major_locator(mdates.HourLocator(interval=1))
+            axis.tick_params(axis='x', which='both', labelbottom=True, labelsize=8)
+            plt.setp(axis.xaxis.get_majorticklabels(), rotation=45, ha='right')
 
-        ax[0].tick_params(axis='x', which='both', labelbottom=True)
-        ax[1].tick_params(axis='x', which='both', labelbottom=True)
-        ax[2].tick_params(axis='x', which='both', labelbottom=True)
-        ax[3].tick_params(axis='x', which='both', labelbottom=True)
-        ax[4].tick_params(axis='x', which='both', labelbottom=True)
-
-        plt.tight_layout()
+        plt.tight_layout(pad=5.0)
         img_buf = io.BytesIO()
         plt.savefig(img_buf, format='png', bbox_inches='tight')
         img_buf.seek(0)
