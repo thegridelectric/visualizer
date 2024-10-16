@@ -278,8 +278,9 @@ async def get_plots(house_alias: str, request: DataRequest, start_ms: int, end_m
         ax[3].tick_params(axis='x', which='both', labelbottom=True)
         ax[4].tick_params(axis='x', which='both', labelbottom=True)
 
+        plt.tight_layout()
         img_buf = io.BytesIO()
-        plt.savefig(img_buf, format='png')
+        plt.savefig(img_buf, format='png', bbox_inches='tight')
         img_buf.seek(0)
         zip_file.writestr(f'plot.png', img_buf.getvalue())
         plt.close()
