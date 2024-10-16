@@ -120,7 +120,10 @@ async def get_plots(house_alias: str, request: DataRequest, start_ms: int, end_m
 
         for key in channels.keys():
             if 'hp' in key or 'primary' in key:
-                channels[key]['values'] = [x/1000 for x in channels[key]['values']]
+                if 'primary' in key:
+                    channels[key]['values'] = [x/10 for x in channels[key]['values']]
+                else:
+                    channels[key]['values'] = [x/1000 for x in channels[key]['values']]
                 if 'wt' in key:
                     channels[key]['values'] = [to_fahrenheit(x) for x in channels[key]['values']]
 
@@ -133,7 +136,7 @@ async def get_plots(house_alias: str, request: DataRequest, start_ms: int, end_m
         ax20 = ax[0].twinx()
         ax20.plot(channels['hp-odu-pwr']['times'], channels['hp-odu-pwr']['values'], color='tab:green', alpha=0.7, label='HP outdoor')
         ax20.plot(channels['hp-idu-pwr']['times'], channels['hp-idu-pwr']['values'], color='orange', alpha=0.7, label='HP indoor')
-        ax20.plot(channels['primary-pump-pwr']['times'], channels['primary-pump-pwr']['values'], color='purple', alpha=0.7, label='Primary pump')
+        ax20.plot(channels['primary-pump-pwr']['times'], channels['primary-pump-pwr']['values'], color='purple', alpha=0.7, label='Primary pump x100')
         ax20.set_ylabel('Power [kW]')
         if max(channels['hp-odu-pwr']['values']) < 30 and max(channels['hp-idu-pwr']['values']) < 30:
             ax20.set_ylim([0,30])
@@ -243,6 +246,7 @@ async def get_plots(house_alias: str, request: DataRequest, start_ms: int, end_m
         ax[4].set_title('Storage')
 
         for axis in ax:
+            axis.grid(axis='y', alpha=0.5)
             xlim = axis.get_xlim()
             if (mdates.num2date(xlim[1]) - mdates.num2date(xlim[0]) >= timedelta(hours=4) and 
                 mdates.num2date(xlim[1]) - mdates.num2date(xlim[0]) <= timedelta(hours=30)):
