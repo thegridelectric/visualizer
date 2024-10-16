@@ -13,6 +13,7 @@ import zipfile
 from fastapi.responses import StreamingResponse
 import pandas as pd
 import matplotlib.dates as mdates
+from datetime import timedelta
 
 settings = Settings(_env_file=dotenv.find_dotenv())
 valid_password = settings.thermostat_api_key.get_secret_value()
@@ -102,10 +103,10 @@ async def get_plots(house_alias: str, request: DataRequest, start_ms: int, end_m
     for key in channels.keys():
         sorted_times_values = sorted(zip(channels[key]['times'], channels[key]['values']))
         sorted_times, sorted_values = zip(*sorted_times_values)
-        channels[key]['times'] = list(sorted_times)
         channels[key]['values'] = list(sorted_values)
-        channels[key]['times'] = pd.to_datetime(channels[key]['times'], unit='ms', utc=True)
+        channels[key]['times'] = pd.to_datetime(list(sorted_times), unit='ms', utc=True)
         channels[key]['times'] = channels[key]['times'].tz_convert('America/New_York')
+        channels[key]['times'] = [x.replace(tzinfo=None) for x in channels[key]['times']]
 
     # Create a BytesIO object for the zip file
     zip_buffer = io.BytesIO()
@@ -157,9 +158,6 @@ async def get_plots(house_alias: str, request: DataRequest, start_ms: int, end_m
         ax[1].legend(loc='upper left')
         ax21 = ax[1].twinx()
         ax21.plot(channels['dist-pump-pwr']['times'], channels['dist-pump-pwr']['values'], color='tab:green', alpha=0.7, label='Distribution pump')
-        # for key in channels:
-        #     if 'zone' in key and 'pwr' in key:
-        #         ax2.plot(channels[key]['times'], channels[key]['values'], alpha=0.7, label=key)
         ax21.set_ylabel('Power [W]')
         ax21.set_ylim([0,40])
         ax21.legend(loc='upper right')
@@ -245,8 +243,14 @@ async def get_plots(house_alias: str, request: DataRequest, start_ms: int, end_m
         ax[4].set_title('Storage')
 
         for axis in ax:
+            xlim = axis.get_xlim()
+            if (mdates.num2date(xlim[1]) - mdates.num2date(xlim[0]) >= timedelta(hours=4) and 
+                mdates.num2date(xlim[1]) - mdates.num2date(xlim[0]) <= timedelta(hours=30)):
+                axis.xaxis.set_major_locator(mdates.HourLocator(interval=1))
+            elif (mdates.num2date(xlim[1]) - mdates.num2date(xlim[0]) >= timedelta(hours=31) and 
+                mdates.num2date(xlim[1]) - mdates.num2date(xlim[0]) <= timedelta(hours=65)):
+                axis.xaxis.set_major_locator(mdates.HourLocator(interval=2))
             axis.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d %H:%M'))
-            axis.xaxis.set_major_locator(mdates.HourLocator(interval=1))
             axis.tick_params(axis='x', which='both', labelbottom=True, labelsize=8)
             plt.setp(axis.xaxis.get_majorticklabels(), rotation=45, ha='right')
 
