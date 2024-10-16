@@ -193,12 +193,12 @@
             event.preventDefault();
             const startdate = document.getElementById('startDatePicker').value;
             const starttime = document.getElementById('startTimePicker').value;
-            const startDateObject = new Date(`${startdate}T${starttime}`);
+            const startDateObject = new Date(`${startdate}T${starttime}-05:00`);
             const startUnixMilliseconds = startDateObject.getTime();
 
             const enddate = document.getElementById('endDatePicker').value;
             const endtime = document.getElementById('endTimePicker').value;
-            const enddateObject = new Date(`${enddate}T${endtime}`);
+            const enddateObject = new Date(`${enddate}T${endtime}-05:00`);
             const endUnixMilliseconds = enddateObject.getTime();
 
             fetchPlots(house_alias, password, startUnixMilliseconds, endUnixMilliseconds)
