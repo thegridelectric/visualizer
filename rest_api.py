@@ -85,7 +85,7 @@ async def get_plots(house_alias: str, request: DataRequest, start_ms: int, end_m
     ).order_by(desc(MessageSql.message_persisted_ms)).all()
 
     if not messages:
-        return {"success": False, "message": f"No messages found for house {house_alias} in the selected timeframe.", "reload":False}
+        return {"success": False, "message": f"No data found for house '{house_alias}' in the selected timeframe.", "reload":False}
     
     channels = {}
     for message in messages:
@@ -256,7 +256,7 @@ async def get_plots(house_alias: str, request: DataRequest, start_ms: int, end_m
 
         plt.tight_layout(pad=5.0)
         img_buf = io.BytesIO()
-        plt.savefig(img_buf, format='png', bbox_inches='tight')
+        plt.savefig(img_buf, format='png', bbox_inches='tight', dpi=200)
         img_buf.seek(0)
         zip_file.writestr(f'plot.png', img_buf.getvalue())
         plt.close()
