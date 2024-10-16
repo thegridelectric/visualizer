@@ -177,11 +177,9 @@
         }
 
         function HousePassword() {
-            // house_alias = prompt("Enter house alias:");
-            // password = prompt("Enter password:");
+            house_alias = prompt("Enter house alias:");
+            password = prompt("Enter password:");
   
-            house_alias = 'oak'
-            password = 'fly6bird'
             // fetchTemperatureData(house_alias, password);
             document.getElementById("houseAliasHeader").textContent = `House alias: ${house_alias}`;
             document.getElementById('startDatePicker').value = getDefaultDate(true);
