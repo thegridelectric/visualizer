@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import dotenv
 import pendulum
-from sqlalchemy import create_engine, desc
+from sqlalchemy import create_engine, asc, or_
 from sqlalchemy.orm import sessionmaker
 from config import Settings
 from models import MessageSql
@@ -85,9 +85,13 @@ async def get_plots(house_alias: str, request: DataRequest):
 
     messages = session.query(MessageSql).filter(
         MessageSql.from_alias.like(f'%{house_alias}%'),
+        or_(
+            MessageSql.message_type_name == "batched.readings",
+            MessageSql.message_type_name == "report"
+            ),
         MessageSql.message_persisted_ms >= request.start_ms,
         MessageSql.message_persisted_ms <=request.end_ms,
-    ).order_by(desc(MessageSql.message_persisted_ms)).all()
+    ).order_by(asc(MessageSql.message_persisted_ms)).all()
 
     if not messages:
         return {"success": False, "message": f"No data found for house '{house_alias}' in the selected timeframe.", "reload":False}
@@ -97,14 +101,22 @@ async def get_plots(house_alias: str, request: DataRequest):
     channels = {}
     for message in messages:
         for channel in message.payload['ChannelReadingList']:
-            if channel['ChannelName'] not in channels:
-                channels[channel['ChannelName']] = {
+            # Find the channel name
+            if message.message_type_name == 'report':
+                channel_name = channel['ChannelName']
+            elif message.message_type_name == 'batched.readings':
+                for dc in message.payload['DataChannelList']:
+                    if dc['Id'] == channel['ChannelId']:
+                        channel_name = dc['Name']
+            # Store the values and times for the channel
+            if channel_name not in channels:
+                channels[channel_name] = {
                     'values': channel['ValueList'],
                     'times': channel['ScadaReadTimeUnixMsList']
                 }
             else:
-                channels[channel['ChannelName']]['values'].extend(channel['ValueList'])
-                channels[channel['ChannelName']]['times'].extend(channel['ScadaReadTimeUnixMsList'])
+                channels[channel_name]['values'].extend(channel['ValueList'])
+                channels[channel_name]['times'].extend(channel['ScadaReadTimeUnixMsList'])
 
     # Sort values according to time
     for key in channels.keys():
@@ -222,13 +234,12 @@ async def get_plots(house_alias: str, request: DataRequest):
             ax21 = ax[1]
 
         # Zone heat calls
-        num_zones = 0
+        num_zones = len(zones.keys())
         height_of_stack = 0
         stacked_values = None
         if 'zone_heat_calls' in selected_plot_keys:
-            for key in channels.keys():
-                if 'zone' in key and 'state' in key:
-                    num_zones += 1
+            for zone in zones:
+                for key in [x for x in zones[zone] if 'state' in x]:
                     if stacked_values is None:
                         stacked_values = np.zeros(len(channels[key]['times']))
                     if len(stacked_values) != len(channels[key]['values']):
