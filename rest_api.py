@@ -226,10 +226,10 @@ async def get_plots(house_alias: str, request: DataRequest):
                     if stacked_values is None:
                         stacked_values = np.zeros(len(channels[key]['times']))
                     ax21.bar(channels[key]['times'], channels[key]['values'], alpha=0.7, bottom=stacked_values, 
-                            label=key.replace('-state',''), width=0.005)
+                            label=key.replace('-state',''), width=0.004)
                     stacked_values += channels[key]['values']
 
-            upper_bound = num_zones / 0.3
+            upper_bound = num_zones / 0.3 if temp_plot else num_zones
             ax21.set_ylim([0,upper_bound])
             ax21.set_ylabel('Heat calls')
             ax21.legend(loc='upper right', fontsize=9)
