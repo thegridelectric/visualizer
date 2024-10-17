@@ -230,15 +230,11 @@ async def get_plots(house_alias: str, request: DataRequest):
                     num_zones += 1
                     if stacked_values is None:
                         stacked_values = np.zeros(len(channels[key]['times']))
-                    try:
-                        ax21.bar(channels[key]['times'], channels[key]['values'], alpha=0.7, bottom=stacked_values, 
+                    if len(stacked_values) != len(channels[key]['values']):
+                        stacked_values = np.ones(len(channels[key]['times']))
+                    ax21.bar(channels[key]['times'], channels[key]['values'], alpha=0.7, bottom=stacked_values, 
                                 label=key.replace('-state',''), width=0.003)
-                        stacked_values += channels[key]['values']
-                    except Exception as e:
-                        print(len(channels[key]['times']))
-                        print(len(channels[key]['values']))
-                        print(len(stacked_values))
-                    
+                    stacked_values += channels[key]['values']                    
 
             if temp_plot:
                 upper_bound = num_zones / 0.3
