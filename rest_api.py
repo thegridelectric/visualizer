@@ -114,6 +114,11 @@ async def get_plots(house_alias: str, request: DataRequest):
         channels[key]['times'] = pd.to_datetime(list(sorted_times), unit='ms', utc=True)
         channels[key]['times'] = channels[key]['times'].tz_convert('America/New_York')
         channels[key]['times'] = [x.replace(tzinfo=None) for x in channels[key]['times']]
+
+        # Check the length
+        if len(channels[key]['times']) != len(channels[key]['values']):
+            print(f"Length mismatch in channel: {key}")
+            selected_plot_keys.remove(key)
                 
     # Find all zone channels
     zones = {}
