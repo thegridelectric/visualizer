@@ -270,12 +270,14 @@ async def get_plots(house_alias: str, request: DataRequest):
 
         ax[3].set_title('Buffer')
 
-        channels['buffer-hot-pipe']['values'] = [to_fahrenheit(x/1000) for x in channels['buffer-hot-pipe']['values']]
-        ax[3].plot(channels['buffer-hot-pipe']['times'], channels['buffer-hot-pipe']['values'], 
-                color='tab:red', alpha=0.7, label='Buffer hot pipe')
-        channels['buffer-cold-pipe']['values'] = [to_fahrenheit(x/1000) for x in channels['buffer-cold-pipe']['values']]
-        ax[3].plot(channels['buffer-cold-pipe']['times'], channels['buffer-cold-pipe']['values'], 
-                color='tab:blue', alpha=0.7, label='Buffer cold pipe')
+        if 'buffer-hot-pipe' in selected_plot_keys:
+            channels['buffer-hot-pipe']['values'] = [to_fahrenheit(x/1000) for x in channels['buffer-hot-pipe']['values']]
+            ax[3].plot(channels['buffer-hot-pipe']['times'], channels['buffer-hot-pipe']['values'], 
+                    color='tab:red', alpha=0.7, label='Buffer hot pipe')
+        if 'buffer-cold-pipe' in selected_plot_keys:
+            channels['buffer-cold-pipe']['values'] = [to_fahrenheit(x/1000) for x in channels['buffer-cold-pipe']['values']]
+            ax[3].plot(channels['buffer-cold-pipe']['times'], channels['buffer-cold-pipe']['values'], 
+                       color='tab:blue', alpha=0.7, label='Buffer cold pipe')
         ax[3].set_ylabel('Temperature [F]')
         ax[3].legend(loc='upper left', fontsize=9)
         lower_bound = ax[3].get_ylim()[0] - 5
