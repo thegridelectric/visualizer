@@ -205,6 +205,7 @@
             const nyDate = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
             document.getElementById('endDatePicker').value = nyDate.toISOString().split('T')[0];
             document.getElementById('endTimePicker').value = nyDate.toTimeString().split(' ')[0].substring(0, 5);
+            getData(event)
         }
 
         function handleKey(event) {
@@ -219,8 +220,10 @@
 
         function resetButton() {
             const submitButton = document.querySelector('input[type="submit"]');
+            const nowButton = document.getElementById('nowButton');
             const loadingText = document.getElementById('loadingText');
             submitButton.style.display = 'inline';
+            nowButton.style.display = 'inline';
             loadingText.style.display = 'none';
         }
 
@@ -244,8 +247,10 @@
 
             // Hide submit button and replace by loading text
             const submitButton = document.querySelector('input[type="submit"]');
+            const nowButton = document.getElementById('nowButton');
             const loadingText = document.getElementById('loadingText');
             submitButton.style.display = 'none';
+            nowButton.style.display = 'none';
             loadingText.style.display = 'inline';
 
             const selectedChannels = Array.from(document.querySelectorAll('input[name="channels"]:checked'))
@@ -262,6 +267,15 @@
             const endUnixMilliseconds = enddateObject.getTime();
 
             fetchPlots(house_alias, password, startUnixMilliseconds, endUnixMilliseconds, selectedChannels)
+        }
+
+        function toggleCheckbox() {
+            const checkboxDiv = document.getElementById("checkboxDiv");
+            if (checkboxDiv.style.display === "none") {
+                checkboxDiv.style.display = "block";
+            } else {
+                checkboxDiv.style.display = "none";
+            }
         }
     </script>
 
@@ -288,9 +302,11 @@
             <label for="endDatePicker">to</label>
             <input type="date" id="endDatePicker" name="endDatePicker">
             <input type="time" id="endTimePicker" name="endTimePicker">
-            <button onclick=setNow()>Now</button>
+            <button type="button" id="nowButton" onclick=setNow()>Now</button>
+            <br><br>
+            <button type="button" id="checkboxButton" onclick=toggleCheckbox()>Show/hide options</button>
             <br>
-            <div>
+            <div id="checkboxDiv" style="display: none;">
                 <h4>Heat pump</h4>
                 <label><input type="checkbox" name="channels" value="hp-lwt" checked>LWT</label><br>
                 <label><input type="checkbox" name="channels" value="hp-ewt" checked>EWT</label><br>
@@ -311,7 +327,7 @@
             </div>
             <br>
             <input type="submit" value="Submit">
-            <span id="loadingText" style="font-weight: bold; display: none;">Loading data...</span>
+            <span id="loadingText" style="font-weight: bold; color: chocolate; display: none;">Loading data...</span>
         </form>
         <!-- <pre id="hpPowerData"></pre> -->
         <div id="Plots"></div>
