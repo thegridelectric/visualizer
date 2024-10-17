@@ -15,6 +15,7 @@ import pandas as pd
 import matplotlib.dates as mdates
 from datetime import timedelta
 import numpy as np
+from typing import List
 
 settings = Settings(_env_file=dotenv.find_dotenv())
 valid_password = settings.thermostat_api_key.get_secret_value()
@@ -35,6 +36,9 @@ app.add_middleware(
 
 class DataRequest(BaseModel):
     password: str
+    start_ms: int
+    end_ms: int
+    selected_plot_keys: List[str]
 
 def to_fahrenheit(t):
     return t*9/5+32
@@ -72,7 +76,7 @@ def to_fahrenheit(t):
 
 
 @app.post('/{house_alias}/plots')
-async def get_plots(house_alias: str, request: DataRequest, start_ms: int, end_ms: int):
+async def get_plots(house_alias: str, request: DataRequest):
 
     if request.password != valid_password:
         return {"success": False, "message": "Invalid password. This page will reload.", "reload":True}
@@ -81,18 +85,14 @@ async def get_plots(house_alias: str, request: DataRequest, start_ms: int, end_m
 
     messages = session.query(MessageSql).filter(
         MessageSql.from_alias.like(f'%{house_alias}%'),
-        MessageSql.message_persisted_ms >= start_ms,
-        MessageSql.message_persisted_ms <= end_ms,
+        MessageSql.message_persisted_ms >= request.start_ms,
+        MessageSql.message_persisted_ms <=request.end_ms,
     ).order_by(desc(MessageSql.message_persisted_ms)).all()
 
     if not messages:
         return {"success": False, "message": f"No data found for house '{house_alias}' in the selected timeframe.", "reload":False}
     
-    # Choose the desired channels to plot
-    selected_plot_keys = [
-        'hp-lwt', 'hp-ewt', 'hp-odu-pwr', 'hp-idu-pwr', 'primary-pump-pwr', 
-        'dist-swt', 'dist-rwt', 'zone_heat_calls',
-        'store-hot-pipe', 'store-cold-pipe', 'store-pump-pwr']
+    selected_plot_keys = request.selected_plot_keys
 
     channels = {}
     for message in messages:
