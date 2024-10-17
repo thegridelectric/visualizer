@@ -149,14 +149,67 @@ async def get_plots(house_alias: str, request: DataRequest):
                 
     # Find all zone channels
     zones = {}
-    for key in channels.keys():
-        if 'zone' in key:
-            if 'state' not in key:
-                channels[key]['values'] = [x/1000 for x in channels[key]['values']]
-            if key.split('-')[0] not in zones:
-                zones[key.split('-')[0]] = [key]
+    first_times, process_heatcalls = None, False
+    for channel_name in channels.keys():
+        if 'zone' in channel_name and 'gw-temp' not in channel_name:
+            if 'state' not in channel_name:
+                channels[channel_name]['values'] = [x/1000 for x in channels[channel_name]['values']]
             else:
-                zones[key.split('-')[0]].append(key)
+                # Round times to the minute
+                channels[channel_name]['times'] = pd.Series(channels[channel_name]['times']).dt.round('s').tolist()
+                if first_times is None:
+                    first_times = channels[channel_name]['times']
+                if channels[channel_name]['times'] != first_times:
+                    process_heatcalls = True
+            zone_name = channel_name.split('-')[0]
+            if zone_name not in zones:
+                zones[zone_name] = [channel_name]
+            else:
+                zones[zone_name].append(channel_name)
+
+    if process_heatcalls:
+
+        def interpolate_value(state, given_time, channels_copy):
+            prev_time = None
+            next_time = None
+            for existing_time in channels_copy[state]['times']:
+                if existing_time < given_time:
+                    prev_time = channels_copy[state]['times'].index(existing_time)
+                elif existing_time > given_time and next_time is None:
+                    next_time = channels_copy[state]['times'].index(existing_time)
+            if prev_time is None or next_time is None:
+                return 0
+            if channels_copy[state]['values'][prev_time]==1 and channels_copy[state]['values'][next_time]==1:
+                return 1
+            else:
+                return 0
+
+        # Get all timestamps in the zone states
+        all_times = []
+        for zone in zones:
+            for state in [x for x in zones[zone] if 'state' in x]:
+                all_times.extend(channels[state]['times'])
+        all_times = sorted(list(set(all_times)))
+
+        # Fill in the blanks
+        channels_copy = channels.copy()
+        for zone in zones:
+            for state in [x for x in zones[zone] if 'state' in x]:
+                if channels[state]['times'] != all_times:
+                    values_to_insert = []
+                    times_to_insert = []
+                    # Add missing times
+                    for time in all_times:
+                        if time not in channels[state]['times']:
+                            values_to_insert.append(interpolate_value(state, time, channels_copy))
+                            times_to_insert.append(time)
+                    channels[state]['times'].extend(times_to_insert)
+                    channels[state]['values'].extend(values_to_insert)
+                    # Sort by time again
+                    sorted_times_values = sorted(zip(channels[state]['times'], channels[state]['values']))
+                    sorted_times, sorted_values = zip(*sorted_times_values)
+                    channels[state]['values'] = list(sorted_values)
+                    channels[state]['times'] = list(sorted_times)
 
     # Create a BytesIO object for the zip file
     zip_buffer = io.BytesIO()
@@ -295,7 +348,7 @@ async def get_plots(house_alias: str, request: DataRequest):
                                 linestyle='dashed', color=colors[base_temp], alpha=0.7)
                         
         ax[2].set_ylabel('Temperature [F]')
-        ax22.set_ylabel('Setpoint [F]')
+        ax22.set_yticks([])
         lower_bound = min(ax[2].get_ylim()[0], ax22.get_ylim()[0]) - 5
         upper_bound = max(ax[2].get_ylim()[1], ax22.get_ylim()[1]) + 15
         ax[2].set_ylim([lower_bound, upper_bound])
