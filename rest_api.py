@@ -223,6 +223,7 @@ async def get_plots(house_alias: str, request: DataRequest):
 
         # Zone heat calls
         num_zones = 0
+        height_of_stack = 0
         stacked_values = None
         if 'zone_heat_calls' in selected_plot_keys:
             for key in channels.keys():
@@ -231,7 +232,8 @@ async def get_plots(house_alias: str, request: DataRequest):
                     if stacked_values is None:
                         stacked_values = np.zeros(len(channels[key]['times']))
                     if len(stacked_values) != len(channels[key]['values']):
-                        stacked_values = np.ones(len(channels[key]['times']))
+                        height_of_stack += 1
+                        stacked_values = np.ones(len(channels[key]['times'])) * height_of_stack
                     ax21.bar(channels[key]['times'], channels[key]['values'], alpha=0.7, bottom=stacked_values, 
                                 label=key.replace('-state',''), width=0.003)
                     stacked_values += channels[key]['values']                    
