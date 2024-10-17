@@ -79,7 +79,18 @@ def to_fahrenheit(t):
 async def get_plots(house_alias: str, request: DataRequest):
 
     if request.password != valid_password:
-        return {"success": False, "message": "Invalid password. This page will reload.", "reload":True}
+        return {
+            "success": False, 
+            "message": "Invalid password. This page will reload.", 
+            "reload":True
+            }
+    
+    if (request.end_ms - request.start_ms)/1000/60/60/24 > 31:
+        return {
+            "success": False,
+            "message": "The time difference between the start and end date exceeds the authorized limit (31 days).", 
+            "reload":False
+            }
 
     session = Session()
 
@@ -94,7 +105,11 @@ async def get_plots(house_alias: str, request: DataRequest):
     ).order_by(asc(MessageSql.message_persisted_ms)).all()
 
     if not messages:
-        return {"success": False, "message": f"No data found for house '{house_alias}' in the selected timeframe.", "reload":False}
+        return {
+            "success": False, 
+            "message": f"No data found for house '{house_alias}' in the selected timeframe.", 
+            "reload":False
+            }
     
     selected_plot_keys = request.selected_plot_keys
 
