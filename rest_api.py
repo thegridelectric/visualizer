@@ -81,7 +81,7 @@ async def get_plots(house_alias: str, request: DataRequest):
     if request.password != valid_password:
         return {
             "success": False, 
-            "message": "Invalid password. This page will reload.", 
+            "message": "Wrong password.", 
             "reload":True
             }
     
