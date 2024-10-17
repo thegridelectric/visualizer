@@ -262,7 +262,7 @@ async def get_plots(house_alias: str, request: DataRequest):
         ax22.legend(loc='upper right', fontsize=9)
 
         # --------------------------------------
-        # Plot 4
+        # PLOT 4
         # --------------------------------------
 
         ax[3].set_title('Buffer')
@@ -280,7 +280,7 @@ async def get_plots(house_alias: str, request: DataRequest):
         ax[3].set_ylim([lower_bound, upper_bound])
 
         # --------------------------------------
-        # Plot 5
+        # PLOT 5
         # --------------------------------------
 
         ax[4].set_title('Storage')
@@ -322,6 +322,12 @@ async def get_plots(house_alias: str, request: DataRequest):
                 ax24.set_ylim([0,40])
             ax24.set_ylabel('Power [kW]')
             ax24.legend(loc='upper right', fontsize=9)
+        else:
+            ax24.set_yticks([])
+
+        # --------------------------------------
+        # All plots
+        # --------------------------------------
 
         for axis in ax:
             axis.grid(axis='y', alpha=0.5)
