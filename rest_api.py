@@ -180,8 +180,8 @@ async def get_plots(house_alias: str, request: DataRequest):
             if temp_plot:
                 ax20.set_ylim([0,30])
             else:
-                upper_bound = ax[0].get_ylim()[1] + 5
-                ax[0].set_ylim([-2, upper_bound])
+                upper_bound = ax[0].get_ylim()[1] + 2.5
+                ax[0].set_ylim([-1, upper_bound])
             ax20.set_ylabel('Power [kW]')
             ax20.legend(loc='upper right', fontsize=9)
         else:
