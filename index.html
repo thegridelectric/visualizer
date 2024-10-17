@@ -289,19 +289,25 @@
             <input type="date" id="endDatePicker" name="endDatePicker">
             <input type="time" id="endTimePicker" name="endTimePicker">
             <button onclick=setNow()>Now</button>
-            <br><br>
+            <br>
             <div>
-                <label><input type="checkbox" name="channels" value="hp-lwt" checked> hp-lwt</label><br>
-                <label><input type="checkbox" name="channels" value="hp-ewt" checked> hp-ewt</label><br>
-                <label><input type="checkbox" name="channels" value="hp-odu-pwr" checked> hp-odu-pwr</label><br>
-                <label><input type="checkbox" name="channels" value="hp-idu-pwr" checked> hp-idu-pwr</label><br>
-                <label><input type="checkbox" name="channels" value="primary-pump-pwr" checked> primary-pump-pwr</label><br>
-                <label><input type="checkbox" name="channels" value="dist-swt" checked> dist-swt</label><br>
-                <label><input type="checkbox" name="channels" value="dist-rwt" checked> dist-rwt</label><br>
-                <label><input type="checkbox" name="channels" value="zone_heat_calls" checked> zone_heat_calls</label><br>
-                <label><input type="checkbox" name="channels" value="store-hot-pipe" checked> store-hot-pipe</label><br>
-                <label><input type="checkbox" name="channels" value="store-cold-pipe" checked> store-cold-pipe</label><br>
-                <label><input type="checkbox" name="channels" value="store-pump-pwr" checked> store-pump-pwr</label><br>
+                <h4>Heat pump</h4>
+                <label><input type="checkbox" name="channels" value="hp-lwt" checked>LWT</label><br>
+                <label><input type="checkbox" name="channels" value="hp-ewt" checked>EWT</label><br>
+                <label><input type="checkbox" name="channels" value="hp-odu-pwr" checked>Outdoor unit power</label><br>
+                <label><input type="checkbox" name="channels" value="hp-idu-pwr" checked>Indoor unit power</label><br>
+                <label><input type="checkbox" name="channels" value="primary-pump-pwr" checked>Primary pump power</label><br>
+                <h4>Distribution</h4>
+                <label><input type="checkbox" name="channels" value="dist-swt" checked>SWT</label><br>
+                <label><input type="checkbox" name="channels" value="dist-rwt" checked>RWT</label><br>
+                <label><input type="checkbox" name="channels" value="zone_heat_calls" checked>Zone heat calls</label><br>
+                <h4>Buffer</h4>
+                <label><input type="checkbox" name="channels" value="buffer-hot-pipe" checked>Hot pipe</label><br>
+                <label><input type="checkbox" name="channels" value="buffer-cold-pipe" checked>Cold pipe</label><br>
+                <h4>Storage</h4>
+                <label><input type="checkbox" name="channels" value="store-hot-pipe" checked>Hot pipe</label><br>
+                <label><input type="checkbox" name="channels" value="store-cold-pipe" checked>Cold pipe</label><br>
+                <label><input type="checkbox" name="channels" value="store-pump-pwr" checked>Storage pump power</label><br>
             </div>
             <br>
             <input type="submit" value="Submit">
