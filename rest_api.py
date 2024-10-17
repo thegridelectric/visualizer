@@ -229,7 +229,11 @@ async def get_plots(house_alias: str, request: DataRequest):
                             label=key.replace('-state',''), width=0.003)
                     stacked_values += channels[key]['values']
 
-            upper_bound = num_zones / 0.3 if temp_plot else num_zones
+            if temp_plot:
+                upper_bound = num_zones / 0.3
+            else:
+                upper_bound = num_zones
+                ax21.set_yticks(range(num_zones+1))
             ax21.set_ylim([0,upper_bound])
             ax21.set_ylabel('Heat calls')
             ax21.legend(loc='upper right', fontsize=9)
