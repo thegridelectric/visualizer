@@ -126,15 +126,20 @@
         //     }
         // }
 
-        async function fetchPlots(house_alias, password, start_ms, end_ms) {
+        async function fetchPlots(house_alias, password, start_ms, end_ms, channels) {
+
             try {
-                const response = await fetch(`https://4fa2-34-205-125-68.ngrok-free.app/${house_alias}/plots?start_ms=${start_ms}&end_ms=${end_ms}`, {
-                // const response = await fetch(`http://localhost:8000/${house_alias}/plots?start_ms=${start_ms}&end_ms=${end_ms}`, {
+                const response = await fetch(`https://4fa2-34-205-125-68.ngrok-free.app/${house_alias}/plots`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ password: password, start_ms: start_ms, end_ms: end_ms })
+                    body: JSON.stringify({
+                        password: password, 
+                        start_ms: start_ms, 
+                        end_ms: end_ms,
+                        selected_plot_keys: channels
+                    })
                 });
 
                 const contentType = response.headers.get("Content-Type");
@@ -243,6 +248,9 @@
             submitButton.style.display = 'none';
             loadingText.style.display = 'inline';
 
+            const selectedChannels = Array.from(document.querySelectorAll('input[name="channels"]:checked'))
+                .map(checkbox => checkbox.value);
+
             const startdate = document.getElementById('startDatePicker').value;
             const starttime = document.getElementById('startTimePicker').value;
             const startDateObject = new Date(`${startdate}T${starttime}-04:00`);
@@ -253,7 +261,7 @@
             const enddateObject = new Date(`${enddate}T${endtime}-04:00`);
             const endUnixMilliseconds = enddateObject.getTime();
 
-            fetchPlots(house_alias, password, startUnixMilliseconds, endUnixMilliseconds)
+            fetchPlots(house_alias, password, startUnixMilliseconds, endUnixMilliseconds, selectedChannels)
         }
     </script>
 
@@ -282,8 +290,22 @@
             <input type="time" id="endTimePicker" name="endTimePicker">
             <button onclick=setNow()>Now</button>
             <br><br>
+            <div>
+                <label><input type="checkbox" name="channels" value="hp-lwt" checked> hp-lwt</label><br>
+                <label><input type="checkbox" name="channels" value="hp-ewt" checked> hp-ewt</label><br>
+                <label><input type="checkbox" name="channels" value="hp-odu-pwr" checked> hp-odu-pwr</label><br>
+                <label><input type="checkbox" name="channels" value="hp-idu-pwr" checked> hp-idu-pwr</label><br>
+                <label><input type="checkbox" name="channels" value="primary-pump-pwr" checked> primary-pump-pwr</label><br>
+                <label><input type="checkbox" name="channels" value="dist-swt" checked> dist-swt</label><br>
+                <label><input type="checkbox" name="channels" value="dist-rwt" checked> dist-rwt</label><br>
+                <label><input type="checkbox" name="channels" value="zone_heat_calls" checked> zone_heat_calls</label><br>
+                <label><input type="checkbox" name="channels" value="store-hot-pipe" checked> store-hot-pipe</label><br>
+                <label><input type="checkbox" name="channels" value="store-cold-pipe" checked> store-cold-pipe</label><br>
+                <label><input type="checkbox" name="channels" value="store-pump-pwr" checked> store-pump-pwr</label><br>
+            </div>
+            <br>
             <input type="submit" value="Submit">
-            <span id="loadingText" style="display: none;">Loading data...</span>
+            <span id="loadingText" style="font-weight: bold; display: none;">Loading data...</span>
         </form>
         <!-- <pre id="hpPowerData"></pre> -->
         <div id="Plots"></div>
