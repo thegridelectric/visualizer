@@ -149,7 +149,7 @@ async def get_plots(house_alias: str, request: DataRequest):
             channels['hp-ewt']['values'] = [to_fahrenheit(x/1000) for x in channels['hp-ewt']['values']]
             ax[0].plot(channels['hp-ewt']['times'], channels['hp-ewt']['values'], color='tab:blue', alpha=0.7, label='HP EWT')
         if temp_plot:
-            if sum([1 if 'pwr' in x else 0 for x in selected_plot_keys]) > 0:
+            if 'hp-odu-pwr' in selected_plot_keys or 'hp-idu-pwr' in selected_plot_keys or 'primary-pump-pwr' in selected_plot_keys:
                 ax[0].set_ylim([0,230])
             else:
                 lower_bound = ax[0].get_ylim()[0] - 5
