@@ -35,54 +35,40 @@ app.add_middleware(
 )
 
 class DataRequest(BaseModel):
+    house_alias: str
     password: str
     start_ms: int
     end_ms: int
     selected_plot_keys: List[str]
+    ip_address: str
+    user_agent: str
+    timezone: str
 
 def to_fahrenheit(t):
     return t*9/5+32
 
-# @app.post("/{house_alias}/thermostats")
-# async def get_latest_temperature(house_alias: str, request: DataRequest):
-
-#     if request.password != valid_password:
-#         raise HTTPException(status_code=403, detail="Unauthorized")
-
-#     session = Session()
-#     timezone = "America/New_York"
-#     start = pendulum.datetime(2024, 1, 1, 0, 0, tz=timezone)
-#     start_ms = int(start.timestamp() * 1000)
-
-#     last_message = session.query(MessageSql).filter(
-#         MessageSql.from_alias.like(f'%{house_alias}%'),
-#         MessageSql.message_persisted_ms >= start_ms
-#     ).order_by(desc(MessageSql.message_persisted_ms)).first()
-
-#     if not last_message:
-#         raise HTTPException(status_code=404, detail="No messages found.")
-
-#     temperature_data = []
-#     for channel in last_message.payload['ChannelReadingList']:
-#         if ('zone' in channel['ChannelName'] and 'gw' not in channel['ChannelName'] 
-#             and ('temp' in channel['ChannelName'] or 'set' in channel['ChannelName'])):
-#                 temperature_data.append({
-#                     "zone": channel['ChannelName'],
-#                     "temperature": channel['ValueList'][-1] / 1000,
-#                     "time": last_message.message_persisted_ms
-#                 })
-
-#     return temperature_data
-
-
-@app.post('/{house_alias}/plots')
-async def get_plots(house_alias: str, request: DataRequest):
+@app.post('/plots')
+async def get_plots(request: DataRequest):
 
     if request.password != valid_password:
+
+        # Save this attempt in log file
+        with open('failed_logins.log', 'a') as log_file:
+            log_entry = f"{pendulum.now()} - Failed login from {request.ip_address} with password: {request.password}\n"
+            log_entry += f"Timezone '{request.timezone}', device: {request.user_agent}\n\n"
+            log_file.write(log_entry)
+
         return {
             "success": False, 
             "message": "Wrong password.", 
             "reload":True
+            }
+    
+    if request.house_alias == '':
+        return {
+            "success": False, 
+            "message": "Please enter a house alias.", 
+            "reload": True
             }
     
     if (request.end_ms - request.start_ms)/1000/60/60/24 > 31:
@@ -95,7 +81,7 @@ async def get_plots(house_alias: str, request: DataRequest):
     session = Session()
 
     messages = session.query(MessageSql).filter(
-        MessageSql.from_alias.like(f'%{house_alias}%'),
+        MessageSql.from_alias.like(f'%{request.house_alias}%'),
         or_(
             MessageSql.message_type_name == "batched.readings",
             MessageSql.message_type_name == "report"
@@ -107,7 +93,7 @@ async def get_plots(house_alias: str, request: DataRequest):
     if not messages:
         return {
             "success": False, 
-            "message": f"No data found for house '{house_alias}' in the selected timeframe.", 
+            "message": f"No data found for house '{request.house_alias}' in the selected timeframe.", 
             "reload":False
             }
     
