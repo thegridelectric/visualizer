@@ -51,13 +51,10 @@ def to_fahrenheit(t):
 async def get_plots(request: DataRequest):
 
     if request.password != valid_password:
-
-        # Save this attempt in log file
         with open('failed_logins.log', 'a') as log_file:
             log_entry = f"{pendulum.now()} - Failed login from {request.ip_address} with password: {request.password}\n"
             log_entry += f"Timezone '{request.timezone}', device: {request.user_agent}\n\n"
             log_file.write(log_entry)
-
         return {
             "success": False, 
             "message": "Wrong password.", 
