@@ -40,8 +40,8 @@
 
         #Plots {
             display: flex;
-            justify-content: center; /* Center images horizontally */
-            margin-top: 10px; /* Adjust top margin to control space from form */
+            justify-content: center;
+            margin-top: 10px;
         }
 
         #Plots img {
@@ -55,91 +55,32 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     
     <script>
-        let house_alias, password; // global equivalent
-
-        // async function fetchTemperatureData(house_alias, password) {
-        //     try {
-        //         const response = await fetch(`https://4fa2-34-205-125-68.ngrok-free.app/${house_alias}/thermostats`, {
-        //         // const response = await fetch(`http://localhost:8000/${house_alias}/thermostats`, {
-        //             method: 'POST',
-        //             headers: {
-        //                 'Content-Type': 'application/json'
-        //             },
-        //             body: JSON.stringify({ password: password })
-        //         });
-                
-        //         if (!response.ok) {
-        //             throw new Error('Network response was not ok');
-        //         }
-
-        //         const temperatureData = await response.json();
-        //         populateTable(temperatureData, house_alias);
-        //     } catch (error) {
-        //         console.error('Error fetching temperature data:', error);
-        //         alert(`Error fetching temperature data for house '${house_alias}'.`);
-        //     }
-        // }
-
-        // function populateTable(data, house_alias) {
-
-        //     const tbody = document.getElementById("temperature-data");
-        //     tbody.innerHTML = "";
-        //     const zones = {};
-        //     let time_of_reading = '';
-
-        //     data.forEach(item => {
-        //         const parts = item.zone.split('-');
-        //         const zoneBase = parts.slice(0, parts.length-1).join('-');
-                
-        //         if (!time_of_reading) {
-        //             time_of_reading = item.time;
-        //         }
-        //         if (item.zone.includes('set')) {
-        //             zones[zoneBase] = zones[zoneBase] || {};
-        //             zones[zoneBase].setpoint = item.temperature;
-        //         } else if (item.zone.includes('temp')) {
-        //             zones[zoneBase] = zones[zoneBase] || {};
-        //             zones[zoneBase].temperature = item.temperature;
-        //         }
-        //     });
-
-        //     const date = new Date(time_of_reading);
-        //     const formattedTime = date.toLocaleString();
-        //     document.getElementById("houseAliasHeader").textContent = `Thermostats at ${house_alias} on ${formattedTime}`;
-
-        //     for (const zone in zones) {
-        //         const row = document.createElement("tr");
-
-        //         const zoneCell = document.createElement("td");
-        //         zoneCell.textContent = zone;
-        //         row.appendChild(zoneCell);
-
-        //         const setpointCell = document.createElement("td");
-        //         setpointCell.textContent = zones[zone].setpoint !== undefined ? zones[zone].setpoint.toFixed(1) : "N/A";
-        //         row.appendChild(setpointCell);
-
-        //         const temperatureCell = document.createElement("td");
-        //         temperatureCell.textContent = zones[zone].temperature !== undefined ? zones[zone].temperature.toFixed(1) : "N/A";
-        //         row.appendChild(temperatureCell);
-
-        //         tbody.appendChild(row);
-        //     }
-        // }
+        let house_alias, password;
 
         async function fetchPlots(house_alias, password, start_ms, end_ms, channels) {
 
+            const ipResponse = await fetch('https://api.ipify.org?format=json');
+            const ipData = await ipResponse.json();
+            const ipAddress = ipData.ip;
+            const userAgent = navigator.userAgent;
+            const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
             try {
-                const response = await fetch(`https://e189-34-205-125-68.ngrok-free.app/${house_alias}/plots`, {
-                // const response = await fetch(`http://localhost:8000/${house_alias}/plots`, {
+                const response = await fetch(`https://e189-34-205-125-68.ngrok-free.app/plots`, {
+                // const response = await fetch(`http://localhost:8000/plots`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
+                        house_alias: `${house_alias}`,
                         password: password, 
                         start_ms: start_ms, 
                         end_ms: end_ms,
-                        selected_plot_keys: channels
+                        selected_plot_keys: channels,
+                        ip_address: ipAddress,
+                        user_agent: userAgent,
+                        timezone: timezone
                     })
                 });
 
@@ -232,7 +173,6 @@
             house_alias = prompt("Enter house alias:");
             password = prompt("Enter password:");
 
-            // fetchTemperatureData(house_alias, password);
             document.getElementById("houseAliasHeader").textContent = `House alias: ${house_alias}`;
             document.getElementById('startDatePicker').value = getDefaultDate(true);
             document.getElementById('startTimePicker').value = getDefaultTime(true);
@@ -246,7 +186,6 @@
         function getData(event) {
             event.preventDefault();
 
-            // Hide submit button and replace by loading text
             const submitButton = document.querySelector('input[type="submit"]');
             const nowButton = document.getElementById('nowButton');
             const loadingText = document.getElementById('loadingText');
@@ -287,17 +226,6 @@
 <body onload="HousePassword()">
     <div id="content" style="display: none;">
         <h2 id="houseAliasHeader"></h2>
-        <!-- <table border="1">
-            <thead>
-                <tr>
-                    <th>Zone</th>
-                    <th>Setpoint (F)</th>
-                    <th>Temperature (F)</th>
-                </tr>
-            </thead>
-            <tbody id="temperature-data">
-            </tbody>
-        </table> -->
         <form onsubmit="getData(event)" onkeydown="handleKey(event)">
             <label for="startDatePicker">From</label>
             <input type="date" id="startDatePicker" name="startDatePicker">
