@@ -353,6 +353,15 @@ async def get_plots(request: DataRequest):
             channels['buffer-cold-pipe']['values'] = [to_fahrenheit(x/1000) for x in channels['buffer-cold-pipe']['values']]
             ax[3].plot(channels['buffer-cold-pipe']['times'], channels['buffer-cold-pipe']['values'], 
                        color='tab:blue', alpha=0.7, label='Buffer cold pipe')
+        
+        if 'buffer-depths' in selected_plot_keys:
+            alpha_down = 0.7
+            for buffer_channel in sorted([key for key in channels.keys() if 'buffer-depth' in key]):
+                channels[buffer_channel]['values'] = [to_fahrenheit(x/1000) for x in channels[buffer_channel]['values']]
+                ax[3].plot(channels[buffer_channel]['times'], channels[buffer_channel]['values'], 
+                       color='purple', alpha=alpha_down, label=buffer_channel)
+                alpha_down += -0.15
+
         ax[3].set_ylabel('Temperature [F]')
         ax[3].legend(loc='upper left', fontsize=9)
         lower_bound = ax[3].get_ylim()[0] - 5
@@ -377,6 +386,16 @@ async def get_plots(request: DataRequest):
             channels['store-cold-pipe']['values'] = [to_fahrenheit(x/1000) for x in channels['store-cold-pipe']['values']]
             ax[4].plot(channels['store-cold-pipe']['times'], channels['store-cold-pipe']['values'], 
                     color='tab:blue', alpha=0.7, label='Storage cold pipe')
+
+        if 'storage-depths' in selected_plot_keys:
+            temp_plot = True
+            alpha_down = 0.7
+            for tank_channel in sorted([key for key in channels.keys() if 'tank' in key]):
+                channels[tank_channel]['values'] = [to_fahrenheit(x/1000) for x in channels[tank_channel]['values']]
+                ax[4].plot(channels[tank_channel]['times'], channels[tank_channel]['values'], 
+                       color='purple', alpha=alpha_down, label=tank_channel)
+                alpha_down += -0.15
+
         if temp_plot:
             if 'store-pump-pwr' in selected_plot_keys:
                 ax[4].set_ylim([40,230])
