@@ -396,7 +396,7 @@ async def get_plots(request: DataRequest):
                 channels[tank_channel]['values'] = [to_fahrenheit(x/1000) for x in channels[tank_channel]['values']]
                 ax[4].plot(channels[tank_channel]['times'], channels[tank_channel]['values'], 
                        color='purple', alpha=alpha_down, label=tank_channel)
-                alpha_down += -0.6/(len(buffer_channels))
+                alpha_down += -0.6/(len(tank_channels))
 
         if temp_plot:
             if 'store-pump-pwr' in selected_plot_keys:
