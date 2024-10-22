@@ -356,11 +356,12 @@ async def get_plots(request: DataRequest):
         
         if 'buffer-depths' in selected_plot_keys:
             alpha_down = 0.7
-            for buffer_channel in sorted([key for key in channels.keys() if 'buffer-depth' in key and 'micro-v' not in key]):
+            buffer_channels = sorted([key for key in channels.keys() if 'buffer-depth' in key and 'micro-v' not in key])
+            for buffer_channel in buffer_channels:
                 channels[buffer_channel]['values'] = [to_fahrenheit(x/1000) for x in channels[buffer_channel]['values']]
                 ax[3].plot(channels[buffer_channel]['times'], channels[buffer_channel]['values'], 
                        color='purple', alpha=alpha_down, label=buffer_channel)
-                alpha_down += -0.15
+                alpha_down += -0.6/(len(buffer_channels)-1)
 
         ax[3].set_ylabel('Temperature [F]')
         ax[3].legend(loc='upper left', fontsize=9)
@@ -390,11 +391,12 @@ async def get_plots(request: DataRequest):
         if 'storage-depths' in selected_plot_keys:
             temp_plot = True
             alpha_down = 0.7
-            for tank_channel in sorted([key for key in channels.keys() if 'tank' in key and 'micro-v' not in key]):
+            tank_channels = sorted([key for key in channels.keys() if 'tank' in key and 'micro-v' not in key])
+            for tank_channel in tank_channels:
                 channels[tank_channel]['values'] = [to_fahrenheit(x/1000) for x in channels[tank_channel]['values']]
                 ax[4].plot(channels[tank_channel]['times'], channels[tank_channel]['values'], 
                        color='purple', alpha=alpha_down, label=tank_channel)
-                alpha_down += -0.15
+                alpha_down += -0.6/(len(buffer_channels)-1)
 
         if temp_plot:
             if 'store-pump-pwr' in selected_plot_keys:
