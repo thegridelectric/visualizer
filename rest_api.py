@@ -178,21 +178,6 @@ async def get_plots(request: DataRequest):
 
     if process_heatcalls:
 
-        def interpolate_value(state, given_time, channels_copy):
-            prev_time = None
-            next_time = None
-            for existing_time in channels_copy[state]['times']:
-                if existing_time < given_time:
-                    prev_time = channels_copy[state]['times'].index(existing_time)
-                elif existing_time > given_time and next_time is None:
-                    next_time = channels_copy[state]['times'].index(existing_time)
-            if prev_time is None or next_time is None:
-                return 0
-            if channels_copy[state]['values'][prev_time]==1 and channels_copy[state]['values'][next_time]==1:
-                return 1
-            else:
-                return 0
-
         # Get all timestamps in the zone states
         all_times = []
         for zone in zones:
@@ -205,15 +190,11 @@ async def get_plots(request: DataRequest):
         for zone in zones:
             for state in [x for x in zones[zone] if 'state' in x]:
                 if channels[state]['times'] != all_times:
-                    values_to_insert = []
-                    times_to_insert = []
                     # Add missing times
                     for time in all_times:
                         if time not in channels[state]['times']:
-                            values_to_insert.append(interpolate_value(state, time, channels_copy))
-                            times_to_insert.append(time)
-                    channels[state]['times'].extend(times_to_insert)
-                    channels[state]['values'].extend(values_to_insert)
+                            channels[state]['times'].append(time)
+                            channels[state]['values'].append(0)
                     # Sort by time again
                     sorted_times_values = sorted(zip(channels[state]['times'], channels[state]['values']))
                     sorted_times, sorted_values = zip(*sorted_times_values)
