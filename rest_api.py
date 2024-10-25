@@ -219,7 +219,7 @@ async def get_plots(request: DataRequest):
             temp_plot = True
             print(f'We have {len(channels['hp-lwt']['values'])} data points for HP LWT')
             channels['hp-lwt']['values'] = [to_fahrenheit(x/1000) for x in channels['hp-lwt']['values']]
-            ax[0].scatter(channels['hp-lwc']['times'], channels['hp-lwt']['values'], color='tab:red', alpha=0.7, label='HP LWT')
+            ax[0].scatter(channels['hp-lwt']['times'], channels['hp-lwt']['values'], marker='x', color='tab:red', alpha=0.7, label='HP LWT')
         if 'hp-ewt' in selected_plot_keys:
             temp_plot = True
             channels['hp-ewt']['values'] = [to_fahrenheit(x/1000) for x in channels['hp-ewt']['values']]
