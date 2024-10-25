@@ -311,32 +311,50 @@ async def get_plots(request: DataRequest):
         else:
             ax21 = ax[1]
 
+        # Distribution pump power
+        power_plot = False   
+        if 'dist-pump-pwr'in selected_plot_keys:
+            power_plot = True
+            ax21.plot(channels['dist-pump-pwr']['times'], [x/10 for x in channels['dist-pump-pwr']['values']], alpha=0.4, 
+                    color='tab:purple', label='Distribution pump power x10') 
+
         # Zone heat calls
         num_zones = len(zones.keys())
         height_of_stack = 0
         stacked_values = None
+        scale = 0.25
         if 'zone_heat_calls' in selected_plot_keys:
             for zone in zones:
                 for key in [x for x in zones[zone] if 'state' in x]:
                     if stacked_values is None:
                         stacked_values = np.zeros(len(channels[key]['times']))
                     if len(stacked_values) != len(channels[key]['values']):
-                        height_of_stack += 1
+                        height_of_stack += scale
                         stacked_values = np.ones(len(channels[key]['times'])) * height_of_stack
-                    ax21.bar(channels[key]['times'], channels[key]['values'], alpha=0.7, bottom=stacked_values, 
+                    ax21.bar(channels[key]['times'], [x*scale for x in channels[key]['values']], alpha=0.7, bottom=stacked_values, 
                                 label=key.replace('-state',''), width=0.003)
-                    stacked_values += channels[key]['values']                    
+                    stacked_values += [x*scale for x in channels[key]['values']]    
 
-            if temp_plot:
-                upper_bound = num_zones / 0.3
-            else:
-                upper_bound = num_zones
-                ax21.set_yticks(range(num_zones+1))
+        if temp_plot and power_plot:
+            upper_bound = 4
+            ax21.set_ylim([0,upper_bound])
+            ax21.set_ylabel('Power [W]')
+        elif temp_plot and not power_plot:
+            upper_bound = num_zones * scale / 0.3
             ax21.set_ylim([0,upper_bound])
             ax21.set_ylabel('Heat calls')
-            ax21.legend(loc='upper right', fontsize=9)
-        else:
+        elif not temp_plot and power_plot:
+            upper_bound = (max(channels['dist-pump-pwr']['values']) + 10)/10
+            ax21.set_ylim([0,upper_bound])
+            ax21.set_ylabel('Power [W]')
+        elif not temp_plot and not power_plot:
+            upper_bound = num_zones * scale
+            ax21.set_ylim([0,upper_bound])
+            ax21.set_ylabel('Heat calls')
             ax21.set_yticks([])
+
+        ax21.legend(loc='upper right', fontsize=9)
+
 
         # --------------------------------------
         # PLOT 3
@@ -354,8 +372,8 @@ async def get_plots(request: DataRequest):
                 elif 'set' in temp:
                     base_temp = temp.replace('-set', '-temp')
                     if base_temp in colors:
-                        ax22.plot(channels[temp]['times'], channels[temp]['values'], line_style, label=temp, 
-                                linestyle='dashed', color=colors[base_temp], alpha=0.7)
+                        ax22.plot(channels[temp]['times'], channels[temp]['values'], '-'+line_style, label=temp, 
+                                    color=colors[base_temp], alpha=0.7)
                         
         ax[2].set_ylabel('Temperature [F]')
         ax22.set_yticks([])
@@ -378,7 +396,7 @@ async def get_plots(request: DataRequest):
             for buffer_channel in buffer_channels:
                 channels[buffer_channel]['values'] = [to_fahrenheit(x/1000) for x in channels[buffer_channel]['values']]
                 ax[3].plot(channels[buffer_channel]['times'], channels[buffer_channel]['values'], line_style, 
-                       color=buffer_colors[buffer_channel], alpha=0.7, label=buffer_channel)
+                        color=buffer_colors[buffer_channel], alpha=0.7, label=buffer_channel)
 
         if not buffer_channels:
             if 'buffer-hot-pipe' in selected_plot_keys:
@@ -412,7 +430,7 @@ async def get_plots(request: DataRequest):
             for tank_channel in tank_channels:
                 channels[tank_channel]['values'] = [to_fahrenheit(x/1000) for x in channels[tank_channel]['values']]
                 ax[4].plot(channels[tank_channel]['times'], channels[tank_channel]['values'], line_style, 
-                       color=storage_colors[tank_channel], alpha=0.7, label=tank_channel)
+                        color=storage_colors[tank_channel], alpha=0.7, label=tank_channel)
 
         if not tank_channels:
             if 'store-hot-pipe' in selected_plot_keys:
@@ -438,7 +456,7 @@ async def get_plots(request: DataRequest):
             channels['store-pump-pwr']['values'] = [x/10 for x in channels['store-pump-pwr']['values']]
             ax24.plot(channels['store-pump-pwr']['times'], channels['store-pump-pwr']['values'], line_style, 
                     color='tab:green', alpha=0.7, label='Storage pump x100')
-        
+
         if power_plot:
             if temp_plot:
                 ax24.set_ylim([-1,40])
