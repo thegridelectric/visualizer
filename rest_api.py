@@ -48,10 +48,10 @@ def to_fahrenheit(t):
     return t*9/5+32
 
 buffer_colors = {
-    'buffer-depth-1': 'red',
-    'buffer-depth-2': 'salmon',
-    'buffer-depth-3': 'purple',
-    'buffer-depth-4': 'blue'
+    'buffer-depth1': 'red',
+    'buffer-depth2': 'salmon',
+    'buffer-depth3': 'purple',
+    'buffer-depth4': 'blue'
     }
 
 @app.post('/plots')
