@@ -47,6 +47,13 @@ class DataRequest(BaseModel):
 def to_fahrenheit(t):
     return t*9/5+32
 
+buffer_colors = {
+    'buffer-depth-1': 'red',
+    'buffer-depth-2': 'salmon',
+    'buffer-depth-3': 'purple',
+    'buffer-depth-4': 'blue'
+    }
+
 @app.post('/plots')
 async def get_plots(request: DataRequest):
 
@@ -347,13 +354,11 @@ async def get_plots(request: DataRequest):
 
         buffer_channels = []
         if 'buffer-depths' in selected_plot_keys:
-            alpha_down = 0.7
             buffer_channels = sorted([key for key in channels.keys() if 'buffer-depth' in key and 'micro-v' not in key])
             for buffer_channel in buffer_channels:
                 channels[buffer_channel]['values'] = [to_fahrenheit(x/1000) for x in channels[buffer_channel]['values']]
                 ax[3].plot(channels[buffer_channel]['times'], channels[buffer_channel]['values'], 
-                       color='purple', alpha=alpha_down, label=buffer_channel)
-                alpha_down += -0.6/(len(buffer_channels))
+                       color=buffer_colors[buffer_channel], alpha=0.7, label=buffer_channel)
 
         if not buffer_channels:
             if 'buffer-hot-pipe' in selected_plot_keys:
