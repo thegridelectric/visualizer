@@ -49,9 +49,9 @@ def to_fahrenheit(t):
 
 buffer_colors = {
     'buffer-depth1': 'red',
-    'buffer-depth2': 'firebrick',
-    'buffer-depth3': 'tab:purple',
-    'buffer-depth4': 'tab:blue'
+    'buffer-depth2': '#c75a5a',
+    'buffer-depth3': '#8d97c4',
+    'buffer-depth4': '#4e91fc'
     }
 
 # Change color scale on storage: bright red-mid-red-dark-red-dark orange-mid orange-light orange-dark yellow-mid yellow-light yellow-dark purple-mid purple-light purple-dark blue-mid blue-light blue
