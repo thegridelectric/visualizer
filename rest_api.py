@@ -403,9 +403,25 @@ async def get_plots(request: DataRequest):
                 ax[4].plot(channels['store-cold-pipe']['times'], channels['store-cold-pipe']['values'], 
                         color='tab:blue', alpha=0.7, label='Storage cold pipe')
 
+        # Power
+        power_plot = False
+        if 'store-pump-pwr' in selected_plot_keys:
+            power_plot = True
+            channels['store-pump-pwr']['values'] = [x/10 for x in channels['store-pump-pwr']['values']]
+            ax24.plot(channels['store-pump-pwr']['times'], channels['store-pump-pwr']['values'], 
+                    color='tab:green', alpha=0.7, label='Storage pump x100')
+        
+        if power_plot:
+            if temp_plot:
+                ax24.set_ylim([0,40])
+            ax24.set_ylabel('Power [kW]')
+            ax24.legend(loc='upper right', fontsize=9)
+        else:
+            ax24.set_yticks([])
+
         if temp_plot:
             if 'store-pump-pwr' in selected_plot_keys:
-                lower_bound = ax[4].get_ylim()[0] - 50
+                lower_bound = ax[4].get_ylim()[0] - 5 - max(channels['store-pump-pwr']['values'])
             else:
                 lower_bound = ax[4].get_ylim()[0] - 5
             upper_bound = ax[4].get_ylim()[1] + 25
@@ -415,21 +431,6 @@ async def get_plots(request: DataRequest):
             ax24 = ax[4].twinx()
         else:
             ax24 = ax[4]
-
-        # Power
-        power_plot = False
-        if 'store-pump-pwr' in selected_plot_keys:
-            power_plot = True
-            channels['store-pump-pwr']['values'] = [x/10 for x in channels['store-pump-pwr']['values']]
-            ax24.plot(channels['store-pump-pwr']['times'], channels['store-pump-pwr']['values'], 
-                    color='tab:green', alpha=0.7, label='Storage pump x100')
-        if power_plot:
-            if temp_plot:
-                ax24.set_ylim([0,40])
-            ax24.set_ylabel('Power [kW]')
-            ax24.legend(loc='upper right', fontsize=9)
-        else:
-            ax24.set_yticks([])
 
         # --------------------------------------
         # All plots
