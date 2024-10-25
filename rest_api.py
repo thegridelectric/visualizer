@@ -345,15 +345,7 @@ async def get_plots(request: DataRequest):
 
         ax[3].set_title('Buffer')
 
-        if 'buffer-hot-pipe' in selected_plot_keys:
-            channels['buffer-hot-pipe']['values'] = [to_fahrenheit(x/1000) for x in channels['buffer-hot-pipe']['values']]
-            ax[3].plot(channels['buffer-hot-pipe']['times'], channels['buffer-hot-pipe']['values'], 
-                    color='tab:red', alpha=0.7, label='Buffer hot pipe')
-        if 'buffer-cold-pipe' in selected_plot_keys:
-            channels['buffer-cold-pipe']['values'] = [to_fahrenheit(x/1000) for x in channels['buffer-cold-pipe']['values']]
-            ax[3].plot(channels['buffer-cold-pipe']['times'], channels['buffer-cold-pipe']['values'], 
-                       color='tab:blue', alpha=0.7, label='Buffer cold pipe')
-        
+        buffer_channels = []
         if 'buffer-depths' in selected_plot_keys:
             alpha_down = 0.7
             buffer_channels = sorted([key for key in channels.keys() if 'buffer-depth' in key and 'micro-v' not in key])
@@ -362,6 +354,16 @@ async def get_plots(request: DataRequest):
                 ax[3].plot(channels[buffer_channel]['times'], channels[buffer_channel]['values'], 
                        color='purple', alpha=alpha_down, label=buffer_channel)
                 alpha_down += -0.6/(len(buffer_channels))
+
+        if not buffer_channels:
+            if 'buffer-hot-pipe' in selected_plot_keys:
+                channels['buffer-hot-pipe']['values'] = [to_fahrenheit(x/1000) for x in channels['buffer-hot-pipe']['values']]
+                ax[3].plot(channels['buffer-hot-pipe']['times'], channels['buffer-hot-pipe']['values'], 
+                        color='tab:red', alpha=0.7, label='Buffer hot pipe')
+            if 'buffer-cold-pipe' in selected_plot_keys:
+                channels['buffer-cold-pipe']['values'] = [to_fahrenheit(x/1000) for x in channels['buffer-cold-pipe']['values']]
+                ax[3].plot(channels['buffer-cold-pipe']['times'], channels['buffer-cold-pipe']['values'], 
+                        color='tab:blue', alpha=0.7, label='Buffer cold pipe')
 
         ax[3].set_ylabel('Temperature [F]')
         ax[3].legend(loc='upper left', fontsize=9)
@@ -377,16 +379,7 @@ async def get_plots(request: DataRequest):
 
         # Temperature
         temp_plot = False
-        if 'store-hot-pipe' in selected_plot_keys:
-            temp_plot = True
-            channels['store-hot-pipe']['values'] = [to_fahrenheit(x/1000) for x in channels['store-hot-pipe']['values']]
-            ax[4].plot(channels['store-hot-pipe']['times'], channels['store-hot-pipe']['values'], 
-                    color='tab:red', alpha=0.7, label='Storage hot pipe')
-        if 'store-cold-pipe' in selected_plot_keys:
-            temp_plot = True
-            channels['store-cold-pipe']['values'] = [to_fahrenheit(x/1000) for x in channels['store-cold-pipe']['values']]
-            ax[4].plot(channels['store-cold-pipe']['times'], channels['store-cold-pipe']['values'], 
-                    color='tab:blue', alpha=0.7, label='Storage cold pipe')
+        tank_channels = []
 
         if 'storage-depths' in selected_plot_keys:
             temp_plot = True
@@ -398,13 +391,25 @@ async def get_plots(request: DataRequest):
                        color='purple', alpha=alpha_down, label=tank_channel)
                 alpha_down += -0.6/(len(tank_channels))
 
+        if not tank_channels:
+            if 'store-hot-pipe' in selected_plot_keys:
+                temp_plot = True
+                channels['store-hot-pipe']['values'] = [to_fahrenheit(x/1000) for x in channels['store-hot-pipe']['values']]
+                ax[4].plot(channels['store-hot-pipe']['times'], channels['store-hot-pipe']['values'], 
+                        color='tab:red', alpha=0.7, label='Storage hot pipe')
+            if 'store-cold-pipe' in selected_plot_keys:
+                temp_plot = True
+                channels['store-cold-pipe']['values'] = [to_fahrenheit(x/1000) for x in channels['store-cold-pipe']['values']]
+                ax[4].plot(channels['store-cold-pipe']['times'], channels['store-cold-pipe']['values'], 
+                        color='tab:blue', alpha=0.7, label='Storage cold pipe')
+
         if temp_plot:
             if 'store-pump-pwr' in selected_plot_keys:
-                ax[4].set_ylim([40,230])
+                lower_bound = ax[4].get_ylim()[0] - 50
             else:
                 lower_bound = ax[4].get_ylim()[0] - 5
-                upper_bound = ax[4].get_ylim()[1] + 25
-                ax[4].set_ylim([lower_bound, upper_bound])
+            upper_bound = ax[4].get_ylim()[1] + 25
+            ax[4].set_ylim([lower_bound, upper_bound])
             ax[4].set_ylabel('Temperature [F]')
             ax[4].legend(loc='upper left', fontsize=9)
             ax24 = ax[4].twinx()
