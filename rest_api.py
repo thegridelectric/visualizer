@@ -402,6 +402,11 @@ async def get_plots(request: DataRequest):
                 channels['store-cold-pipe']['values'] = [to_fahrenheit(x/1000) for x in channels['store-cold-pipe']['values']]
                 ax[4].plot(channels['store-cold-pipe']['times'], channels['store-cold-pipe']['values'], 
                         color='tab:blue', alpha=0.7, label='Storage cold pipe')
+                
+        if temp_plot:
+            ax24 = ax[4].twinx()
+        else:
+            ax24 = ax[4]
 
         # Power
         power_plot = False
@@ -428,9 +433,6 @@ async def get_plots(request: DataRequest):
             ax[4].set_ylim([lower_bound, upper_bound])
             ax[4].set_ylabel('Temperature [F]')
             ax[4].legend(loc='upper left', fontsize=9)
-            ax24 = ax[4].twinx()
-        else:
-            ax24 = ax[4]
 
         # --------------------------------------
         # All plots
