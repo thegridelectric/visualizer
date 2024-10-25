@@ -185,11 +185,17 @@ async def get_plots(request: DataRequest):
                 all_times.extend(channels[state]['times'])
         all_times = sorted(list(set(all_times)))
 
-        # Fill in the blanks
         channels_copy = channels.copy()
         for zone in zones:
             for state in [x for x in zones[zone] if 'state' in x]:
                 if channels[state]['times'] != all_times:
+                    # Remove duplicates
+                    unique_dict = {}
+                    for time, value in zip(channels[state]['times'], channels[state]['values']):
+                        if time not in unique_dict:
+                            unique_dict[time] = value
+                    channels[state]['times'] = list(unique_dict.keys())
+                    channels[state]['values'] = list(unique_dict.values())
                     # Add missing times
                     for time in all_times:
                         if time not in channels[state]['times']:
@@ -198,8 +204,8 @@ async def get_plots(request: DataRequest):
                     # Sort by time again
                     sorted_times_values = sorted(zip(channels[state]['times'], channels[state]['values']))
                     sorted_times, sorted_values = zip(*sorted_times_values)
-                    channels[state]['values'] = list(sorted_values)
                     channels[state]['times'] = list(sorted_times)
+                    channels[state]['values'] = list(sorted_values)
 
     # Create a BytesIO object for the zip file
     zip_buffer = io.BytesIO()
