@@ -48,10 +48,10 @@ def to_fahrenheit(t):
     return t*9/5+32
 
 buffer_colors = {
-    'buffer-depth1': 'red',
-    'buffer-depth2': 'salmon',
-    'buffer-depth3': 'purple',
-    'buffer-depth4': 'blue'
+    'buffer-depth1': 'tab:red',
+    'buffer-depth2': 'firebrick',
+    'buffer-depth3': 'tab:purple',
+    'buffer-depth4': 'tab:blue'
     }
 
 @app.post('/plots')
@@ -217,6 +217,7 @@ async def get_plots(request: DataRequest):
         temp_plot = False
         if 'hp-lwt' in selected_plot_keys:
             temp_plot = True
+            print(f'We have {len(channels['hp-lwt']['values'])} data points for HP LWT')
             channels['hp-lwt']['values'] = [to_fahrenheit(x/1000) for x in channels['hp-lwt']['values']]
             ax[0].plot(channels['hp-lwt']['times'], channels['hp-lwt']['values'], color='tab:red', alpha=0.7, label='HP LWT')
         if 'hp-ewt' in selected_plot_keys:
