@@ -307,7 +307,7 @@ async def get_plots(request: DataRequest):
                     if len(stacked_values) != len(channels[key]['values']):
                         height_of_stack += 1
                         stacked_values = np.ones(len(channels[key]['times'])) * height_of_stack
-                    ax21.bar(channels[key]['times'], channels[key]['values'], line_style, alpha=0.7, bottom=stacked_values, 
+                    ax21.bar(channels[key]['times'], channels[key]['values'], alpha=0.7, bottom=stacked_values, 
                                 label=key.replace('-state',''), width=0.003)
                     stacked_values += channels[key]['values']                    
 
