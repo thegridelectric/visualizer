@@ -429,7 +429,7 @@ async def get_plots(request: DataRequest):
                 lower_bound = ax[4].get_ylim()[0] - 5 - max(channels['store-pump-pwr']['values'])
             else:
                 lower_bound = ax[4].get_ylim()[0] - 5
-            upper_bound = ax[4].get_ylim()[1] + 0.7*(ax[4].get_ylim()[1] - ax[4].get_ylim()[0])
+            upper_bound = ax[4].get_ylim()[1] + 0.5*(ax[4].get_ylim()[1] - ax[4].get_ylim()[0])
             ax[4].set_ylim([lower_bound, upper_bound])
             ax[4].set_ylabel('Temperature [F]')
             ax[4].legend(loc='upper left', fontsize=9)
