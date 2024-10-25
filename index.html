@@ -204,7 +204,7 @@
             house_alias = prompt("Enter house alias:");
             password = prompt("Enter password:");
 
-            document.getElementById("houseAliasHeader").textContent = `House alias: ${house_alias}`;
+            document.getElementById("houseAliasHeader").textContent = `${house_alias.charAt(0).toUpperCase()}${house_alias.slice(1)}`;
             document.getElementById('startDatePicker').value = getDefaultDate(true);
             document.getElementById('startTimePicker').value = getDefaultTime(true);
             document.getElementById('endDatePicker').value = getDefaultDate();
@@ -259,10 +259,10 @@
         <div id="Inputs">
             <h2 id="houseAliasHeader" style="color: rgb(46, 52, 64);"></h2>
             <form onsubmit="getData(event)" onkeydown="handleKey(event)">
-                <label for="startDatePicker">From</label>
+                <label style="color: rgb(46, 52, 64);" for="startDatePicker">From</label>
                 <input type="date" id="startDatePicker" name="startDatePicker">
                 <input type="time" id="startTimePicker" name="startTimePicker">
-                <label for="endDatePicker">to</label>
+                <label style="color: rgb(46, 52, 64);" for="endDatePicker">to</label>
                 <input type="date" id="endDatePicker" name="endDatePicker">
                 <input type="time" id="endTimePicker" name="endTimePicker">
                 <button type="button" id="nowButton" onclick=setNow()>Now</button>
