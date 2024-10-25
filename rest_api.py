@@ -47,11 +47,12 @@ class DataRequest(BaseModel):
 def to_fahrenheit(t):
     return t*9/5+32
 
+gradient = plt.get_cmap('coolwarm', 4)
 buffer_colors = {
-    'buffer-depth1': 'red',
-    'buffer-depth2': '#c75a5a',
-    'buffer-depth3': '#8d97c4',
-    'buffer-depth4': '#4e91fc'
+    'buffer-depth1': gradient(0),
+    'buffer-depth2': gradient(1),
+    'buffer-depth3': gradient(2),
+    'buffer-depth4': gradient(3)
     }
 
 # Change color scale on storage: bright red-mid-red-dark-red-dark orange-mid orange-light orange-dark yellow-mid yellow-light yellow-dark purple-mid purple-light purple-dark blue-mid blue-light blue
@@ -220,7 +221,6 @@ async def get_plots(request: DataRequest):
         temp_plot = False
         if 'hp-lwt' in selected_plot_keys:
             temp_plot = True
-            print(f'We have {len(channels['hp-lwt']['values'])} data points for HP LWT')
             channels['hp-lwt']['values'] = [to_fahrenheit(x/1000) for x in channels['hp-lwt']['values']]
             ax[0].plot(channels['hp-lwt']['times'], channels['hp-lwt']['values'], line_style, color='tab:red', alpha=0.7, label='HP LWT')
         if 'hp-ewt' in selected_plot_keys:
