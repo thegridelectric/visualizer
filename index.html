@@ -9,6 +9,8 @@
     <style>
         body {
             font-family: 'Helvetica Neue', Arial, sans-serif;
+            margin: 0;
+            padding: 0;
         }
 
         table {
@@ -50,6 +52,35 @@
             height: auto;
             margin-bottom: 10px;
         }
+
+        /* #submit_button{
+            font-size:15px;
+            font-family: 'Helvetica Neue';
+            margin-top:0px;
+            color:white;
+            border-radius:5px;
+            text-align:center;
+            position: absolute;
+            margin-bottom: 10px;
+            height:40px;
+            width: 100px;
+            background-color:rgb(87, 97, 119); 
+            border: none;
+            box-shadow:	3px 4px 0px 0px rgb(60, 67, 81);
+            transition: all 0.2s ease-out;
+        }
+
+        #submit_button:hover{
+            margin-top:2px;
+            box-shadow:	1px 2px 0px 0px rgb(60, 67, 81);
+        } */
+
+        #Inputs{
+            padding:15px;
+            padding-bottom: 35px;
+            background-color: rgb(153, 165, 190);
+        }
+
     </style>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -225,47 +256,48 @@
 
 <body onload="HousePassword()">
     <div id="content" style="display: none;">
-        <h2 id="houseAliasHeader"></h2>
-        <form onsubmit="getData(event)" onkeydown="handleKey(event)">
-            <label for="startDatePicker">From</label>
-            <input type="date" id="startDatePicker" name="startDatePicker">
-            <input type="time" id="startTimePicker" name="startTimePicker">
-            <label for="endDatePicker">to</label>
-            <input type="date" id="endDatePicker" name="endDatePicker">
-            <input type="time" id="endTimePicker" name="endTimePicker">
-            <button type="button" id="nowButton" onclick=setNow()>Now</button>
-            <br><br>
-            <button type="button" id="checkboxButton" onclick=toggleCheckbox()>Show/hide options</button>
-            <br>
-            <div id="checkboxDiv" style="display: none;">
-                <h4>All plots</h4>
-                <label><input type="checkbox" name="channels" value="show-points">Show points</label><br>
-                <h4>Heat pump</h4>
-                <label><input type="checkbox" name="channels" value="hp-lwt" checked>LWT</label><br>
-                <label><input type="checkbox" name="channels" value="hp-ewt" checked>EWT</label><br>
-                <label><input type="checkbox" name="channels" value="hp-odu-pwr" checked>Outdoor unit power</label><br>
-                <label><input type="checkbox" name="channels" value="hp-idu-pwr" checked>Indoor unit power</label><br>
-                <label><input type="checkbox" name="channels" value="primary-pump-pwr" checked>Primary pump power</label><br>
-                <h4>Distribution</h4>
-                <label><input type="checkbox" name="channels" value="dist-swt" checked>SWT</label><br>
-                <label><input type="checkbox" name="channels" value="dist-rwt" checked>RWT</label><br>
-                <label><input type="checkbox" name="channels" value="dist-pump-pwr" checked>Distribution pump power</label><br>
-                <label><input type="checkbox" name="channels" value="zone_heat_calls" checked>Zone heat calls</label><br>
-                <h4>Buffer</h4>
-                <label><input type="checkbox" name="channels" value="buffer-hot-pipe" checked>Hot pipe</label><br>
-                <label><input type="checkbox" name="channels" value="buffer-cold-pipe" checked>Cold pipe</label><br>
-                <label><input type="checkbox" name="channels" value="buffer-depths" checked>Buffer depths</label><br>
-                <h4>Storage</h4>
-                <label><input type="checkbox" name="channels" value="store-hot-pipe" checked>Hot pipe</label><br>
-                <label><input type="checkbox" name="channels" value="store-cold-pipe" checked>Cold pipe</label><br>
-                <label><input type="checkbox" name="channels" value="storage-depths" checked>Storage depths</label><br>
-                <label><input type="checkbox" name="channels" value="store-pump-pwr" checked>Storage pump power</label><br>
-            </div>
-            <br>
-            <input type="submit" value="Submit">
-            <span id="loadingText" style="font-weight: bold; color: chocolate; display: none;">Loading data...</span>
-        </form>
-        <!-- <pre id="hpPowerData"></pre> -->
+        <div id="Inputs">
+            <h2 id="houseAliasHeader" style="color: rgb(46, 52, 64);"></h2>
+            <form onsubmit="getData(event)" onkeydown="handleKey(event)">
+                <label for="startDatePicker">From</label>
+                <input type="date" id="startDatePicker" name="startDatePicker">
+                <input type="time" id="startTimePicker" name="startTimePicker">
+                <label for="endDatePicker">to</label>
+                <input type="date" id="endDatePicker" name="endDatePicker">
+                <input type="time" id="endTimePicker" name="endTimePicker">
+                <button type="button" id="nowButton" onclick=setNow()>Now</button>
+                <br><br>
+                <button type="button" id="checkboxButton" onclick=toggleCheckbox()>Show/hide options</button>
+                <br>
+                <div id="checkboxDiv" style="display: none;">
+                    <h4>All plots</h4>
+                    <label><input type="checkbox" name="channels" value="show-points">Show points</label><br>
+                    <h4>Heat pump</h4>
+                    <label><input type="checkbox" name="channels" value="hp-lwt" checked>LWT</label><br>
+                    <label><input type="checkbox" name="channels" value="hp-ewt" checked>EWT</label><br>
+                    <label><input type="checkbox" name="channels" value="hp-odu-pwr" checked>Outdoor unit power</label><br>
+                    <label><input type="checkbox" name="channels" value="hp-idu-pwr" checked>Indoor unit power</label><br>
+                    <label><input type="checkbox" name="channels" value="primary-pump-pwr" checked>Primary pump power</label><br>
+                    <h4>Distribution</h4>
+                    <label><input type="checkbox" name="channels" value="dist-swt" checked>SWT</label><br>
+                    <label><input type="checkbox" name="channels" value="dist-rwt" checked>RWT</label><br>
+                    <label><input type="checkbox" name="channels" value="dist-pump-pwr" checked>Distribution pump power</label><br>
+                    <label><input type="checkbox" name="channels" value="zone_heat_calls" checked>Zone heat calls</label><br>
+                    <h4>Buffer</h4>
+                    <label><input type="checkbox" name="channels" value="buffer-hot-pipe" checked>Hot pipe</label><br>
+                    <label><input type="checkbox" name="channels" value="buffer-cold-pipe" checked>Cold pipe</label><br>
+                    <label><input type="checkbox" name="channels" value="buffer-depths" checked>Buffer depths</label><br>
+                    <h4>Storage</h4>
+                    <label><input type="checkbox" name="channels" value="store-hot-pipe" checked>Hot pipe</label><br>
+                    <label><input type="checkbox" name="channels" value="store-cold-pipe" checked>Cold pipe</label><br>
+                    <label><input type="checkbox" name="channels" value="storage-depths" checked>Storage depths</label><br>
+                    <label><input type="checkbox" name="channels" value="store-pump-pwr" checked>Storage pump power</label><br>
+                </div>
+                <br>
+                <input id='submit_button' type="submit" value="Submit">
+                <span id="loadingText" style="font-weight: bold; color: rgb(46, 52, 64); display: none;">Loading data...</span>
+            </form>
+        </div>
         <div id="Plots"></div>
     </div>
 </body>
