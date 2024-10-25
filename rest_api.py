@@ -441,7 +441,7 @@ async def get_plots(request: DataRequest):
         
         if power_plot:
             if temp_plot:
-                ax24.set_ylim([0,40])
+                ax24.set_ylim([-1,40])
             ax24.set_ylabel('Power [kW]')
             ax24.legend(loc='upper right', fontsize=9)
         else:
