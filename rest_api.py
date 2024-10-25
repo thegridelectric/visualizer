@@ -55,6 +55,22 @@ buffer_colors = {
     'buffer-depth4': gradient(0)
     }
 
+gradient = plt.get_cmap('coolwarm', 12)
+storage_colors = {
+    'tank1-depth1': gradient(11),
+    'tank1-depth2': gradient(10),
+    'tank1-depth3': gradient(9),
+    'tank1-depth4': gradient(8),
+    'tank2-depth1': gradient(7),
+    'tank2-depth2': gradient(6),
+    'tank2-depth3': gradient(5),
+    'tank2-depth4': gradient(4),
+    'tank3-depth1': gradient(3),
+    'tank3-depth2': gradient(2),
+    'tank3-depth3': gradient(1),
+    'tank3-depth4': gradient(0),
+    }
+
 # Change color scale on storage: bright red-mid-red-dark-red-dark orange-mid orange-light orange-dark yellow-mid yellow-light yellow-dark purple-mid purple-light purple-dark blue-mid blue-light blue
 
 @app.post('/plots')
