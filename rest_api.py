@@ -48,11 +48,13 @@ def to_fahrenheit(t):
     return t*9/5+32
 
 buffer_colors = {
-    'buffer-depth1': 'tab:red',
+    'buffer-depth1': 'red',
     'buffer-depth2': 'firebrick',
     'buffer-depth3': 'tab:purple',
     'buffer-depth4': 'tab:blue'
     }
+
+# Change color scale on storage: bright red-mid-red-dark-red-dark orange-mid orange-light orange-dark yellow-mid yellow-light yellow-dark purple-mid purple-light purple-dark blue-mid blue-light blue
 
 @app.post('/plots')
 async def get_plots(request: DataRequest):
@@ -206,6 +208,7 @@ async def get_plots(request: DataRequest):
     with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
 
         fig, ax = plt.subplots(5,1, figsize=(12,22), sharex=True)
+        line_style = '-x' if 'show-points'in selected_plot_keys else '-'
 
         # --------------------------------------
         # PLOT 1
@@ -219,11 +222,11 @@ async def get_plots(request: DataRequest):
             temp_plot = True
             print(f'We have {len(channels['hp-lwt']['values'])} data points for HP LWT')
             channels['hp-lwt']['values'] = [to_fahrenheit(x/1000) for x in channels['hp-lwt']['values']]
-            ax[0].scatter(channels['hp-lwt']['times'], channels['hp-lwt']['values'], marker='x', color='tab:red', alpha=0.7, label='HP LWT')
+            ax[0].plot(channels['hp-lwt']['times'], channels['hp-lwt']['values'], line_style, color='tab:red', alpha=0.7, label='HP LWT')
         if 'hp-ewt' in selected_plot_keys:
             temp_plot = True
             channels['hp-ewt']['values'] = [to_fahrenheit(x/1000) for x in channels['hp-ewt']['values']]
-            ax[0].plot(channels['hp-ewt']['times'], channels['hp-ewt']['values'], color='tab:blue', alpha=0.7, label='HP EWT')
+            ax[0].plot(channels['hp-ewt']['times'], channels['hp-ewt']['values'], line_style, color='tab:blue', alpha=0.7, label='HP EWT')
         if temp_plot:
             if 'hp-odu-pwr' in selected_plot_keys or 'hp-idu-pwr' in selected_plot_keys or 'primary-pump-pwr' in selected_plot_keys:
                 ax[0].set_ylim([0,230])
@@ -242,15 +245,15 @@ async def get_plots(request: DataRequest):
         if 'hp-odu-pwr' in selected_plot_keys:
             power_plot = True
             channels['hp-odu-pwr']['values'] = [x/1000 for x in channels['hp-odu-pwr']['values']]
-            ax20.plot(channels['hp-odu-pwr']['times'], channels['hp-odu-pwr']['values'], color='tab:green', alpha=0.7, label='HP outdoor')
+            ax20.plot(channels['hp-odu-pwr']['times'], channels['hp-odu-pwr']['values'], line_style, color='tab:green', alpha=0.7, label='HP outdoor')
         if 'hp-idu-pwr' in selected_plot_keys:
             power_plot = True
             channels['hp-idu-pwr']['values'] = [x/1000 for x in channels['hp-idu-pwr']['values']]
-            ax20.plot(channels['hp-idu-pwr']['times'], channels['hp-idu-pwr']['values'], color='orange', alpha=0.7, label='HP indoor')
+            ax20.plot(channels['hp-idu-pwr']['times'], channels['hp-idu-pwr']['values'], line_style, color='orange', alpha=0.7, label='HP indoor')
         if 'primary-pump-pwr' in selected_plot_keys:
             power_plot = True
             channels['primary-pump-pwr']['values'] = [x/10 for x in channels['primary-pump-pwr']['values']]
-            ax20.plot(channels['primary-pump-pwr']['times'], channels['primary-pump-pwr']['values'], 
+            ax20.plot(channels['primary-pump-pwr']['times'], channels['primary-pump-pwr']['values'], line_style, 
                     color='purple', alpha=0.7, label='Primary pump x100')
         if power_plot:
             if temp_plot:
@@ -274,11 +277,11 @@ async def get_plots(request: DataRequest):
         if 'dist-swt' in selected_plot_keys:  
             temp_plot = True    
             channels['dist-swt']['values'] = [to_fahrenheit(x/1000) for x in channels['dist-swt']['values']]
-            ax[1].plot(channels['dist-swt']['times'], channels['dist-swt']['values'], color='tab:red', alpha=0.7, label='Distribution SWT')
+            ax[1].plot(channels['dist-swt']['times'], channels['dist-swt']['values'], line_style, color='tab:red', alpha=0.7, label='Distribution SWT')
         if 'dist-rwt' in selected_plot_keys:  
             temp_plot = True    
             channels['dist-rwt']['values'] = [to_fahrenheit(x/1000) for x in channels['dist-rwt']['values']]
-            ax[1].plot(channels['dist-rwt']['times'], channels['dist-rwt']['values'], color='tab:blue', alpha=0.7, label='Distribution RWT')
+            ax[1].plot(channels['dist-rwt']['times'], channels['dist-rwt']['values'], line_style, color='tab:blue', alpha=0.7, label='Distribution RWT')
         if temp_plot:
             ax[1].set_ylabel('Temperature [F]')
             if 'zone_heat_calls' in selected_plot_keys:
@@ -304,7 +307,7 @@ async def get_plots(request: DataRequest):
                     if len(stacked_values) != len(channels[key]['values']):
                         height_of_stack += 1
                         stacked_values = np.ones(len(channels[key]['times'])) * height_of_stack
-                    ax21.bar(channels[key]['times'], channels[key]['values'], alpha=0.7, bottom=stacked_values, 
+                    ax21.bar(channels[key]['times'], channels[key]['values'], line_style, alpha=0.7, bottom=stacked_values, 
                                 label=key.replace('-state',''), width=0.003)
                     stacked_values += channels[key]['values']                    
 
@@ -330,12 +333,12 @@ async def get_plots(request: DataRequest):
         for zone in zones:
             for temp in zones[zone]:
                 if 'temp' in temp:
-                    color = ax[2].plot(channels[temp]['times'], channels[temp]['values'], label=temp, alpha=0.7)[0].get_color()
+                    color = ax[2].plot(channels[temp]['times'], channels[temp]['values'], line_style, label=temp, alpha=0.7)[0].get_color()
                     colors[temp] = color
                 elif 'set' in temp:
                     base_temp = temp.replace('-set', '-temp')
                     if base_temp in colors:
-                        ax22.plot(channels[temp]['times'], channels[temp]['values'], label=temp, 
+                        ax22.plot(channels[temp]['times'], channels[temp]['values'], line_style, label=temp, 
                                 linestyle='dashed', color=colors[base_temp], alpha=0.7)
                         
         ax[2].set_ylabel('Temperature [F]')
@@ -358,17 +361,17 @@ async def get_plots(request: DataRequest):
             buffer_channels = sorted([key for key in channels.keys() if 'buffer-depth' in key and 'micro-v' not in key])
             for buffer_channel in buffer_channels:
                 channels[buffer_channel]['values'] = [to_fahrenheit(x/1000) for x in channels[buffer_channel]['values']]
-                ax[3].plot(channels[buffer_channel]['times'], channels[buffer_channel]['values'], 
+                ax[3].plot(channels[buffer_channel]['times'], channels[buffer_channel]['values'], line_style, 
                        color=buffer_colors[buffer_channel], alpha=0.7, label=buffer_channel)
 
         if not buffer_channels:
             if 'buffer-hot-pipe' in selected_plot_keys:
                 channels['buffer-hot-pipe']['values'] = [to_fahrenheit(x/1000) for x in channels['buffer-hot-pipe']['values']]
-                ax[3].plot(channels['buffer-hot-pipe']['times'], channels['buffer-hot-pipe']['values'], 
+                ax[3].plot(channels['buffer-hot-pipe']['times'], channels['buffer-hot-pipe']['values'], line_style, 
                         color='tab:red', alpha=0.7, label='Buffer hot pipe')
             if 'buffer-cold-pipe' in selected_plot_keys:
                 channels['buffer-cold-pipe']['values'] = [to_fahrenheit(x/1000) for x in channels['buffer-cold-pipe']['values']]
-                ax[3].plot(channels['buffer-cold-pipe']['times'], channels['buffer-cold-pipe']['values'], 
+                ax[3].plot(channels['buffer-cold-pipe']['times'], channels['buffer-cold-pipe']['values'], line_style, 
                         color='tab:blue', alpha=0.7, label='Buffer cold pipe')
 
         ax[3].set_ylabel('Temperature [F]')
@@ -393,7 +396,7 @@ async def get_plots(request: DataRequest):
             tank_channels = sorted([key for key in channels.keys() if 'tank' in key and 'micro-v' not in key])
             for tank_channel in tank_channels:
                 channels[tank_channel]['values'] = [to_fahrenheit(x/1000) for x in channels[tank_channel]['values']]
-                ax[4].plot(channels[tank_channel]['times'], channels[tank_channel]['values'], 
+                ax[4].plot(channels[tank_channel]['times'], channels[tank_channel]['values'], line_style, 
                        color='purple', alpha=alpha_down, label=tank_channel)
                 alpha_down += -0.6/(len(tank_channels))
 
@@ -401,12 +404,12 @@ async def get_plots(request: DataRequest):
             if 'store-hot-pipe' in selected_plot_keys:
                 temp_plot = True
                 channels['store-hot-pipe']['values'] = [to_fahrenheit(x/1000) for x in channels['store-hot-pipe']['values']]
-                ax[4].plot(channels['store-hot-pipe']['times'], channels['store-hot-pipe']['values'], 
+                ax[4].plot(channels['store-hot-pipe']['times'], channels['store-hot-pipe']['values'], line_style, 
                         color='tab:red', alpha=0.7, label='Storage hot pipe')
             if 'store-cold-pipe' in selected_plot_keys:
                 temp_plot = True
                 channels['store-cold-pipe']['values'] = [to_fahrenheit(x/1000) for x in channels['store-cold-pipe']['values']]
-                ax[4].plot(channels['store-cold-pipe']['times'], channels['store-cold-pipe']['values'], 
+                ax[4].plot(channels['store-cold-pipe']['times'], channels['store-cold-pipe']['values'], line_style, 
                         color='tab:blue', alpha=0.7, label='Storage cold pipe')
                 
         if temp_plot:
@@ -419,7 +422,7 @@ async def get_plots(request: DataRequest):
         if 'store-pump-pwr' in selected_plot_keys:
             power_plot = True
             channels['store-pump-pwr']['values'] = [x/10 for x in channels['store-pump-pwr']['values']]
-            ax24.plot(channels['store-pump-pwr']['times'], channels['store-pump-pwr']['values'], 
+            ax24.plot(channels['store-pump-pwr']['times'], channels['store-pump-pwr']['values'], line_style, 
                     color='tab:green', alpha=0.7, label='Storage pump x100')
         
         if power_plot:
