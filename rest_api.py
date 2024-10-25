@@ -412,7 +412,7 @@ async def get_plots(request: DataRequest):
             for tank_channel in tank_channels:
                 channels[tank_channel]['values'] = [to_fahrenheit(x/1000) for x in channels[tank_channel]['values']]
                 ax[4].plot(channels[tank_channel]['times'], channels[tank_channel]['values'], line_style, 
-                       color='purple', alpha=storage_colors[tank_channel], label=tank_channel)
+                       color=storage_colors[tank_channel], alpha=0.7, label=tank_channel)
 
         if not tank_channels:
             if 'store-hot-pipe' in selected_plot_keys:
