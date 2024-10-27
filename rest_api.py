@@ -481,7 +481,7 @@ async def get_plots(request: DataRequest):
 
         plt.tight_layout(pad=5.0)
         img_buf = io.BytesIO()
-        plt.savefig(img_buf, format='png', bbox_inches='tight', dpi=200)
+        plt.savefig(img_buf, format='png', bbox_inches='tight', dpi=200, transparent=True)
         img_buf.seek(0)
         zip_file.writestr(f'plot.png', img_buf.getvalue())
         plt.close()
