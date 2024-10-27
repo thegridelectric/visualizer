@@ -6,7 +6,7 @@ import pendulum
 from sqlalchemy import create_engine, asc, or_
 from sqlalchemy.orm import sessionmaker
 from config import Settings
-from gjk.models import MessageSql, ReadingSql, DataChannelSql
+from models import MessageSql
 import matplotlib.pyplot as plt
 import io
 import zipfile
@@ -39,7 +39,7 @@ class DataRequest(BaseModel):
     password: str
     start_ms: int
     end_ms: int
-    selected_channels: List[str]
+    selected_plot_keys: List[str]
     ip_address: str
     user_agent: str
     timezone: str
@@ -71,6 +71,8 @@ storage_colors = {
     'tank3-depth4': gradient(0),
     }
 
+# Change color scale on storage: bright red-mid-red-dark-red-dark orange-mid orange-light orange-dark yellow-mid yellow-light yellow-dark purple-mid purple-light purple-dark blue-mid blue-light blue
+
 @app.post('/plots')
 async def get_plots(request: DataRequest):
 
@@ -101,43 +103,45 @@ async def get_plots(request: DataRequest):
 
     session = Session()
 
-    # Find the datachannels in the given house
-    data_channels = session.query(DataChannelSql).filter(
-        DataChannelSql.terminal_asset_alias.like(f'%{request.house_alias}%')
-        ).all()
-    
-    if not data_channels:
+    messages = session.query(ReadingSql).filter(
+        MessageSql.from_alias.like(f'%beech%'),
+        or_(
+            MessageSql.message_type_name == "batched.readings",
+            MessageSql.message_type_name == "report"
+            ),
+        MessageSql.message_persisted_ms >= request.start_ms,
+        MessageSql.message_persisted_ms <=request.end_ms,
+    ).order_by(asc(MessageSql.message_persisted_ms)).all()
+
+    if not messages:
         return {
             "success": False, 
-            "message": f"House alias is incorrect.", 
-            "reload": True
+            "message": f"No data found for house '{request.house_alias}' in the selected timeframe.", 
+            "reload":False
             }
+    
+    selected_plot_keys = request.selected_plot_keys
 
     channels = {}
-    for channel in data_channels:
-        # Find the readings in the channel
-        readings = session.query(ReadingSql).filter(
-            ReadingSql.data_channel_id.like(channel.id),
-            ReadingSql.time_ms >= request.start_ms,
-            ReadingSql.time_ms <= request.end_ms,
-        ).order_by(asc(ReadingSql.time_ms)).all()
-        # Store the values and times for the channel
-        if channel.name not in channels:
-            channels[channel.name] = {
-                'values': [x.value for x in readings],
-                'times': [x.time_ms for x in readings]
-            }
-        else:
-            channels[channel.name]['values'].extend([x.value for x in readings])
-            channels[channel.name]['times'].extend([x.time_ms for x in readings])
+    for message in messages:
+        for channel in message.payload['ChannelReadingList']:
+            # Find the channel name
+            if message.message_type_name == 'report':
+                channel_name = channel['ChannelName']
+            elif message.message_type_name == 'batched.readings':
+                for dc in message.payload['DataChannelList']:
+                    if dc['Id'] == channel['ChannelId']:
+                        channel_name = dc['Name']
+            # Store the values and times for the channel
+            if channel_name not in channels:
+                channels[channel_name] = {
+                    'values': channel['ValueList'],
+                    'times': channel['ScadaReadTimeUnixMsList']
+                }
+            else:
+                channels[channel_name]['values'].extend(channel['ValueList'])
+                channels[channel_name]['times'].extend(channel['ScadaReadTimeUnixMsList'])
 
-    if channels == {}:
-        return {
-            "success": False, 
-            "message": f"No data found in the selected timeframe.", 
-            "reload": False
-            }
-    
     # Sort values according to time
     for key in channels.keys():
         sorted_times_values = sorted(zip(channels[key]['times'], channels[key]['values']))
@@ -150,7 +154,7 @@ async def get_plots(request: DataRequest):
         # Check the length
         if len(channels[key]['times']) != len(channels[key]['values']):
             print(f"Length mismatch in channel: {key}")
-            request.selected_channels.remove(key)
+            selected_plot_keys.remove(key)
                 
     # Find all zone channels
     zones = {}
@@ -208,7 +212,7 @@ async def get_plots(request: DataRequest):
     with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
 
         fig, ax = plt.subplots(5,1, figsize=(12,22), sharex=True)
-        line_style = '-x' if 'show-points'in request.selected_channels else '-'
+        line_style = '-x' if 'show-points'in selected_plot_keys else '-'
 
         # --------------------------------------
         # PLOT 1
@@ -218,16 +222,16 @@ async def get_plots(request: DataRequest):
 
         # Temperature
         temp_plot = False
-        if 'hp-lwt' in request.selected_channels:
+        if 'hp-lwt' in selected_plot_keys:
             temp_plot = True
             channels['hp-lwt']['values'] = [to_fahrenheit(x/1000) for x in channels['hp-lwt']['values']]
             ax[0].plot(channels['hp-lwt']['times'], channels['hp-lwt']['values'], line_style, color='tab:red', alpha=0.7, label='HP LWT')
-        if 'hp-ewt' in request.selected_channels:
+        if 'hp-ewt' in selected_plot_keys:
             temp_plot = True
             channels['hp-ewt']['values'] = [to_fahrenheit(x/1000) for x in channels['hp-ewt']['values']]
             ax[0].plot(channels['hp-ewt']['times'], channels['hp-ewt']['values'], line_style, color='tab:blue', alpha=0.7, label='HP EWT')
         if temp_plot:
-            if 'hp-odu-pwr' in request.selected_channels or 'hp-idu-pwr' in request.selected_channels or 'primary-pump-pwr' in request.selected_channels:
+            if 'hp-odu-pwr' in selected_plot_keys or 'hp-idu-pwr' in selected_plot_keys or 'primary-pump-pwr' in selected_plot_keys:
                 ax[0].set_ylim([0,230])
             else:
                 lower_bound = ax[0].get_ylim()[0] - 5
@@ -241,15 +245,15 @@ async def get_plots(request: DataRequest):
 
         # Power
         power_plot = False
-        if 'hp-odu-pwr' in request.selected_channels:
+        if 'hp-odu-pwr' in selected_plot_keys:
             power_plot = True
             channels['hp-odu-pwr']['values'] = [x/1000 for x in channels['hp-odu-pwr']['values']]
             ax20.plot(channels['hp-odu-pwr']['times'], channels['hp-odu-pwr']['values'], line_style, color='tab:green', alpha=0.7, label='HP outdoor')
-        if 'hp-idu-pwr' in request.selected_channels:
+        if 'hp-idu-pwr' in selected_plot_keys:
             power_plot = True
             channels['hp-idu-pwr']['values'] = [x/1000 for x in channels['hp-idu-pwr']['values']]
             ax20.plot(channels['hp-idu-pwr']['times'], channels['hp-idu-pwr']['values'], line_style, color='orange', alpha=0.7, label='HP indoor')
-        if 'primary-pump-pwr' in request.selected_channels:
+        if 'primary-pump-pwr' in selected_plot_keys:
             power_plot = True
             channels['primary-pump-pwr']['values'] = [x/10 for x in channels['primary-pump-pwr']['values']]
             ax20.plot(channels['primary-pump-pwr']['times'], channels['primary-pump-pwr']['values'], line_style, 
@@ -273,17 +277,17 @@ async def get_plots(request: DataRequest):
 
         # Temperature
         temp_plot = False
-        if 'dist-swt' in request.selected_channels:  
+        if 'dist-swt' in selected_plot_keys:  
             temp_plot = True    
             channels['dist-swt']['values'] = [to_fahrenheit(x/1000) for x in channels['dist-swt']['values']]
             ax[1].plot(channels['dist-swt']['times'], channels['dist-swt']['values'], line_style, color='tab:red', alpha=0.7, label='Distribution SWT')
-        if 'dist-rwt' in request.selected_channels:  
+        if 'dist-rwt' in selected_plot_keys:  
             temp_plot = True    
             channels['dist-rwt']['values'] = [to_fahrenheit(x/1000) for x in channels['dist-rwt']['values']]
             ax[1].plot(channels['dist-rwt']['times'], channels['dist-rwt']['values'], line_style, color='tab:blue', alpha=0.7, label='Distribution RWT')
         if temp_plot:
             ax[1].set_ylabel('Temperature [F]')
-            if 'zone_heat_calls' in request.selected_channels:
+            if 'zone_heat_calls' in selected_plot_keys:
                 ax[1].set_ylim([0,230])
             else:
                 lower_bound = ax[1].get_ylim()[0] - 5
@@ -296,7 +300,7 @@ async def get_plots(request: DataRequest):
 
         # Distribution pump power
         power_plot = False   
-        if 'dist-pump-pwr'in request.selected_channels:
+        if 'dist-pump-pwr'in selected_plot_keys:
             power_plot = True
             ax21.plot(channels['dist-pump-pwr']['times'], [x/10 for x in channels['dist-pump-pwr']['values']], alpha=0.4, 
                     color='tab:purple', label='Distribution pump power /10') 
@@ -306,7 +310,7 @@ async def get_plots(request: DataRequest):
         height_of_stack = 0
         stacked_values = None
         scale = 0.25
-        if 'zone_heat_calls' in request.selected_channels:
+        if 'zone_heat_calls' in selected_plot_keys:
             for zone in zones:
                 for key in [x for x in zones[zone] if 'state' in x]:
                     if stacked_values is None:
@@ -374,7 +378,7 @@ async def get_plots(request: DataRequest):
         ax[3].set_title('Buffer')
 
         buffer_channels = []
-        if 'buffer-depths' in request.selected_channels:
+        if 'buffer-depths' in selected_plot_keys:
             buffer_channels = sorted([key for key in channels.keys() if 'buffer-depth' in key and 'micro-v' not in key])
             for buffer_channel in buffer_channels:
                 channels[buffer_channel]['values'] = [to_fahrenheit(x/1000) for x in channels[buffer_channel]['values']]
@@ -382,11 +386,11 @@ async def get_plots(request: DataRequest):
                         color=buffer_colors[buffer_channel], alpha=0.7, label=buffer_channel)
 
         if not buffer_channels:
-            if 'buffer-hot-pipe' in request.selected_channels:
+            if 'buffer-hot-pipe' in selected_plot_keys:
                 channels['buffer-hot-pipe']['values'] = [to_fahrenheit(x/1000) for x in channels['buffer-hot-pipe']['values']]
                 ax[3].plot(channels['buffer-hot-pipe']['times'], channels['buffer-hot-pipe']['values'], line_style, 
                         color='tab:red', alpha=0.7, label='Buffer hot pipe')
-            if 'buffer-cold-pipe' in request.selected_channels:
+            if 'buffer-cold-pipe' in selected_plot_keys:
                 channels['buffer-cold-pipe']['values'] = [to_fahrenheit(x/1000) for x in channels['buffer-cold-pipe']['values']]
                 ax[3].plot(channels['buffer-cold-pipe']['times'], channels['buffer-cold-pipe']['values'], line_style, 
                         color='tab:blue', alpha=0.7, label='Buffer cold pipe')
@@ -407,7 +411,7 @@ async def get_plots(request: DataRequest):
         temp_plot = False
         tank_channels = []
 
-        if 'storage-depths' in request.selected_channels:
+        if 'storage-depths' in selected_plot_keys:
             temp_plot = True
             tank_channels = sorted([key for key in channels.keys() if 'tank' in key and 'micro-v' not in key])
             for tank_channel in tank_channels:
@@ -416,12 +420,12 @@ async def get_plots(request: DataRequest):
                         color=storage_colors[tank_channel], alpha=0.7, label=tank_channel)
 
         if not tank_channels:
-            if 'store-hot-pipe' in request.selected_channels:
+            if 'store-hot-pipe' in selected_plot_keys:
                 temp_plot = True
                 channels['store-hot-pipe']['values'] = [to_fahrenheit(x/1000) for x in channels['store-hot-pipe']['values']]
                 ax[4].plot(channels['store-hot-pipe']['times'], channels['store-hot-pipe']['values'], line_style, 
                         color='tab:red', alpha=0.7, label='Storage hot pipe')
-            if 'store-cold-pipe' in request.selected_channels:
+            if 'store-cold-pipe' in selected_plot_keys:
                 temp_plot = True
                 channels['store-cold-pipe']['values'] = [to_fahrenheit(x/1000) for x in channels['store-cold-pipe']['values']]
                 ax[4].plot(channels['store-cold-pipe']['times'], channels['store-cold-pipe']['values'], line_style, 
@@ -434,7 +438,7 @@ async def get_plots(request: DataRequest):
 
         # Power
         power_plot = False
-        if 'store-pump-pwr' in request.selected_channels:
+        if 'store-pump-pwr' in selected_plot_keys:
             power_plot = True
             channels['store-pump-pwr']['values'] = [x/10 for x in channels['store-pump-pwr']['values']]
             ax24.plot(channels['store-pump-pwr']['times'], channels['store-pump-pwr']['values'], line_style, 
@@ -449,7 +453,7 @@ async def get_plots(request: DataRequest):
             ax24.set_yticks([])
 
         if temp_plot:
-            if 'store-pump-pwr' in request.selected_channels:
+            if 'store-pump-pwr' in selected_plot_keys:
                 lower_bound = ax[4].get_ylim()[0] - 5 - max(channels['store-pump-pwr']['values'])
             else:
                 lower_bound = ax[4].get_ylim()[0] - 5
