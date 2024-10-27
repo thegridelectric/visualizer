@@ -238,7 +238,8 @@ async def get_plots(request: DataRequest):
                 upper_bound = ax[0].get_ylim()[1] + 25
                 ax[0].set_ylim([lower_bound, upper_bound])
             ax[0].set_ylabel('Temperature [F]')
-            ax[0].legend(loc='upper left', fontsize=9)
+            legend = ax[0].legend(loc='upper left', fontsize=9)
+            legend.get_frame().set_facecolor('none')
             ax20 = ax[0].twinx()
         else:
             ax20 = ax[0]
@@ -265,7 +266,8 @@ async def get_plots(request: DataRequest):
                 upper_bound = ax[0].get_ylim()[1] + 2.5
                 ax[0].set_ylim([-1, upper_bound])
             ax20.set_ylabel('Power [kW]')
-            ax20.legend(loc='upper right', fontsize=9)
+            legend = ax20.legend(loc='upper right', fontsize=9)
+            legend.get_frame().set_facecolor('none')
         else:
             ax20.set_yticks([])
 
@@ -293,7 +295,8 @@ async def get_plots(request: DataRequest):
                 lower_bound = ax[1].get_ylim()[0] - 5
                 upper_bound = ax[1].get_ylim()[1] + 25
                 ax[1].set_ylim([lower_bound, upper_bound])
-            ax[1].legend(loc='upper left', fontsize=9)
+            legend = ax[1].legend(loc='upper left', fontsize=9)
+            legend.get_frame().set_facecolor('none')
             ax21 = ax[1].twinx()
         else:
             ax21 = ax[1]
@@ -340,7 +343,8 @@ async def get_plots(request: DataRequest):
             ax21.set_ylabel('Heat calls')
             ax21.set_yticks([])
 
-        ax21.legend(loc='upper right', fontsize=9)
+        legend = ax21.legend(loc='upper right', fontsize=9)
+        legend.get_frame().set_facecolor('none')
 
 
         # --------------------------------------
@@ -368,8 +372,10 @@ async def get_plots(request: DataRequest):
         upper_bound = max(ax[2].get_ylim()[1], ax22.get_ylim()[1]) + 15
         ax[2].set_ylim([lower_bound, upper_bound])
         ax22.set_ylim([lower_bound, upper_bound])
-        ax[2].legend(loc='upper left', fontsize=9)
-        ax22.legend(loc='upper right', fontsize=9)
+        legend = ax[2].legend(loc='upper left', fontsize=9)
+        legend.get_frame().set_facecolor('none')
+        legend = ax22.legend(loc='upper right', fontsize=9)
+        legend.get_frame().set_facecolor('none')
 
         # --------------------------------------
         # PLOT 4
@@ -396,7 +402,8 @@ async def get_plots(request: DataRequest):
                         color='tab:blue', alpha=0.7, label='Buffer cold pipe')
 
         ax[3].set_ylabel('Temperature [F]')
-        ax[3].legend(loc='upper left', fontsize=9)
+        legend = ax[3].legend(loc='upper left', fontsize=9)
+        legend.get_frame().set_facecolor('none')
         lower_bound = ax[3].get_ylim()[0] - 5
         upper_bound = ax[3].get_ylim()[1] + 25
         ax[3].set_ylim([lower_bound, upper_bound])
@@ -448,7 +455,8 @@ async def get_plots(request: DataRequest):
             if temp_plot:
                 ax24.set_ylim([-1,40])
             ax24.set_ylabel('Power [kW]')
-            ax24.legend(loc='upper right', fontsize=9)
+            legend = ax24.legend(loc='upper right', fontsize=9)
+            legend.get_frame().set_facecolor('none')
         else:
             ax24.set_yticks([])
 
@@ -460,7 +468,8 @@ async def get_plots(request: DataRequest):
             upper_bound = ax[4].get_ylim()[1] + 0.5*(ax[4].get_ylim()[1] - ax[4].get_ylim()[0])
             ax[4].set_ylim([lower_bound, upper_bound])
             ax[4].set_ylabel('Temperature [F]')
-            ax[4].legend(loc='upper left', fontsize=9)
+            legend = ax[4].legend(loc='upper left', fontsize=9)
+            legend.get_frame().set_facecolor('none')
 
         # --------------------------------------
         # All plots
