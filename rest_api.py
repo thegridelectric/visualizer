@@ -103,7 +103,7 @@ async def get_plots(request: DataRequest):
 
     session = Session()
 
-    messages = session.query(ReadingSql).filter(
+    messages = session.query(MessageSql).filter(
         MessageSql.from_alias.like(f'%beech%'),
         or_(
             MessageSql.message_type_name == "batched.readings",
