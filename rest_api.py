@@ -288,7 +288,7 @@ async def get_plots(request: DataRequest):
         if temp_plot:
             ax[1].set_ylabel('Temperature [F]')
             if 'zone_heat_calls' in selected_plot_keys:
-                ax[1].set_ylim([0,230])
+                ax[1].set_ylim([0,260])
             else:
                 lower_bound = ax[1].get_ylim()[0] - 5
                 upper_bound = ax[1].get_ylim()[1] + 25
