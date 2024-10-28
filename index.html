@@ -291,9 +291,7 @@
 
     <div id='container_of_checkbox'>
         <div id="checkboxDiv" style="display: none;">
-            <button id="close-button" style="float: right; margin-right: -15px;" onclick="toggleCheckbox()">X</button>
-            <h2>Plots</h2>
-            <label><input type="checkbox" name="channels" value="show-points">Show points</label><br>
+            <button id="close-button" style="float: right; margin-top: -15px;" onclick="toggleCheckbox()">X</button>
             <h2>Select channels</h2>
             <h4>Heat pump</h4>
             <label><input type="checkbox" name="channels" value="hp-lwt" checked>LWT</label><br>
@@ -315,6 +313,8 @@
             <label><input type="checkbox" name="channels" value="store-cold-pipe" checked>Cold pipe</label><br>
             <label><input type="checkbox" name="channels" value="storage-depths" checked>Storage depths</label><br>
             <label><input type="checkbox" name="channels" value="store-pump-pwr" checked>Storage pump power</label><br>
+            <h2>Plots</h2>
+            <label><input type="checkbox" name="channels" value="show-points">Show points</label><br>
             <h2>Export to CSV</h2>
             Time step: <label><input type="number" style="width: 50px;" name="channels" value="resolution"></label> seconds<br>
             <br>
