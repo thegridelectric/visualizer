@@ -323,7 +323,8 @@ async def get_plots(request: DataRequest):
                         stacked_values = np.ones(len(channels[key]['times'])) * height_of_stack
                     ax21.bar(channels[key]['times'], [x*scale for x in channels[key]['values']], alpha=0.7, bottom=stacked_values, 
                                 label=key.replace('-state',''), width=0.003)
-                    stacked_values += [x*scale for x in channels[key]['values']]    
+                    stacked_values += [x*scale for x in channels[key]['values']]   
+                    print(f"{key}: channels[key]['values'][-1]")
 
         if temp_plot and power_plot:
             if 'dist-flow' in request.selected_channels:
