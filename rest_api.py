@@ -307,7 +307,7 @@ async def get_plots(request: DataRequest):
                     color='pink', label='Distribution pump power /10') 
         if 'dist-flow' in selected_plot_keys:
             power_plot = True
-            ax21.plot(channels['dist-flow']['times'], channels['dist-flow']['values'], alpha=0.4, 
+            ax21.plot(channels['dist-flow']['times'], [x/100 for x in channels['dist-flow']['values']], alpha=0.4, 
                     color='tab:purple', label='Distribution flow') 
 
         # Zone heat calls
