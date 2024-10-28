@@ -324,7 +324,12 @@ async def get_plots(request: DataRequest):
                     ax21.bar(channels[key]['times'], [x*scale for x in channels[key]['values']], alpha=0.7, bottom=stacked_values, 
                                 label=key.replace('-state',''), width=0.003)
                     stacked_values += [x*scale for x in channels[key]['values']]   
-                    print(f"{key}: {channels[key]['times'][-1]}")
+                    # Print the value of the last 1 in the list
+                    ones_times = [
+                        channels[key]['times'][i] 
+                        for i in range(len(channels[key]['times']))
+                        if channels[key]['values'][i]==1]
+                    print(f"{key}: {ones_times[-1]}")
 
         if temp_plot and power_plot:
             if 'dist-flow' in request.selected_channels:
