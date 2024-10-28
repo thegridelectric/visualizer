@@ -220,7 +220,7 @@
             margin: 0px;
         }
 
-        #submit_button, #checkboxButton {
+        #submit_button, #checkboxButton, #close-button {
             cursor: pointer;
             font-size:15px;
             font-family: 'Montserrat';
@@ -238,7 +238,7 @@
             transition: background-color 0.5s;
         }
 
-        #submit_button:hover, #checkboxButton:hover {
+        #submit_button:hover, #checkboxButton:hover, #close-button:hover {
             background-color:rgb(46, 52, 64);
         }
 
@@ -266,6 +266,8 @@
         #checkboxDiv{
             box-sizing: border-box;
             left: 50%;
+            height:90%;
+            overflow:scroll ;
             transform: translate(-50%, -0%);
             background-color: rgb(46, 52, 64, 1);
             color: rgb(248, 248, 248);
@@ -274,7 +276,6 @@
             max-width: 800px;
             margin-top: 20px;
             border-radius: 10px;
-            margin-bottom: 40px;
             padding-left: 40px;
             padding-right: 30px;
             padding-bottom: 25px;
@@ -290,6 +291,7 @@
 
     <div id='container_of_checkbox'>
         <div id="checkboxDiv" style="display: none;">
+            <button id="close-button" style="float: right; margin-right: -15px;" onclick="toggleCheckbox()">X</button>
             <h2>Plots</h2>
             <label><input type="checkbox" name="channels" value="show-points">Show points</label><br>
             <h2>Select channels</h2>
@@ -313,9 +315,6 @@
             <label><input type="checkbox" name="channels" value="store-cold-pipe" checked>Cold pipe</label><br>
             <label><input type="checkbox" name="channels" value="storage-depths" checked>Storage depths</label><br>
             <label><input type="checkbox" name="channels" value="store-pump-pwr" checked>Storage pump power</label><br>
-            <br>
-            <button id="submit_button" onclick='toggleCheckbox()'>Close</button>
-            <br>
             <h2>Export to CSV</h2>
             Time step: <label><input type="number" style="width: 50px;" name="channels" value="resolution"></label> seconds<br>
             <br>
