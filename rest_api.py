@@ -328,7 +328,10 @@ async def get_plots(request: DataRequest):
                     stacked_values += [x*scale for x in channels[key]['values']]    
 
         if temp_plot and power_plot:
-            upper_bound = max(channels['dist-flow']['values'])/100 * 2.5
+            if 'dist-flow' in selected_plot_keys:
+                upper_bound = max(channels['dist-flow']['values'])/100 * 2.5
+            else:
+                upper_bound = max(channels['dist-pump-pwr']['values'])/100 * 2.5
             ax21.set_ylim([0,upper_bound])
             ax21.set_ylabel('Flow rate [GPM] or Power [W]')
         elif temp_plot and not power_plot:
