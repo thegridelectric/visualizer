@@ -131,7 +131,6 @@ async def get_plots(request: DataRequest):
                     if dc['Id'] == channel['ChannelId']:
                         channel_name = dc['Name']
             # Store the values and times for the channel
-            print(channel_name)
             if channel_name not in channels:
                 channels[channel_name] = {
                     'values': channel['ValueList'],
