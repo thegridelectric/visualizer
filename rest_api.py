@@ -314,7 +314,7 @@ async def get_plots(request: DataRequest):
         num_zones = len(zones.keys())
         height_of_stack = 0
         stacked_values = None
-        scale = 0.25
+        scale = 1
         if 'zone_heat_calls' in selected_plot_keys:
             for zone in zones:
                 for key in [x for x in zones[zone] if 'state' in x]:
@@ -328,8 +328,8 @@ async def get_plots(request: DataRequest):
                     stacked_values += [x*scale for x in channels[key]['values']]    
 
         if temp_plot and power_plot:
-            # upper_bound = 4
-            # ax21.set_ylim([0,upper_bound])
+            upper_bound = max(channels['dist-flow']['values'])/100 * 1.5
+            ax21.set_ylim([0,upper_bound])
             ax21.set_ylabel('Flow rate [GPM] or Power [W]')
         elif temp_plot and not power_plot:
             upper_bound = num_zones * scale / 0.3
