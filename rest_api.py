@@ -305,7 +305,7 @@ async def get_plots(request: DataRequest):
             power_plot = True
             ax21.plot(channels['dist-pump-pwr']['times'], [x/10 for x in channels['dist-pump-pwr']['values']], alpha=0.4, 
                     color='pink', label='Distribution pump power /10') 
-        if 'dist-flow' in selected_plot_keys:
+        if 'dist-flow' in selected_plot_keys and 'dist-flow'in channels:
             power_plot = True
             ax21.plot(channels['dist-flow']['times'], [x/100 for x in channels['dist-flow']['values']], alpha=0.4, 
                     color='tab:purple', label='Distribution flow') 
