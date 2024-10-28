@@ -126,9 +126,8 @@
         }
 
         function HousePassword() {
-            house_alias = 'oak'; //prompt("Enter house alias:");
-            password = 'swim2fish';
-            // password = prompt("Enter password:");
+            house_alias = ("Enter house alias:");
+            password = prompt("Enter password:");
 
             document.getElementById("houseAliasHeader").textContent = `${house_alias.charAt(0).toUpperCase()}${house_alias.slice(1)}`;
             document.getElementById('startDatePicker').value = getDefaultDate(true);
