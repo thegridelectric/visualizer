@@ -71,8 +71,6 @@ storage_colors = {
     'tank3-depth4': gradient(0),
     }
 
-# Change color scale on storage: bright red-mid-red-dark-red-dark orange-mid orange-light orange-dark yellow-mid yellow-light yellow-dark purple-mid purple-light purple-dark blue-mid blue-light blue
-
 @app.post('/plots')
 async def get_plots(request: DataRequest):
 
@@ -133,6 +131,7 @@ async def get_plots(request: DataRequest):
                     if dc['Id'] == channel['ChannelId']:
                         channel_name = dc['Name']
             # Store the values and times for the channel
+            print(channel_name)
             if channel_name not in channels:
                 channels[channel_name] = {
                     'values': channel['ValueList'],
