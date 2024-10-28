@@ -304,7 +304,11 @@ async def get_plots(request: DataRequest):
         if 'dist-pump-pwr'in selected_plot_keys:
             power_plot = True
             ax21.plot(channels['dist-pump-pwr']['times'], [x/10 for x in channels['dist-pump-pwr']['values']], alpha=0.4, 
-                    color='tab:purple', label='Distribution pump power /10') 
+                    color='pink', label='Distribution pump power /10') 
+        if 'dist-flow' in selected_plot_keys:
+            power_plot = True
+            ax21.plot(channels['dist-flow']['times'], channels['dist-flow']['values'], alpha=0.4, 
+                    color='tab:purple', label='Distribution flow') 
 
         # Zone heat calls
         num_zones = len(zones.keys())
@@ -326,7 +330,7 @@ async def get_plots(request: DataRequest):
         if temp_plot and power_plot:
             upper_bound = 4
             ax21.set_ylim([0,upper_bound])
-            ax21.set_ylabel('Power [W]')
+            ax21.set_ylabel('Flow rate [GPM] or Power [W]')
         elif temp_plot and not power_plot:
             upper_bound = num_zones * scale / 0.3
             ax21.set_ylim([0,upper_bound])
@@ -334,7 +338,7 @@ async def get_plots(request: DataRequest):
         elif not temp_plot and power_plot:
             upper_bound = (max(channels['dist-pump-pwr']['values']) + 10)/10
             ax21.set_ylim([0,upper_bound])
-            ax21.set_ylabel('Power [W]')
+            ax21.set_ylabel('Flow rate [GPM] or Power [W]')
         elif not temp_plot and not power_plot:
             upper_bound = num_zones * scale
             ax21.set_ylim([0,upper_bound])
