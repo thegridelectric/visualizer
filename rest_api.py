@@ -329,7 +329,8 @@ async def get_plots(request: DataRequest):
                         channels[key]['times'][i] 
                         for i in range(len(channels[key]['times']))
                         if channels[key]['values'][i]==1]
-                    print(f"{key}: {ones_times[-1]}")
+                    if ones_times:
+                        print(f"{key}: {ones_times[-1]}")
 
         if temp_plot and power_plot:
             if 'dist-flow' in request.selected_channels:
