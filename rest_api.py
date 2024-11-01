@@ -16,6 +16,7 @@ import matplotlib.dates as mdates
 from datetime import timedelta
 import numpy as np
 from typing import List
+import plotly.graph_objects as go
 
 settings = Settings(_env_file=dotenv.find_dotenv())
 valid_password = settings.thermostat_api_key.get_secret_value()
@@ -202,308 +203,491 @@ async def get_plots(request: DataRequest):
                     sorted_times, sorted_values = zip(*sorted_times_values)
                     channels[state]['times'] = list(sorted_times)
                     channels[state]['values'] = list(sorted_values)
+    
+    # Get rid of selected_channels that are not in the data
+    for rc in request.selected_channels:
+        if rc not in channels:
+            request.selected_channels.remove(rc)
 
-    # Create a BytesIO object for the zip file
+    # --------------------------------------
+    # PLOT 1
+    # --------------------------------------
+
+    fig = go.Figure()
+    fig.update_xaxes(showgrid=False)
+
+    fig.update_layout(title='Heat Pump',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)')
+
+    # Temperature
+    temp_plot = False
+    if 'hp-lwt' in request.selected_channels:
+        temp_plot = True
+        yf = [to_fahrenheit(x/1000) for x in channels['hp-lwt']['values']]
+        fig.add_trace(go.Scatter(x=channels['hp-lwt']['times'], y=yf, 
+                                mode='lines', opacity=0.7,
+                                line=dict(color='red', dash='solid'),
+                                name='HP LWT'))
+    if 'hp-ewt' in request.selected_channels:
+        temp_plot = True
+        yf = [to_fahrenheit(x/1000) for x in channels['hp-ewt']['values']]
+
+        fig.add_trace(go.Scatter(x=channels['hp-ewt']['times'], y=yf, 
+                                mode='lines', opacity=0.7,
+                                line=dict(color='blue', dash='solid'),
+                                name='HP EWT'))
+
+    if temp_plot:
+        if 'hp-odu-pwr' in request.selected_channels or 'hp-idu-pwr' in request.selected_channels or 'primary-pump-pwr' in request.selected_channels:
+            fig.update_yaxes(range=[0, 260])
+        fig.update_layout(yaxis=dict(title='Temperature [F]', showgrid=False, zeroline=False))
+        y_axis_power = 'y2'
+    else:
+        y_axis_power = 'y'
+        fig.update_layout(yaxis=dict(title='Power [kW]', showgrid=False, zeroline=False))
+
+    # Power
+    power_plot = False
+    if 'hp-odu-pwr' in request.selected_channels:
+        power_plot = True
+        yf = [x/1000 for x in channels['hp-odu-pwr']['values']]
+        fig.add_trace(go.Scatter(x=channels['hp-odu-pwr']['times'], y=yf, 
+                                mode='lines', opacity=0.7,
+                                line=dict(color='green', dash='solid'),
+                                name='HP outdoor',
+                                yaxis=y_axis_power))
+
+    if 'hp-idu-pwr' in request.selected_channels:
+        power_plot = True
+        yf = [x/1000 for x in channels['hp-idu-pwr']['values']]
+        fig.add_trace(go.Scatter(x=channels['hp-idu-pwr']['times'], y=yf, 
+                                mode='lines', opacity=0.7,
+                                line=dict(color='orange', dash='solid'),
+                                name='HP indoor',
+                                yaxis=y_axis_power))
+        
+    if 'primary-pump-pwr' in request.selected_channels:
+        power_plot = True
+        yf = [x/10 for x in channels['primary-pump-pwr']['values']]
+        fig.add_trace(go.Scatter(x=channels['primary-pump-pwr']['times'], y=yf, 
+                                mode='lines', opacity=0.7,
+                                line=dict(color='purple', dash='solid'),
+                                name='Primary pump x100',
+                                yaxis=y_axis_power))
+
+    if power_plot:
+        fig.update_layout(yaxis2=dict(title='Power [kW]', overlaying='y', side='right', showgrid=False, zeroline=False, range=[0, 30]))
+
+    fig.update_layout(
+        legend=dict(
+            x=0,
+            y=1,
+            xanchor='left',
+            yanchor='top'
+        )
+    )
+
+    fig.write_html("heatpump.html")
+
+    # --------------------------------------
+    # PLOT 2
+    # --------------------------------------
+
+    fig = go.Figure()
+    fig.update_xaxes(showgrid=False)
+
+    fig.update_layout(title='Distribution',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)')
+
+    # Temperature
+    temp_plot = False
+    if 'dist-swt' in request.selected_channels:
+        temp_plot = True
+        yf = [to_fahrenheit(x/1000) for x in channels['dist-swt']['values']]
+        fig.add_trace(go.Scatter(x=channels['dist-swt']['times'], y=yf, 
+                                mode='lines', opacity=0.7,
+                                line=dict(color='red', dash='solid'),
+                                name='Distribution SWT'))
+    if 'dist-rwt' in request.selected_channels:
+        temp_plot = True
+        yf = [to_fahrenheit(x/1000) for x in channels['dist-rwt']['values']]
+        fig.add_trace(go.Scatter(x=channels['dist-rwt']['times'], y=yf, 
+                                mode='lines', opacity=0.7,
+                                line=dict(color='blue', dash='solid'),
+                                name='Distribution RWT'))
+        
+    if temp_plot:
+        if 'zone_heat_calls' in request.selected_channels:
+            fig.update_yaxes(range=[0, 260])
+        fig.update_layout(yaxis=dict(title='Temperature [F]', showgrid=False, zeroline=False))
+        y_axis_power = 'y2'
+    else:
+        y_axis_power = 'y'
+        fig.update_layout(yaxis=dict(title='Power [kW]', showgrid=False, zeroline=False))
+
+    # Distribution pump power
+    power_plot = False   
+    if 'dist-pump-pwr'in request.selected_channels:
+        power_plot = True
+        yf = [x/10 for x in channels['dist-pump-pwr']['values']]
+        fig.add_trace(go.Scatter(x=channels['dist-pump-pwr']['times'], y=yf, 
+                                mode='lines', opacity=0.7,
+                                line=dict(color='pink', dash='solid'),
+                                name='Distribution pump power /10',
+                                yaxis = y_axis_power))
+    if 'dist-flow' in request.selected_channels:
+        power_plot = True
+        yf = [x/100 for x in channels['dist-flow']['values']]
+        fig.add_trace(go.Scatter(x=channels['dist-flow']['times'], y=yf, 
+                                mode='lines', opacity=0.4,
+                                line=dict(color='purple', dash='solid'),
+                                name='Distribution flow',
+                                yaxis = y_axis_power))
+        
+    if power_plot:
+        fig.update_layout(yaxis2=dict(title='Flow [GPM] or Power [W]', overlaying='y', side='right', showgrid=False, zeroline=False, range=[0, 10]))
+
+    fig.update_layout(
+        legend=dict(
+            x=0,
+            y=1,
+            xanchor='left',
+            yanchor='top'
+        )
+    )
+
+    fig.write_html("distribution.html")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    fig, ax = plt.subplots(5,1, figsize=(12,22), sharex=True)
+    line_style = '-x' if 'show-points'in request.selected_channels else '-'
+
+    # --------------------------------------
+    # PLOT 1
+    # --------------------------------------
+
+    ax[0].set_title('Heat pump')
+
+    # Temperature
+    temp_plot = False
+    if 'hp-lwt' in request.selected_channels:
+        temp_plot = True
+        channels['hp-lwt']['values'] = [to_fahrenheit(x/1000) for x in channels['hp-lwt']['values']]
+        ax[0].plot(channels['hp-lwt']['times'], channels['hp-lwt']['values'], line_style, color='tab:red', alpha=0.7, label='HP LWT')
+    if 'hp-ewt' in request.selected_channels:
+        temp_plot = True
+        channels['hp-ewt']['values'] = [to_fahrenheit(x/1000) for x in channels['hp-ewt']['values']]
+        ax[0].plot(channels['hp-ewt']['times'], channels['hp-ewt']['values'], line_style, color='tab:blue', alpha=0.7, label='HP EWT')
+    if temp_plot:
+        if 'hp-odu-pwr' in request.selected_channels or 'hp-idu-pwr' in request.selected_channels or 'primary-pump-pwr' in request.selected_channels:
+            ax[0].set_ylim([0,230])
+        else:
+            lower_bound = ax[0].get_ylim()[0] - 5
+            upper_bound = ax[0].get_ylim()[1] + 25
+            ax[0].set_ylim([lower_bound, upper_bound])
+        ax[0].set_ylabel('Temperature [F]')
+        legend = ax[0].legend(loc='upper left', fontsize=9)
+        legend.get_frame().set_facecolor('none')
+        ax20 = ax[0].twinx()
+    else:
+        ax20 = ax[0]
+
+    # Power
+    power_plot = False
+    if 'hp-odu-pwr' in request.selected_channels:
+        power_plot = True
+        channels['hp-odu-pwr']['values'] = [x/1000 for x in channels['hp-odu-pwr']['values']]
+        ax20.plot(channels['hp-odu-pwr']['times'], channels['hp-odu-pwr']['values'], line_style, color='tab:green', alpha=0.7, label='HP outdoor')
+    if 'hp-idu-pwr' in request.selected_channels:
+        power_plot = True
+        channels['hp-idu-pwr']['values'] = [x/1000 for x in channels['hp-idu-pwr']['values']]
+        ax20.plot(channels['hp-idu-pwr']['times'], channels['hp-idu-pwr']['values'], line_style, color='orange', alpha=0.7, label='HP indoor')
+    if 'primary-pump-pwr' in request.selected_channels:
+        power_plot = True
+        channels['primary-pump-pwr']['values'] = [x/10 for x in channels['primary-pump-pwr']['values']]
+        ax20.plot(channels['primary-pump-pwr']['times'], channels['primary-pump-pwr']['values'], line_style, 
+                color='purple', alpha=0.7, label='Primary pump x100')
+    if power_plot:
+        if temp_plot:
+            ax20.set_ylim([0,30])
+        else:
+            upper_bound = ax[0].get_ylim()[1] + 2.5
+            ax[0].set_ylim([-1, upper_bound])
+        ax20.set_ylabel('Power [kW]')
+        legend = ax20.legend(loc='upper right', fontsize=9)
+        legend.get_frame().set_facecolor('none')
+    else:
+        ax20.set_yticks([])
+
+    # --------------------------------------
+    # PLOT 2
+    # --------------------------------------
+
+    ax[1].set_title('Distribution')
+
+    # Temperature
+    temp_plot = False
+    if 'dist-swt' in request.selected_channels:  
+        temp_plot = True    
+        channels['dist-swt']['values'] = [to_fahrenheit(x/1000) for x in channels['dist-swt']['values']]
+        ax[1].plot(channels['dist-swt']['times'], channels['dist-swt']['values'], line_style, color='tab:red', alpha=0.7, label='Distribution SWT')
+    if 'dist-rwt' in request.selected_channels:  
+        temp_plot = True    
+        channels['dist-rwt']['values'] = [to_fahrenheit(x/1000) for x in channels['dist-rwt']['values']]
+        ax[1].plot(channels['dist-rwt']['times'], channels['dist-rwt']['values'], line_style, color='tab:blue', alpha=0.7, label='Distribution RWT')
+    if temp_plot:
+        ax[1].set_ylabel('Temperature [F]')
+        if 'zone_heat_calls' in request.selected_channels:
+            ax[1].set_ylim([0,260])
+        else:
+            lower_bound = ax[1].get_ylim()[0] - 5
+            upper_bound = ax[1].get_ylim()[1] + 25
+            ax[1].set_ylim([lower_bound, upper_bound])
+        legend = ax[1].legend(loc='upper left', fontsize=9)
+        legend.get_frame().set_facecolor('none')
+        ax21 = ax[1].twinx()
+    else:
+        ax21 = ax[1]
+
+    # Distribution pump power
+    power_plot = False   
+    if 'dist-pump-pwr'in request.selected_channels:
+        power_plot = True
+        ax21.plot(channels['dist-pump-pwr']['times'], [x/10 for x in channels['dist-pump-pwr']['values']], alpha=0.8, 
+                color='pink', label='Distribution pump power /10') 
+    if 'dist-flow' in request.selected_channels and 'dist-flow'in channels:
+        power_plot = True
+        ax21.plot(channels['dist-flow']['times'], [x/100 for x in channels['dist-flow']['values']], alpha=0.4, 
+                color='tab:purple', label='Distribution flow') 
+
+    # Zone heat calls
+    num_zones = len(zones.keys())
+    height_of_stack = 0
+    stacked_values = None
+    scale = 1
+    if 'zone_heat_calls' in request.selected_channels:
+        for zone in zones:
+            for key in [x for x in zones[zone] if 'state' in x]:
+                if stacked_values is None:
+                    stacked_values = np.zeros(len(channels[key]['times']))
+                if len(stacked_values) != len(channels[key]['values']):
+                    height_of_stack += scale
+                    stacked_values = np.ones(len(channels[key]['times'])) * height_of_stack
+                ax21.bar(channels[key]['times'], [x*scale for x in channels[key]['values']], alpha=0.7, bottom=stacked_values, 
+                            label=key.replace('-state',''), width=0.003)
+                stacked_values += [x*scale for x in channels[key]['values']]   
+                # Print the value of the last 1 in the list
+                ones_times = [
+                    channels[key]['times'][i] 
+                    for i in range(len(channels[key]['times']))
+                    if channels[key]['values'][i]==1]
+                if ones_times:
+                    print(f"{key}: {ones_times[-1]}")
+
+    if temp_plot and power_plot:
+        if 'dist-flow' in request.selected_channels:
+            upper_bound = max(channels['dist-flow']['values'])/100 * 2.5
+        else:
+            upper_bound = max(channels['dist-pump-pwr']['values'])/100 * 2.5
+        ax21.set_ylim([0,upper_bound])
+        ax21.set_ylabel('Flow rate [GPM] or Power [W]')
+    elif temp_plot and not power_plot:
+        upper_bound = num_zones * scale / 0.3
+        ax21.set_ylim([0,upper_bound])
+        ax21.set_ylabel('Heat calls')
+    elif not temp_plot and power_plot:
+        upper_bound = (max(channels['dist-pump-pwr']['values']) + 10)/10
+        ax21.set_ylim([0,upper_bound])
+        ax21.set_ylabel('Flow rate [GPM] or Power [W]')
+    elif not temp_plot and not power_plot:
+        upper_bound = num_zones * scale
+        ax21.set_ylim([0,upper_bound])
+        ax21.set_ylabel('Heat calls')
+        ax21.set_yticks([])
+
+    legend = ax21.legend(loc='upper right', fontsize=9)
+    legend.get_frame().set_facecolor('none')
+
+
+    # --------------------------------------
+    # PLOT 3
+    # --------------------------------------
+        
+    ax[2].set_title('Zones')
+    ax22 = ax[2].twinx()
+
+    colors = {}
+    for zone in zones:
+        for temp in zones[zone]:
+            if 'temp' in temp:
+                color = ax[2].plot(channels[temp]['times'], channels[temp]['values'], line_style, label=temp, alpha=0.7)[0].get_color()
+                colors[temp] = color
+            elif 'set' in temp:
+                base_temp = temp.replace('-set', '-temp')
+                if base_temp in colors:
+                    ax22.plot(channels[temp]['times'], channels[temp]['values'], '-'+line_style, label=temp, 
+                                color=colors[base_temp], alpha=0.7)
+                    
+    ax[2].set_ylabel('Temperature [F]')
+    ax22.set_yticks([])
+    lower_bound = min(ax[2].get_ylim()[0], ax22.get_ylim()[0]) - 5
+    upper_bound = max(ax[2].get_ylim()[1], ax22.get_ylim()[1]) + 15
+    ax[2].set_ylim([lower_bound, upper_bound])
+    ax22.set_ylim([lower_bound, upper_bound])
+    legend = ax[2].legend(loc='upper left', fontsize=9)
+    legend.get_frame().set_facecolor('none')
+    legend = ax22.legend(loc='upper right', fontsize=9)
+    legend.get_frame().set_facecolor('none')
+
+    # --------------------------------------
+    # PLOT 4
+    # --------------------------------------
+
+    ax[3].set_title('Buffer')
+
+    buffer_channels = []
+    if 'buffer-depths' in request.selected_channels:
+        buffer_channels = sorted([key for key in channels.keys() if 'buffer-depth' in key and 'micro-v' not in key])
+        for buffer_channel in buffer_channels:
+            channels[buffer_channel]['values'] = [to_fahrenheit(x/1000) for x in channels[buffer_channel]['values']]
+            ax[3].plot(channels[buffer_channel]['times'], channels[buffer_channel]['values'], line_style, 
+                    color=buffer_colors[buffer_channel], alpha=0.7, label=buffer_channel)
+
+    if not buffer_channels:
+        if 'buffer-hot-pipe' in request.selected_channels:
+            channels['buffer-hot-pipe']['values'] = [to_fahrenheit(x/1000) for x in channels['buffer-hot-pipe']['values']]
+            ax[3].plot(channels['buffer-hot-pipe']['times'], channels['buffer-hot-pipe']['values'], line_style, 
+                    color='tab:red', alpha=0.7, label='Buffer hot pipe')
+        if 'buffer-cold-pipe' in request.selected_channels:
+            channels['buffer-cold-pipe']['values'] = [to_fahrenheit(x/1000) for x in channels['buffer-cold-pipe']['values']]
+            ax[3].plot(channels['buffer-cold-pipe']['times'], channels['buffer-cold-pipe']['values'], line_style, 
+                    color='tab:blue', alpha=0.7, label='Buffer cold pipe')
+
+    ax[3].set_ylabel('Temperature [F]')
+    legend = ax[3].legend(loc='upper left', fontsize=9)
+    legend.get_frame().set_facecolor('none')
+    lower_bound = ax[3].get_ylim()[0] - 5
+    upper_bound = ax[3].get_ylim()[1] + 25
+    ax[3].set_ylim([lower_bound, upper_bound])
+
+    # --------------------------------------
+    # PLOT 5
+    # --------------------------------------
+
+    ax[4].set_title('Storage')
+
+    # Temperature
+    temp_plot = False
+    tank_channels = []
+
+    if 'storage-depths' in request.selected_channels:
+        temp_plot = True
+        tank_channels = sorted([key for key in channels.keys() if 'tank' in key and 'micro-v' not in key])
+        for tank_channel in tank_channels:
+            channels[tank_channel]['values'] = [to_fahrenheit(x/1000) for x in channels[tank_channel]['values']]
+            ax[4].plot(channels[tank_channel]['times'], channels[tank_channel]['values'], line_style, 
+                    color=storage_colors[tank_channel], alpha=0.7, label=tank_channel)
+
+    if not tank_channels:
+        if 'store-hot-pipe' in request.selected_channels:
+            temp_plot = True
+            channels['store-hot-pipe']['values'] = [to_fahrenheit(x/1000) for x in channels['store-hot-pipe']['values']]
+            ax[4].plot(channels['store-hot-pipe']['times'], channels['store-hot-pipe']['values'], line_style, 
+                    color='tab:red', alpha=0.7, label='Storage hot pipe')
+        if 'store-cold-pipe' in request.selected_channels:
+            temp_plot = True
+            channels['store-cold-pipe']['values'] = [to_fahrenheit(x/1000) for x in channels['store-cold-pipe']['values']]
+            ax[4].plot(channels['store-cold-pipe']['times'], channels['store-cold-pipe']['values'], line_style, 
+                    color='tab:blue', alpha=0.7, label='Storage cold pipe')
+            
+    if temp_plot:
+        ax24 = ax[4].twinx()
+    else:
+        ax24 = ax[4]
+
+    # Power
+    power_plot = False
+    if 'store-pump-pwr' in request.selected_channels:
+        power_plot = True
+        channels['store-pump-pwr']['values'] = [x/10 for x in channels['store-pump-pwr']['values']]
+        ax24.plot(channels['store-pump-pwr']['times'], channels['store-pump-pwr']['values'], line_style, 
+                color='tab:green', alpha=0.7, label='Storage pump x100')
+
+    if power_plot:
+        if temp_plot:
+            ax24.set_ylim([-1,40])
+        ax24.set_ylabel('Power [kW]')
+        legend = ax24.legend(loc='upper right', fontsize=9)
+        legend.get_frame().set_facecolor('none')
+    else:
+        ax24.set_yticks([])
+
+    if temp_plot:
+        if 'store-pump-pwr' in request.selected_channels:
+            lower_bound = ax[4].get_ylim()[0] - 5 - max(channels['store-pump-pwr']['values'])
+        else:
+            lower_bound = ax[4].get_ylim()[0] - 5
+        upper_bound = ax[4].get_ylim()[1] + 0.5*(ax[4].get_ylim()[1] - ax[4].get_ylim()[0])
+        ax[4].set_ylim([lower_bound, upper_bound])
+        ax[4].set_ylabel('Temperature [F]')
+        legend = ax[4].legend(loc='upper left', fontsize=9)
+        legend.get_frame().set_facecolor('none')
+
+    # --------------------------------------
+    # All plots
+    # --------------------------------------
+
+    for axis in ax:
+        axis.grid(axis='y', alpha=0.5)
+        xlim = axis.get_xlim()
+        if (mdates.num2date(xlim[1]) - mdates.num2date(xlim[0]) >= timedelta(hours=4) and 
+            mdates.num2date(xlim[1]) - mdates.num2date(xlim[0]) <= timedelta(hours=30)):
+            axis.xaxis.set_major_locator(mdates.HourLocator(interval=1))
+        elif (mdates.num2date(xlim[1]) - mdates.num2date(xlim[0]) >= timedelta(hours=31) and 
+            mdates.num2date(xlim[1]) - mdates.num2date(xlim[0]) <= timedelta(hours=65)):
+            axis.xaxis.set_major_locator(mdates.HourLocator(interval=2))
+        axis.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d %H:%M'))
+        axis.tick_params(axis='x', which='both', labelbottom=True, labelsize=8)
+        plt.setp(axis.xaxis.get_majorticklabels(), rotation=45, ha='right')
+
+    plt.tight_layout(pad=5.0)
+    img_buf = io.BytesIO()
+    plt.savefig(img_buf, format='png', bbox_inches='tight', dpi=200, transparent=True)
+    img_buf.seek(0)
+    plt.close()
+
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
-
-        fig, ax = plt.subplots(5,1, figsize=(12,22), sharex=True)
-        line_style = '-x' if 'show-points'in request.selected_channels else '-'
-
-        # --------------------------------------
-        # PLOT 1
-        # --------------------------------------
-
-        ax[0].set_title('Heat pump')
-
-        # Temperature
-        temp_plot = False
-        if 'hp-lwt' in request.selected_channels:
-            temp_plot = True
-            channels['hp-lwt']['values'] = [to_fahrenheit(x/1000) for x in channels['hp-lwt']['values']]
-            ax[0].plot(channels['hp-lwt']['times'], channels['hp-lwt']['values'], line_style, color='tab:red', alpha=0.7, label='HP LWT')
-        if 'hp-ewt' in request.selected_channels:
-            temp_plot = True
-            channels['hp-ewt']['values'] = [to_fahrenheit(x/1000) for x in channels['hp-ewt']['values']]
-            ax[0].plot(channels['hp-ewt']['times'], channels['hp-ewt']['values'], line_style, color='tab:blue', alpha=0.7, label='HP EWT')
-        if temp_plot:
-            if 'hp-odu-pwr' in request.selected_channels or 'hp-idu-pwr' in request.selected_channels or 'primary-pump-pwr' in request.selected_channels:
-                ax[0].set_ylim([0,230])
-            else:
-                lower_bound = ax[0].get_ylim()[0] - 5
-                upper_bound = ax[0].get_ylim()[1] + 25
-                ax[0].set_ylim([lower_bound, upper_bound])
-            ax[0].set_ylabel('Temperature [F]')
-            legend = ax[0].legend(loc='upper left', fontsize=9)
-            legend.get_frame().set_facecolor('none')
-            ax20 = ax[0].twinx()
-        else:
-            ax20 = ax[0]
-
-        # Power
-        power_plot = False
-        if 'hp-odu-pwr' in request.selected_channels:
-            power_plot = True
-            channels['hp-odu-pwr']['values'] = [x/1000 for x in channels['hp-odu-pwr']['values']]
-            ax20.plot(channels['hp-odu-pwr']['times'], channels['hp-odu-pwr']['values'], line_style, color='tab:green', alpha=0.7, label='HP outdoor')
-        if 'hp-idu-pwr' in request.selected_channels:
-            power_plot = True
-            channels['hp-idu-pwr']['values'] = [x/1000 for x in channels['hp-idu-pwr']['values']]
-            ax20.plot(channels['hp-idu-pwr']['times'], channels['hp-idu-pwr']['values'], line_style, color='orange', alpha=0.7, label='HP indoor')
-        if 'primary-pump-pwr' in request.selected_channels:
-            power_plot = True
-            channels['primary-pump-pwr']['values'] = [x/10 for x in channels['primary-pump-pwr']['values']]
-            ax20.plot(channels['primary-pump-pwr']['times'], channels['primary-pump-pwr']['values'], line_style, 
-                    color='purple', alpha=0.7, label='Primary pump x100')
-        if power_plot:
-            if temp_plot:
-                ax20.set_ylim([0,30])
-            else:
-                upper_bound = ax[0].get_ylim()[1] + 2.5
-                ax[0].set_ylim([-1, upper_bound])
-            ax20.set_ylabel('Power [kW]')
-            legend = ax20.legend(loc='upper right', fontsize=9)
-            legend.get_frame().set_facecolor('none')
-        else:
-            ax20.set_yticks([])
-
-        # --------------------------------------
-        # PLOT 2
-        # --------------------------------------
-
-        ax[1].set_title('Distribution')
-
-        # Temperature
-        temp_plot = False
-        if 'dist-swt' in request.selected_channels:  
-            temp_plot = True    
-            channels['dist-swt']['values'] = [to_fahrenheit(x/1000) for x in channels['dist-swt']['values']]
-            ax[1].plot(channels['dist-swt']['times'], channels['dist-swt']['values'], line_style, color='tab:red', alpha=0.7, label='Distribution SWT')
-        if 'dist-rwt' in request.selected_channels:  
-            temp_plot = True    
-            channels['dist-rwt']['values'] = [to_fahrenheit(x/1000) for x in channels['dist-rwt']['values']]
-            ax[1].plot(channels['dist-rwt']['times'], channels['dist-rwt']['values'], line_style, color='tab:blue', alpha=0.7, label='Distribution RWT')
-        if temp_plot:
-            ax[1].set_ylabel('Temperature [F]')
-            if 'zone_heat_calls' in request.selected_channels:
-                ax[1].set_ylim([0,260])
-            else:
-                lower_bound = ax[1].get_ylim()[0] - 5
-                upper_bound = ax[1].get_ylim()[1] + 25
-                ax[1].set_ylim([lower_bound, upper_bound])
-            legend = ax[1].legend(loc='upper left', fontsize=9)
-            legend.get_frame().set_facecolor('none')
-            ax21 = ax[1].twinx()
-        else:
-            ax21 = ax[1]
-
-        # Distribution pump power
-        power_plot = False   
-        if 'dist-pump-pwr'in request.selected_channels:
-            power_plot = True
-            ax21.plot(channels['dist-pump-pwr']['times'], [x/10 for x in channels['dist-pump-pwr']['values']], alpha=0.8, 
-                    color='pink', label='Distribution pump power /10') 
-        if 'dist-flow' in request.selected_channels and 'dist-flow'in channels:
-            power_plot = True
-            ax21.plot(channels['dist-flow']['times'], [x/100 for x in channels['dist-flow']['values']], alpha=0.4, 
-                    color='tab:purple', label='Distribution flow') 
-
-        # Zone heat calls
-        num_zones = len(zones.keys())
-        height_of_stack = 0
-        stacked_values = None
-        scale = 1
-        if 'zone_heat_calls' in request.selected_channels:
-            for zone in zones:
-                for key in [x for x in zones[zone] if 'state' in x]:
-                    if stacked_values is None:
-                        stacked_values = np.zeros(len(channels[key]['times']))
-                    if len(stacked_values) != len(channels[key]['values']):
-                        height_of_stack += scale
-                        stacked_values = np.ones(len(channels[key]['times'])) * height_of_stack
-                    ax21.bar(channels[key]['times'], [x*scale for x in channels[key]['values']], alpha=0.7, bottom=stacked_values, 
-                                label=key.replace('-state',''), width=0.003)
-                    stacked_values += [x*scale for x in channels[key]['values']]   
-                    # Print the value of the last 1 in the list
-                    ones_times = [
-                        channels[key]['times'][i] 
-                        for i in range(len(channels[key]['times']))
-                        if channels[key]['values'][i]==1]
-                    if ones_times:
-                        print(f"{key}: {ones_times[-1]}")
-
-        if temp_plot and power_plot:
-            if 'dist-flow' in request.selected_channels:
-                upper_bound = max(channels['dist-flow']['values'])/100 * 2.5
-            else:
-                upper_bound = max(channels['dist-pump-pwr']['values'])/100 * 2.5
-            ax21.set_ylim([0,upper_bound])
-            ax21.set_ylabel('Flow rate [GPM] or Power [W]')
-        elif temp_plot and not power_plot:
-            upper_bound = num_zones * scale / 0.3
-            ax21.set_ylim([0,upper_bound])
-            ax21.set_ylabel('Heat calls')
-        elif not temp_plot and power_plot:
-            upper_bound = (max(channels['dist-pump-pwr']['values']) + 10)/10
-            ax21.set_ylim([0,upper_bound])
-            ax21.set_ylabel('Flow rate [GPM] or Power [W]')
-        elif not temp_plot and not power_plot:
-            upper_bound = num_zones * scale
-            ax21.set_ylim([0,upper_bound])
-            ax21.set_ylabel('Heat calls')
-            ax21.set_yticks([])
-
-        legend = ax21.legend(loc='upper right', fontsize=9)
-        legend.get_frame().set_facecolor('none')
-
-
-        # --------------------------------------
-        # PLOT 3
-        # --------------------------------------
-            
-        ax[2].set_title('Zones')
-        ax22 = ax[2].twinx()
-
-        colors = {}
-        for zone in zones:
-            for temp in zones[zone]:
-                if 'temp' in temp:
-                    color = ax[2].plot(channels[temp]['times'], channels[temp]['values'], line_style, label=temp, alpha=0.7)[0].get_color()
-                    colors[temp] = color
-                elif 'set' in temp:
-                    base_temp = temp.replace('-set', '-temp')
-                    if base_temp in colors:
-                        ax22.plot(channels[temp]['times'], channels[temp]['values'], '-'+line_style, label=temp, 
-                                    color=colors[base_temp], alpha=0.7)
-                        
-        ax[2].set_ylabel('Temperature [F]')
-        ax22.set_yticks([])
-        lower_bound = min(ax[2].get_ylim()[0], ax22.get_ylim()[0]) - 5
-        upper_bound = max(ax[2].get_ylim()[1], ax22.get_ylim()[1]) + 15
-        ax[2].set_ylim([lower_bound, upper_bound])
-        ax22.set_ylim([lower_bound, upper_bound])
-        legend = ax[2].legend(loc='upper left', fontsize=9)
-        legend.get_frame().set_facecolor('none')
-        legend = ax22.legend(loc='upper right', fontsize=9)
-        legend.get_frame().set_facecolor('none')
-
-        # --------------------------------------
-        # PLOT 4
-        # --------------------------------------
-
-        ax[3].set_title('Buffer')
-
-        buffer_channels = []
-        if 'buffer-depths' in request.selected_channels:
-            buffer_channels = sorted([key for key in channels.keys() if 'buffer-depth' in key and 'micro-v' not in key])
-            for buffer_channel in buffer_channels:
-                channels[buffer_channel]['values'] = [to_fahrenheit(x/1000) for x in channels[buffer_channel]['values']]
-                ax[3].plot(channels[buffer_channel]['times'], channels[buffer_channel]['values'], line_style, 
-                        color=buffer_colors[buffer_channel], alpha=0.7, label=buffer_channel)
-
-        if not buffer_channels:
-            if 'buffer-hot-pipe' in request.selected_channels:
-                channels['buffer-hot-pipe']['values'] = [to_fahrenheit(x/1000) for x in channels['buffer-hot-pipe']['values']]
-                ax[3].plot(channels['buffer-hot-pipe']['times'], channels['buffer-hot-pipe']['values'], line_style, 
-                        color='tab:red', alpha=0.7, label='Buffer hot pipe')
-            if 'buffer-cold-pipe' in request.selected_channels:
-                channels['buffer-cold-pipe']['values'] = [to_fahrenheit(x/1000) for x in channels['buffer-cold-pipe']['values']]
-                ax[3].plot(channels['buffer-cold-pipe']['times'], channels['buffer-cold-pipe']['values'], line_style, 
-                        color='tab:blue', alpha=0.7, label='Buffer cold pipe')
-
-        ax[3].set_ylabel('Temperature [F]')
-        legend = ax[3].legend(loc='upper left', fontsize=9)
-        legend.get_frame().set_facecolor('none')
-        lower_bound = ax[3].get_ylim()[0] - 5
-        upper_bound = ax[3].get_ylim()[1] + 25
-        ax[3].set_ylim([lower_bound, upper_bound])
-
-        # --------------------------------------
-        # PLOT 5
-        # --------------------------------------
-
-        ax[4].set_title('Storage')
-
-        # Temperature
-        temp_plot = False
-        tank_channels = []
-
-        if 'storage-depths' in request.selected_channels:
-            temp_plot = True
-            tank_channels = sorted([key for key in channels.keys() if 'tank' in key and 'micro-v' not in key])
-            for tank_channel in tank_channels:
-                channels[tank_channel]['values'] = [to_fahrenheit(x/1000) for x in channels[tank_channel]['values']]
-                ax[4].plot(channels[tank_channel]['times'], channels[tank_channel]['values'], line_style, 
-                        color=storage_colors[tank_channel], alpha=0.7, label=tank_channel)
-
-        if not tank_channels:
-            if 'store-hot-pipe' in request.selected_channels:
-                temp_plot = True
-                channels['store-hot-pipe']['values'] = [to_fahrenheit(x/1000) for x in channels['store-hot-pipe']['values']]
-                ax[4].plot(channels['store-hot-pipe']['times'], channels['store-hot-pipe']['values'], line_style, 
-                        color='tab:red', alpha=0.7, label='Storage hot pipe')
-            if 'store-cold-pipe' in request.selected_channels:
-                temp_plot = True
-                channels['store-cold-pipe']['values'] = [to_fahrenheit(x/1000) for x in channels['store-cold-pipe']['values']]
-                ax[4].plot(channels['store-cold-pipe']['times'], channels['store-cold-pipe']['values'], line_style, 
-                        color='tab:blue', alpha=0.7, label='Storage cold pipe')
-                
-        if temp_plot:
-            ax24 = ax[4].twinx()
-        else:
-            ax24 = ax[4]
-
-        # Power
-        power_plot = False
-        if 'store-pump-pwr' in request.selected_channels:
-            power_plot = True
-            channels['store-pump-pwr']['values'] = [x/10 for x in channels['store-pump-pwr']['values']]
-            ax24.plot(channels['store-pump-pwr']['times'], channels['store-pump-pwr']['values'], line_style, 
-                    color='tab:green', alpha=0.7, label='Storage pump x100')
-
-        if power_plot:
-            if temp_plot:
-                ax24.set_ylim([-1,40])
-            ax24.set_ylabel('Power [kW]')
-            legend = ax24.legend(loc='upper right', fontsize=9)
-            legend.get_frame().set_facecolor('none')
-        else:
-            ax24.set_yticks([])
-
-        if temp_plot:
-            if 'store-pump-pwr' in request.selected_channels:
-                lower_bound = ax[4].get_ylim()[0] - 5 - max(channels['store-pump-pwr']['values'])
-            else:
-                lower_bound = ax[4].get_ylim()[0] - 5
-            upper_bound = ax[4].get_ylim()[1] + 0.5*(ax[4].get_ylim()[1] - ax[4].get_ylim()[0])
-            ax[4].set_ylim([lower_bound, upper_bound])
-            ax[4].set_ylabel('Temperature [F]')
-            legend = ax[4].legend(loc='upper left', fontsize=9)
-            legend.get_frame().set_facecolor('none')
-
-        # --------------------------------------
-        # All plots
-        # --------------------------------------
-
-        for axis in ax:
-            axis.grid(axis='y', alpha=0.5)
-            xlim = axis.get_xlim()
-            if (mdates.num2date(xlim[1]) - mdates.num2date(xlim[0]) >= timedelta(hours=4) and 
-                mdates.num2date(xlim[1]) - mdates.num2date(xlim[0]) <= timedelta(hours=30)):
-                axis.xaxis.set_major_locator(mdates.HourLocator(interval=1))
-            elif (mdates.num2date(xlim[1]) - mdates.num2date(xlim[0]) >= timedelta(hours=31) and 
-                mdates.num2date(xlim[1]) - mdates.num2date(xlim[0]) <= timedelta(hours=65)):
-                axis.xaxis.set_major_locator(mdates.HourLocator(interval=2))
-            axis.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d %H:%M'))
-            axis.tick_params(axis='x', which='both', labelbottom=True, labelsize=8)
-            plt.setp(axis.xaxis.get_majorticklabels(), rotation=45, ha='right')
-
-        plt.tight_layout(pad=5.0)
-        img_buf = io.BytesIO()
-        plt.savefig(img_buf, format='png', bbox_inches='tight', dpi=200, transparent=True)
-        img_buf.seek(0)
+        with open('heatpump.html', 'rb') as html_file:
+            zip_file.writestr('plot1.html', html_file.read())
+        with open('distribution.html', 'rb') as html_file:
+            zip_file.writestr('plot2.html', html_file.read())
         zip_file.writestr(f'plot.png', img_buf.getvalue())
-        plt.close()
 
     zip_buffer.seek(0)
     return StreamingResponse(zip_buffer, media_type='application/zip', headers={"Content-Disposition": "attachment; filename=plots.zip"})
