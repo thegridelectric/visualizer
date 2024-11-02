@@ -17,6 +17,10 @@ from datetime import timedelta
 import numpy as np
 from typing import List
 import plotly.graph_objects as go
+import time
+
+channels = {}
+request_global = None
 
 settings = Settings(_env_file=dotenv.find_dotenv())
 valid_password = settings.thermostat_api_key.get_secret_value()
@@ -45,6 +49,10 @@ class DataRequest(BaseModel):
     user_agent: str
     timezone: str
 
+class CsvRequest(BaseModel):
+    selected_channels: List[str]
+    timestep: int
+
 def to_fahrenheit(t):
     return t*9/5+32
 
@@ -72,8 +80,50 @@ storage_colors = {
     'tank3-depth4': gradient(0),
     }
 
+@app.post('/csv')
+async def get_csv(request: CsvRequest):
+
+    global channels, request_global
+
+    num_points = int((request_global.end_ms-request_global.start_ms) / (request.timestep*1000) + 1)
+    print(num_points)
+
+    csv_times = np.linspace(request_global.start_ms, request_global.end_ms, num_points)
+    csv_times_dt = [pd.to_datetime(x, unit='ms', utc=True) for x in csv_times]
+    csv_times_dt = [x.tz_convert('America/New_York').replace(tzinfo=None) for x in csv_times_dt]
+    csv_values = {}
+
+    for channel in channels:
+        merged = pd.merge_asof(
+            pd.DataFrame({'times': csv_times_dt}),
+            pd.DataFrame(channels[channel]),
+            on='times',
+            direction='backward'
+        )
+        csv_values[channel] = list(merged['values'])
+
+    df = pd.DataFrame(csv_values)
+    df['timestamps'] = csv_times
+    df = df[['timestamps'] + [col for col in df.columns if col != 'timestamps']]
+
+    csv_buffer = io.StringIO()
+    df.to_csv(csv_buffer, index=False)
+    csv_buffer.seek(0)
+    response = StreamingResponse(
+        iter([csv_buffer.getvalue()]),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": "attachment; filename=output.csv"
+        }
+    )
+    return response
+
+
 @app.post('/plots')
 async def get_plots(request: DataRequest):
+
+    global channels, request_global
+    request_global = request
 
     if request.password != valid_password:
         with open('failed_logins.log', 'a') as log_file:
@@ -242,6 +292,7 @@ async def get_plots(request: DataRequest):
         if 'hp-odu-pwr' in request.selected_channels or 'hp-idu-pwr' in request.selected_channels or 'primary-pump-pwr' in request.selected_channels:
             fig.update_yaxes(range=[0, 260])
         fig.update_layout(yaxis=dict(title='Temperature [F]', showgrid=True, zeroline=True))
+        fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
         y_axis_power = 'y2'
     else:
         y_axis_power = 'y'
@@ -502,12 +553,12 @@ async def get_plots(request: DataRequest):
                             label=key.replace('-state',''), width=0.003)
                 stacked_values += [x*scale for x in channels[key]['values']]   
                 # Print the value of the last 1 in the list
-                ones_times = [
-                    channels[key]['times'][i] 
-                    for i in range(len(channels[key]['times']))
-                    if channels[key]['values'][i]==1]
-                if ones_times:
-                    print(f"{key}: {ones_times[-1]}")
+                # ones_times = [
+                #     channels[key]['times'][i] 
+                #     for i in range(len(channels[key]['times']))
+                #     if channels[key]['values'][i]==1]
+                # if ones_times:
+                #     print(f"{key}: {ones_times[-1]}")
 
     if temp_plot and power_plot:
         if 'dist-flow' in request.selected_channels:

@@ -13,6 +13,55 @@
     <script>
         let house_alias, password;
 
+        async function exportCSV() {
+
+            const csvButton= document.getElementById('csv_button');
+            const csvLoadingText = document.getElementById('csvLoadingText');
+            csvButton.style.display = 'none';
+            csvLoadingText.style.display = 'inline';
+
+            const selectedChannels = Array.from(document.querySelectorAll('input[name="channels"]:checked'))
+                .map(checkbox => checkbox.value);
+
+            const timestep_wip = document.getElementsByName('csv_inputs')[0];
+            const timestep = timestep_wip.value;
+            
+            try {
+                const response = await fetch(`https://e189-34-205-125-68.ngrok-free.app/csv`, {
+                // const response = await fetch(`http://localhost:8000/csv`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        selected_channels: selectedChannels,
+                        timestep: timestep,
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'output.csv';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+
+                csvButton.style.display = 'inline';
+                csvLoadingText.style.display = 'none';
+
+            } catch (error) {
+                console.error('Error downloading CSV:', error);
+                // Optionally display an error message to the user
+            }
+        }
+
         async function fetchPlots(house_alias, password, start_ms, end_ms, channels) {
 
             const ipResponse = await fetch('https://api.ipify.org?format=json');
@@ -141,9 +190,11 @@
         function resetButton() {
             const submitButton = document.querySelector('input[type="submit"]');
             const nowButton = document.getElementById('nowButton');
+            const csvButton= document.getElementById('csv_button');
             const loadingText = document.getElementById('loadingText');
             submitButton.style.display = 'inline';
             nowButton.style.display = 'inline';
+            csvButton.style.display = 'inline';
             loadingText.style.display = 'none';
         }
 
@@ -166,10 +217,12 @@
 
             const submitButton = document.querySelector('input[type="submit"]');
             const nowButton = document.getElementById('nowButton');
+            const csvButton = document.getElementById('csv_button');
             const loadingText = document.getElementById('loadingText');
             const checkboxDiv = document.getElementById("checkboxDiv");
             submitButton.style.display = 'none';
             nowButton.style.display = 'none';
+            csvButton.style.display = 'none';
             loadingText.style.display = 'inline';
             checkboxDiv.style.display = "none";
 
@@ -242,7 +295,7 @@
             margin: 0px;
         }
 
-        #submit_button, #checkboxButton, #close-button {
+        #submit_button, #checkboxButton, #close-button, #csv_button {
             cursor: pointer;
             font-size:15px;
             font-family: 'Montserrat';
@@ -260,7 +313,7 @@
             transition: background-color 0.5s;
         }
 
-        #submit_button:hover, #checkboxButton:hover, #close-button:hover {
+        #submit_button:hover, #checkboxButton:hover, #close-button:hover, #csv_button:hover {
             background-color:rgb(46, 52, 64);
         }
 
@@ -340,9 +393,10 @@
             <h2>Plots</h2>
             <label><input type="checkbox" name="channels" value="show-points">Show points</label><br>
             <h2>Export to CSV</h2>
-            Time step: <label><input type="number" style="width: 50px;" name="channels" value="resolution"></label> seconds<br>
+            Time step: <label><input type="number" style="width: 50px;" name="csv_inputs" value="5"></label> seconds<br>
             <br>
-            <button id="submit_button" onclick='exportCSV()'>Export to CSV</button>
+            <button id="csv_button" onclick='exportCSV()'>Export to CSV</button>
+            <span id="csvLoadingText" style="color: white; display: none; position: absolute;">Downloading data...</span>
             <br>
         </div>   
     </div>
