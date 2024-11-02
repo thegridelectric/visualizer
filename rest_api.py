@@ -205,9 +205,9 @@ async def get_plots(request: DataRequest):
                     channels[state]['values'] = list(sorted_values)
     
     # Get rid of selected_channels that are not in the data
-    for rc in request.selected_channels:
-        if rc not in channels:
-            request.selected_channels.remove(rc)
+    # for rc in request.selected_channels:
+    #     if rc not in channels:
+    #         request.selected_channels.remove(rc)
 
     # --------------------------------------
     # PLOT 1
@@ -241,11 +241,11 @@ async def get_plots(request: DataRequest):
     if temp_plot:
         if 'hp-odu-pwr' in request.selected_channels or 'hp-idu-pwr' in request.selected_channels or 'primary-pump-pwr' in request.selected_channels:
             fig.update_yaxes(range=[0, 260])
-        fig.update_layout(yaxis=dict(title='Temperature [F]', showgrid=False, zeroline=False))
+        fig.update_layout(yaxis=dict(title='Temperature [F]', showgrid=True, zeroline=True))
         y_axis_power = 'y2'
     else:
         y_axis_power = 'y'
-        fig.update_layout(yaxis=dict(title='Power [kW]', showgrid=False, zeroline=False))
+        fig.update_layout(yaxis=dict(title='Power [kW]', showgrid=True, zeroline=True))
 
     # Power
     power_plot = False
@@ -337,7 +337,7 @@ async def get_plots(request: DataRequest):
                                 line=dict(color='pink', dash='solid'),
                                 name='Distribution pump power /10',
                                 yaxis = y_axis_power))
-    if 'dist-flow' in request.selected_channels:
+    if 'dist-flow' in request.selected_channels and 'dist-flow' in channels:
         power_plot = True
         yf = [x/100 for x in channels['dist-flow']['values']]
         fig.add_trace(go.Scatter(x=channels['dist-flow']['times'], y=yf, 
