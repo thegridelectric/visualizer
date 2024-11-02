@@ -43,22 +43,33 @@
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
 
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'output.csv';
-                document.body.appendChild(a);
-                a.click();
-                a.remove();
-                window.URL.revokeObjectURL(url);
+                const contentType = response.headers.get("Content-Type");
 
-                csvButton.style.display = 'inline';
-                csvLoadingText.style.display = 'none';
-
+                if (contentType && contentType.includes("application/json")) {
+                    const data = await response.json();
+                    if ('success' in data && data.success === false) {
+                        alert(data.message);
+                        if (data.reload) {
+                            location.reload();
+                        }
+                    }
+                } else {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'output.csv';
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    window.URL.revokeObjectURL(url);
+                }
             } catch (error) {
                 console.error('Error downloading CSV:', error);
-                // Optionally display an error message to the user
+                alert(`Error downloading CSV`);
+            } finally {
+                csvButton.style.display = 'inline';
+                csvLoadingText.style.display = 'none';
             }
         }
 
@@ -104,9 +115,11 @@
                     const zip = await JSZip.loadAsync(blob);
                     const plotsDiv1 = document.getElementById('Plot1');
                     const plotsDiv2 = document.getElementById('Plot2');
+                    const plotsDiv3 = document.getElementById('Plot3');
                     const plotsDivPng = document.getElementById('PlotPng');
                     plotsDiv1.innerHTML = '';
                     plotsDiv2.innerHTML = '';
+                    plotsDiv3.innerHTML = '';
                     plotsDivPng.innerHTML = '';
 
                     let iframeCount = 0; // Counter for iframes
@@ -121,12 +134,15 @@
                             iframe.src = htmlUrl;
                             iframe.style.width = '90%';
                             iframe.style.maxWidth = '1500px';
-                            iframe.style.height = '500px';
+                            iframe.style.height = '400px';
                             iframe.style.border = 'none';
                             if (iframeCount === 0) {
                                 plotsDiv1.appendChild(iframe);
                             } else if (iframeCount === 1) {
                                 plotsDiv2.appendChild(iframe);
+                            } else if (iframeCount === 2) {
+                                iframe.style.height = '300px';
+                                plotsDiv3.appendChild(iframe);
                             }
                             iframeCount++;
                         } else if (filename.endsWith('.png')) {
@@ -265,13 +281,13 @@
             font-family: 'Montserrat';
         }
 
-        #PlotPng, #Plot1, #Plot2 {
+        #PlotPng, #Plot1, #Plot2, #Plot3 {
             display: flex;
             justify-content: center;
-            margin-top: 10px;
+            /* margin-top: 10px; */
         }
 
-        #PlotPng img, #Plot1 img, #Plot2 img {
+        #PlotPng img, #Plot1 img, #Plot2 img, #Plot3 img {
             width: 100%;
             max-width: 1100px;
             height: auto;
@@ -447,6 +463,7 @@
         </div>
         <div id="Plot1"></div>
         <div id="Plot2"></div>
+        <div id="Plot3"></div>
         <div id="PlotPng"></div>
     </div>
 </body>
