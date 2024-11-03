@@ -116,10 +116,12 @@
                     const plotsDiv1 = document.getElementById('Plot1');
                     const plotsDiv2 = document.getElementById('Plot2');
                     const plotsDiv3 = document.getElementById('Plot3');
+                    const plotsDiv4 = document.getElementById('Plot4');
                     const plotsDivPng = document.getElementById('PlotPng');
                     plotsDiv1.innerHTML = '';
                     plotsDiv2.innerHTML = '';
                     plotsDiv3.innerHTML = '';
+                    plotsDiv4.innerHTML = '';
                     plotsDivPng.innerHTML = '';
 
                     let iframeCount = 0; // Counter for iframes
@@ -134,7 +136,7 @@
                             iframe.src = htmlUrl;
                             iframe.style.width = '90%';
                             iframe.style.maxWidth = '1500px';
-                            iframe.style.height = '400px';
+                            iframe.style.height = '350px';
                             iframe.style.border = 'none';
                             if (iframeCount === 0) {
                                 plotsDiv1.appendChild(iframe);
@@ -143,6 +145,8 @@
                             } else if (iframeCount === 2) {
                                 iframe.style.height = '300px';
                                 plotsDiv3.appendChild(iframe);
+                            } else if (iframeCount === 3) {
+                                plotsDiv4.appendChild(iframe);
                             }
                             iframeCount++;
                         } else if (filename.endsWith('.png')) {
@@ -282,7 +286,7 @@
             font-family: 'Montserrat';
         }
 
-        #PlotPng, #Plot1, #Plot2, #Plot3 {
+        #PlotPng, #Plot1, #Plot2, #Plot3, #Plot4 {
             display: flex;
             justify-content: center;
             /* margin-top: 10px; */
@@ -465,6 +469,7 @@
         <div id="Plot1"></div>
         <div id="Plot2"></div>
         <div id="Plot3"></div>
+        <div id="Plot4"></div>
         <div id="PlotPng"></div>
     </div>
 </body>

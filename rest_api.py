@@ -298,7 +298,7 @@ async def get_plots(request: DataRequest):
         yf = [to_fahrenheit(x/1000) for x in channels['hp-lwt']['values']]
         fig.add_trace(go.Scatter(x=channels['hp-lwt']['times'], y=yf, 
                                 mode='lines', opacity=0.7,
-                                line=dict(color='red', dash='solid'),
+                                line=dict(color='#d62728', dash='solid'),
                                 name='HP LWT'))
     if 'hp-ewt' in request.selected_channels:
         temp_plot = True
@@ -306,7 +306,7 @@ async def get_plots(request: DataRequest):
 
         fig.add_trace(go.Scatter(x=channels['hp-ewt']['times'], y=yf, 
                                 mode='lines', opacity=0.7,
-                                line=dict(color='blue', dash='solid'),
+                                line=dict(color='#1f77b4', dash='solid'),
                                 name='HP EWT'))
 
     if temp_plot:
@@ -327,7 +327,7 @@ async def get_plots(request: DataRequest):
         yf = [x/1000 for x in channels['hp-odu-pwr']['values']]
         fig.add_trace(go.Scatter(x=channels['hp-odu-pwr']['times'], y=yf, 
                                 mode='lines', opacity=0.7,
-                                line=dict(color='green', dash='solid'),
+                                line=dict(color='#2ca02c', dash='solid'),
                                 name='HP outdoor',
                                 yaxis=y_axis_power))
 
@@ -336,7 +336,7 @@ async def get_plots(request: DataRequest):
         yf = [x/1000 for x in channels['hp-idu-pwr']['values']]
         fig.add_trace(go.Scatter(x=channels['hp-idu-pwr']['times'], y=yf, 
                                 mode='lines', opacity=0.7,
-                                line=dict(color='orange', dash='solid'),
+                                line=dict(color='#ff7f0e', dash='solid'),
                                 name='HP indoor',
                                 yaxis=y_axis_power))
         
@@ -406,14 +406,14 @@ async def get_plots(request: DataRequest):
         yf = [to_fahrenheit(x/1000) for x in channels['dist-swt']['values']]
         fig.add_trace(go.Scatter(x=channels['dist-swt']['times'], y=yf, 
                                 mode='lines', opacity=0.7,
-                                line=dict(color='red', dash='solid'),
+                                line=dict(color='#d62728', dash='solid'),
                                 name='Distribution SWT'))
     if 'dist-rwt' in request.selected_channels:
         temp_plot = True
         yf = [to_fahrenheit(x/1000) for x in channels['dist-rwt']['values']]
         fig.add_trace(go.Scatter(x=channels['dist-rwt']['times'], y=yf, 
                                 mode='lines', opacity=0.7,
-                                line=dict(color='blue', dash='solid'),
+                                line=dict(color='#1f77b4', dash='solid'),
                                 name='Distribution RWT'))
         
     if temp_plot:
@@ -511,7 +511,7 @@ async def get_plots(request: DataRequest):
             for key in [x for x in zones[zone] if 'state' in x]:
 
                 y_labels.append(key)
-                zone_colors = ['blue', 'orange', 'green', 'red']
+                zone_colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
                 zone_color = zone_colors[int(key[4])-1]
         
                 for i in range(len(channels[key]['values'])):
@@ -532,7 +532,7 @@ async def get_plots(request: DataRequest):
                     x=[None], y=[None],
                     mode='lines',
                     line=dict(color=zone_color, width=2),
-                    name=key
+                    name=key.replace('-state','')
                 ))
 
                 # fig.add_annotation(
@@ -582,6 +582,109 @@ async def get_plots(request: DataRequest):
 
     fig.write_html('heatcalls.html')
 
+    # --------------------------------------
+    # PLOT 4
+    # --------------------------------------
+
+    fig = go.Figure()
+    fig.update_xaxes(showgrid=False)
+
+    fig.update_layout(
+        title=dict(text='Zones', x=0.5, xanchor='center'),
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        margin=dict(t=30, b=30),)
+    
+    # zone_colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
+    # zone_color_by_number = {}
+    # for key in [x for x in zones[zone] if 'state' in x]:   
+    #     zone_color_by_number[int(key[4])] = zone_colors[int(key[4])-1]
+    
+    for zone in zones:
+        for temp in zones[zone]:
+            if 'temp' in temp:
+                fig.add_trace(go.Scatter(x=channels[temp]['times'], y=channels[temp]['values'], 
+                                mode='lines', opacity=0.7,
+                                line=dict(color=zone_colors[int(temp[4])-1], dash='solid'),
+                                name=temp.replace('-temp','')))
+            elif 'set' in temp:
+                fig.add_trace(go.Scatter(x=channels[temp]['times'], y=channels[temp]['values'], 
+                                mode='lines', opacity=0.7,
+                                line=dict(color=zone_colors[int(temp[4])-1], dash='dash'),
+                                showlegend=False))
+
+
+
+    fig.update_layout(yaxis=dict(zeroline=False))
+    fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
+
+    fig.update_layout(
+        xaxis=dict(
+            range=[min_time_ms_dt, max_time_ms_dt],
+            mirror=True,
+            ticks='outside',
+            showline=True,
+            linecolor='rgb(42,63,96)',
+            ),
+        yaxis=dict(
+            range = [50, 80],
+            mirror=True,
+            ticks='outside',
+            showline=True,
+            linecolor='rgb(42,63,96)',
+            ),
+        legend=dict(
+            x=0,
+            y=1,
+            xanchor='left',
+            yanchor='top',
+        )
+    )
+
+    fig.write_html('zones.html')
+
+    # --------------------------------------
+    # PLOT 5
+    # --------------------------------------
+
+
+
+
+    # ax[2].set_title('Zones')
+    # ax22 = ax[2].twinx()
+
+    # colors = {}
+    # for zone in zones:
+    #     for temp in zones[zone]:
+    #         if 'temp' in temp:
+    #             color = ax[2].plot(channels[temp]['times'], channels[temp]['values'], line_style, label=temp, alpha=0.7)[0].get_color()
+    #             colors[temp] = color
+    #         elif 'set' in temp:
+    #             base_temp = temp.replace('-set', '-temp')
+    #             if base_temp in colors:
+    #                 ax22.plot(channels[temp]['times'], channels[temp]['values'], '-'+line_style, label=temp, 
+    #                             color=colors[base_temp], alpha=0.7)
+                    
+    # ax[2].set_ylabel('Temperature [F]')
+    # ax22.set_yticks([])
+    # lower_bound = min(ax[2].get_ylim()[0], ax22.get_ylim()[0]) - 5
+    # upper_bound = max(ax[2].get_ylim()[1], ax22.get_ylim()[1]) + 15
+    # ax[2].set_ylim([lower_bound, upper_bound])
+    # ax22.set_ylim([lower_bound, upper_bound])
+    # legend = ax[2].legend(loc='upper left', fontsize=9)
+    # legend.get_frame().set_facecolor('none')
+    # legend = ax22.legend(loc='upper right', fontsize=9)
+    # legend.get_frame().set_facecolor('none')
+
+
+
+
+
+
+    
+
+
+
 
 
     if MATPLOTLIB_PLOT:
@@ -627,7 +730,7 @@ async def get_plots(request: DataRequest):
         if 'hp-idu-pwr' in request.selected_channels:
             power_plot = True
             channels['hp-idu-pwr']['values'] = [x/1000 for x in channels['hp-idu-pwr']['values']]
-            ax20.plot(channels['hp-idu-pwr']['times'], channels['hp-idu-pwr']['values'], line_style, color='orange', alpha=0.7, label='HP indoor')
+            ax20.plot(channels['hp-idu-pwr']['times'], channels['hp-idu-pwr']['values'], line_style, color='#ff7f0e', alpha=0.7, label='HP indoor')
         if 'primary-pump-pwr' in request.selected_channels:
             power_plot = True
             channels['primary-pump-pwr']['values'] = [x/10 for x in channels['primary-pump-pwr']['values']]
@@ -890,6 +993,8 @@ async def get_plots(request: DataRequest):
             zip_file.writestr('plot2.html', html_file.read())
         with open('heatcalls.html', 'rb') as html_file:
             zip_file.writestr('plot3.html', html_file.read())
+        with open('zones.html', 'rb') as html_file:
+            zip_file.writestr('plot4.html', html_file.read())
         if MATPLOTLIB_PLOT:
             zip_file.writestr(f'plot.png', img_buf.getvalue())
 
