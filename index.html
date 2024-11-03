@@ -13,12 +13,22 @@
     <script>
         let house_alias, password;
 
-        async function exportCSV() {
+        async function exportCSV(start_ms, end_ms) {
 
             const csvButton= document.getElementById('csv_button');
             const csvLoadingText = document.getElementById('csvLoadingText');
             csvButton.style.display = 'none';
             csvLoadingText.style.display = 'inline';
+
+            const startdate = document.getElementById('startDatePicker').value;
+            const starttime = document.getElementById('startTimePicker').value;
+            const startDateObject = new Date(`${startdate}T${starttime}-04:00`);
+            const startUnixMilliseconds = startDateObject.getTime();
+
+            const enddate = document.getElementById('endDatePicker').value;
+            const endtime = document.getElementById('endTimePicker').value;
+            const enddateObject = new Date(`${enddate}T${endtime}-04:00`);
+            const endUnixMilliseconds = enddateObject.getTime();
 
             const selectedChannels = Array.from(document.querySelectorAll('input[name="channels"]:checked'))
                 .map(checkbox => checkbox.value);
@@ -35,6 +45,10 @@
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
+                        house_alias: `${house_alias}`,
+                        password: password, 
+                        start_ms: startUnixMilliseconds, 
+                        end_ms: endUnixMilliseconds,
                         selected_channels: selectedChannels,
                         timestep: timestep,
                     })

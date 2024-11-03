@@ -21,9 +21,6 @@ import plotly.graph_objects as go
 PYPLOT_PLOT = True
 MATPLOTLIB_PLOT = False
 
-channels = {}
-request_global = None
-
 settings = Settings(_env_file=dotenv.find_dotenv())
 valid_password = settings.thermostat_api_key.get_secret_value()
 engine = create_engine(settings.db_url.get_secret_value())
@@ -58,8 +55,11 @@ class DataRequest(BaseModel):
     user_agent: str
     timezone: str
 
-# TODO: Add attributes to querry data
 class CsvRequest(BaseModel):
+    house_alias: str
+    password: str
+    start_ms: int
+    end_ms: int
     selected_channels: List[str]
     timestep: int
 
@@ -99,87 +99,7 @@ storage_colors_hex = {key: to_hex(value) for key, value in storage_colors.items(
 
 zone_colors_hex = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
 
-# ------------------------------
-# Export as CSV
-# ------------------------------
-
-@app.post('/csv')
-async def get_csv(request: CsvRequest):
-
-    # TODO: querry the database again
-    global channels, request_global
-
-    if 'all-data' in request.selected_channels:
-        channels_to_export = channels.keys()
-    else:
-        channels_to_export = []
-        for channel in request.selected_channels:
-            if channel in channels:
-                channels_to_export.append(channel)
-            elif channel=='zone_heat_calls':
-                for c in channels.keys():
-                    if 'zone' in c:
-                        channels_to_export.append(c)
-            elif channel=='buffer_depths':
-                for c in channels.keys():
-                    if 'depth' in c and 'buffer' in c:
-                        channels_to_export.append(c)
-            elif channel=='storage_depths':
-                for c in channels.keys():
-                    if 'depth' in c and 'tank' in c:
-                        channels_to_export.append(c)
-
-    # TODO: querry the database again
-
-    num_points = int((request_global.end_ms-request_global.start_ms) / (request.timestep*1000) + 1)
-    
-    if num_points*len(channels_to_export) > 3600/5*24*7*len(channels):
-        error_message = f"This request would generate {num_points} data points, which is too much data in one go."
-        error_message += "\n\nSuggestions:\n- Increase the time step\n- Reduce the number of channels"
-        error_message += "\n- Change the start and end times"
-        return {
-                "success": False, 
-                "message": error_message, 
-                "reload": False
-                }
-
-    csv_times = np.linspace(request_global.start_ms, request_global.end_ms, num_points)
-    csv_times_dt = [pd.to_datetime(x, unit='ms', utc=True) for x in csv_times]
-    csv_times_dt = [x.tz_convert('America/New_York').replace(tzinfo=None) for x in csv_times_dt]
-    
-    csv_values = {}
-    for channel in channels:
-        merged = pd.merge_asof(
-            pd.DataFrame({'times': csv_times_dt}),
-            pd.DataFrame(channels[channel]),
-            on='times',
-            direction='backward'
-        )
-        csv_values[channel] = list(merged['values'])
-
-    df = pd.DataFrame(csv_values)
-    df['timestamps'] = csv_times_dt
-    df = df[['timestamps'] + [col for col in df.columns if col != 'timestamps']]
-
-    csv_buffer = io.StringIO()
-    df.to_csv(csv_buffer, index=False)
-    csv_buffer.seek(0)
-    response = StreamingResponse(
-        iter([csv_buffer.getvalue()]),
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=output.csv"}
-    )
-    return response
-
-# ------------------------------
-# Generate interactive plots
-# ------------------------------
-
-@app.post('/plots')
-async def get_plots(request: DataRequest):
-
-    global channels, request_global
-    request_global = request
+def get_data(request):
 
     if request.password != valid_password:
         with open('failed_logins.log', 'a') as log_file:
@@ -283,6 +203,86 @@ async def get_plots(request: DataRequest):
     max_time_ms_dt = pd.to_datetime(max_time_ms, unit='ms', utc=True)
     min_time_ms_dt = min_time_ms_dt.tz_convert('America/New_York').replace(tzinfo=None)
     max_time_ms_dt = max_time_ms_dt.tz_convert('America/New_York').replace(tzinfo=None)
+
+    return channels, zones, min_time_ms_dt, max_time_ms_dt
+
+# ------------------------------
+# Export as CSV
+# ------------------------------
+
+@app.post('/csv')
+async def get_csv(request: CsvRequest):
+
+    channels, _, __, ___ = get_data(request)
+
+    if 'all-data' in request.selected_channels:
+        channels_to_export = channels.keys()
+    else:
+        channels_to_export = []
+        for channel in request.selected_channels:
+            if channel in channels:
+                channels_to_export.append(channel)
+            elif channel=='zone_heat_calls':
+                for c in channels.keys():
+                    if 'zone' in c:
+                        channels_to_export.append(c)
+            elif channel=='buffer_depths':
+                for c in channels.keys():
+                    if 'depth' in c and 'buffer' in c:
+                        channels_to_export.append(c)
+            elif channel=='storage_depths':
+                for c in channels.keys():
+                    if 'depth' in c and 'tank' in c:
+                        channels_to_export.append(c)
+
+    num_points = int((request.end_ms-request.start_ms) / (request.timestep*1000) + 1)
+    
+    if num_points*len(channels_to_export) > 3600/5*24*7*len(channels):
+        error_message = f"This request would generate {num_points} data points, which is too much data in one go."
+        error_message += "\n\nSuggestions:\n- Increase the time step\n- Reduce the number of channels"
+        error_message += "\n- Change the start and end times"
+        return {
+                "success": False, 
+                "message": error_message, 
+                "reload": False
+                }
+
+    csv_times = np.linspace(request.start_ms, request.end_ms, num_points)
+    csv_times_dt = [pd.to_datetime(x, unit='ms', utc=True) for x in csv_times]
+    csv_times_dt = [x.tz_convert('America/New_York').replace(tzinfo=None) for x in csv_times_dt]
+    
+    csv_values = {}
+    for channel in channels:
+        merged = pd.merge_asof(
+            pd.DataFrame({'times': csv_times_dt}),
+            pd.DataFrame(channels[channel]),
+            on='times',
+            direction='backward'
+        )
+        csv_values[channel] = list(merged['values'])
+
+    df = pd.DataFrame(csv_values)
+    df['timestamps'] = csv_times_dt
+    df = df[['timestamps'] + [col for col in df.columns if col != 'timestamps']]
+
+    csv_buffer = io.StringIO()
+    df.to_csv(csv_buffer, index=False)
+    csv_buffer.seek(0)
+    response = StreamingResponse(
+        iter([csv_buffer.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=output.csv"}
+    )
+    return response
+
+# ------------------------------
+# Generate interactive plots
+# ------------------------------
+
+@app.post('/plots')
+async def get_plots(request: DataRequest):
+
+    channels, zones, min_time_ms_dt, max_time_ms_dt = get_data(request)
 
     if PYPLOT_PLOT:
 
