@@ -385,7 +385,7 @@ async def get_plots(request: DataRequest):
             )
         )
 
-        fig.write_html("heatpump.html")
+        fig.write_html(f"heatpump_{request.house_alias}.html")
 
         # --------------------------------------
         # PLOT 2
@@ -487,7 +487,7 @@ async def get_plots(request: DataRequest):
             )
         )
 
-        fig.write_html("distribution.html")
+        fig.write_html(f"distribution_{request.house_alias}.html")
 
         # --------------------------------------
         # PLOT 3
@@ -581,7 +581,7 @@ async def get_plots(request: DataRequest):
             )
         )
 
-        fig.write_html('heatcalls.html')
+        fig.write_html(f'heatcalls_{request.house_alias}.html')
 
         # --------------------------------------
         # PLOT 4
@@ -642,7 +642,7 @@ async def get_plots(request: DataRequest):
             )
         )
 
-        fig.write_html('zones.html')
+        fig.write_html(f'zones_{request.house_alias}.html')
 
         # --------------------------------------
         # PLOT 5
@@ -988,13 +988,13 @@ async def get_plots(request: DataRequest):
 
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
-        with open('heatpump.html', 'rb') as html_file:
+        with open(f'heatpump_{request.house_alias}.html', 'rb') as html_file:
             zip_file.writestr('plot1.html', html_file.read())
-        with open('distribution.html', 'rb') as html_file:
+        with open(f'distribution_{request.house_alias}.html', 'rb') as html_file:
             zip_file.writestr('plot2.html', html_file.read())
-        with open('heatcalls.html', 'rb') as html_file:
+        with open(f'heatcalls_{request.house_alias}.html', 'rb') as html_file:
             zip_file.writestr('plot3.html', html_file.read())
-        with open('zones.html', 'rb') as html_file:
+        with open(f'zones_{request.house_alias}.html', 'rb') as html_file:
             zip_file.writestr('plot4.html', html_file.read())
         if MATPLOTLIB_PLOT:
             zip_file.writestr(f'plot.png', img_buf.getvalue())
