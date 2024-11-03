@@ -27,8 +27,8 @@
             const timestep = timestep_wip.value;
             
             try {
-                const response = await fetch(`https://e189-34-205-125-68.ngrok-free.app/csv`, {
-                // const response = await fetch(`http://localhost:8000/csv`, {
+                // const response = await fetch(`https://e189-34-205-125-68.ngrok-free.app/csv`, {
+                const response = await fetch(`http://localhost:8000/csv`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -82,8 +82,8 @@
             const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
             try {
-                const response = await fetch(`https://e189-34-205-125-68.ngrok-free.app/plots`, {
-                // const response = await fetch(`http://localhost:8000/plots`, {
+                // const response = await fetch(`https://e189-34-205-125-68.ngrok-free.app/plots`, {
+                const response = await fetch(`http://localhost:8000/plots`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -188,6 +188,7 @@
 
         function setNow() {
             const nyDate = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
+            nyDate.setHours(nyDate.getHours() + 1);
             document.getElementById('endDatePicker').value = nyDate.toISOString().split('T')[0];
             document.getElementById('endTimePicker').value = nyDate.toTimeString().split(' ')[0].substring(0, 5);
             getData(event)
@@ -453,7 +454,7 @@
                 <label style="color: rgb(46, 52, 64);" for="endDatePicker">to</label>
                 <input type="date" id="endDatePicker" name="endDatePicker">
                 <input type="time" id="endTimePicker" name="endTimePicker">
-                <button type="button" id="nowButton" onclick=setNow()>Now</button>
+                <button type="button" id="nowButton" onclick=setNow()>Latest</button>
                 <br><br>
                 <button type="button" id="checkboxButton" onclick=toggleCheckbox()>Options</button>
                 <br><br>

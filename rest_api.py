@@ -199,10 +199,15 @@ async def get_plots(request: DataRequest):
                 channels[channel_name]['values'].extend(channel['ValueList'])
                 channels[channel_name]['times'].extend(channel['ScadaReadTimeUnixMsList'])
 
-    # Sort values according to time
+    # Sort values according to time and find min/max
+    min_time_ms, max_time_ms = 1e20, 0
     for key in channels.keys():
         sorted_times_values = sorted(zip(channels[key]['times'], channels[key]['values']))
         sorted_times, sorted_values = zip(*sorted_times_values)
+        if list(sorted_times)[0] < min_time_ms:
+            min_time_ms = list(sorted_times)[0]
+        if list(sorted_times)[-1] > max_time_ms:
+            max_time_ms = list(sorted_times)[-1]
         channels[key]['values'] = list(sorted_values)
         channels[key]['times'] = pd.to_datetime(list(sorted_times), unit='ms', utc=True)
         channels[key]['times'] = channels[key]['times'].tz_convert('America/New_York')
@@ -264,10 +269,15 @@ async def get_plots(request: DataRequest):
                     channels[state]['times'] = list(sorted_times)
                     channels[state]['values'] = list(sorted_values)
     
-    start_ms_dt = pd.to_datetime(request.start_ms, unit='ms', utc=True)
-    start_ms_dt = start_ms_dt.tz_convert('America/New_York').replace(tzinfo=None)
-    end_ms_dt = pd.to_datetime(request.end_ms, unit='ms', utc=True)
-    end_ms_dt = end_ms_dt.tz_convert('America/New_York').replace(tzinfo=None)
+    # 
+    diff = max_time_ms - min_time_ms
+    min_time_ms += -diff*0.05
+    max_time_ms += diff*0.05
+
+    min_time_ms_dt = pd.to_datetime(min_time_ms, unit='ms', utc=True)
+    min_time_ms_dt = min_time_ms_dt.tz_convert('America/New_York').replace(tzinfo=None)
+    max_time_ms_dt = pd.to_datetime(max_time_ms, unit='ms', utc=True)
+    max_time_ms_dt = max_time_ms_dt.tz_convert('America/New_York').replace(tzinfo=None)
 
     # Get rid of selected_channels that are not in the data
     # for rc in request.selected_channels:
@@ -348,7 +358,7 @@ async def get_plots(request: DataRequest):
         plot_bgcolor='rgba(0,0,0,0)',
         paper_bgcolor='rgba(0,0,0,0)',
         xaxis=dict(
-            range=[start_ms_dt, end_ms_dt],
+            range=[min_time_ms_dt, max_time_ms_dt],
             mirror=True,
             ticks='outside',
             showline=True,
@@ -450,7 +460,7 @@ async def get_plots(request: DataRequest):
 
     fig.update_layout(
         xaxis=dict(
-            range=[start_ms_dt, end_ms_dt],
+            range=[min_time_ms_dt, max_time_ms_dt],
             mirror=True,
             ticks='outside',
             showline=True,
@@ -505,7 +515,7 @@ async def get_plots(request: DataRequest):
                 zone_color = zone_colors[int(key[4])-1]
         
                 for i in range(len(channels[key]['values'])):
-                    if channels[key]['values'][i] >= 1:
+                    if channels[key]['values'][i] == 1:
                         y_start = int(key[4]) - 1
                         y_end = int(key[4])
                         x_value = channels[key]['times'][i]
@@ -526,7 +536,7 @@ async def get_plots(request: DataRequest):
                 ))
 
                 # fig.add_annotation(
-                #     x=start_ms_dt,
+                #     x=min_time_ms_dt,
                 #     y=y_end - 0.5,
                 #     text=key,
                 #     showarrow=False,
@@ -543,7 +553,7 @@ async def get_plots(request: DataRequest):
 
     fig.update_layout(
         xaxis=dict(
-            range=[start_ms_dt, end_ms_dt],
+            range=[min_time_ms_dt, max_time_ms_dt],
             mirror=True,
             ticks='outside',
             showline=True,
