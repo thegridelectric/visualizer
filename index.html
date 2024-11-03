@@ -27,7 +27,8 @@
             const timestep = timestep_wip.value;
             
             try {
-                const response = await fetch(`https://ff70-34-205-125-68.ngrok-free.app/csv`, {
+                const response = await fetch(`http://ec2-34-205-125-68.compute-1.amazonaws.com:8000/plots`, {
+                // const response = await fetch(`https://ff70-34-205-125-68.ngrok-free.app/csv`, {
                 // const response = await fetch(`http://localhost:8000/csv`, {
                     method: 'POST',
                     headers: {
@@ -82,7 +83,8 @@
             const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
             try {
-                const response = await fetch(`https://ff70-34-205-125-68.ngrok-free.app/plots`, {
+                const response = await fetch(`http://ec2-34-205-125-68.compute-1.amazonaws.com:8000/plots`, {
+                // const response = await fetch(`https://ff70-34-205-125-68.ngrok-free.app/plots`, {
                 // const response = await fetch(`http://localhost:8000/plots`, {
                     method: 'POST',
                     headers: {
