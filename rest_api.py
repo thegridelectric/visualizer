@@ -686,7 +686,7 @@ async def get_plots(request: DataRequest):
                     go.Scatter(x=channels['buffer-hot-pipe']['times'], y=yf, 
                     mode='lines', opacity=0.7,
                     name='Hot pipe',
-                    line=dict(color='#2ca02c', dash='solid'))
+                    line=dict(color='#d62728', dash='solid'))
                     )
             if 'buffer-cold-pipe' in request.selected_channels:
                 yf = [to_fahrenheit(x/1000) for x in channels['buffer-cold-pipe']['values']]
@@ -768,7 +768,7 @@ async def get_plots(request: DataRequest):
                     go.Scatter(x=channels['store-hot-pipe']['times'], y=yf, 
                     mode='lines', opacity=0.7,
                     name='Hot pipe',
-                    line=dict(color='#2ca02c', dash='solid'))
+                    line=dict(color='#d62728', dash='solid'))
                     )
             if 'store-cold-pipe' in request.selected_channels:
                 temp_plot = True
