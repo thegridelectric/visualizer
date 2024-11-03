@@ -22,7 +22,7 @@ import time
 channels = {}
 request_global = None
 MATPLOTLIB_PLOT = True
-PYPLOT_PLOT = False
+PYPLOT_PLOT = True
 
 settings = Settings(_env_file=dotenv.find_dotenv())
 valid_password = settings.thermostat_api_key.get_secret_value()
