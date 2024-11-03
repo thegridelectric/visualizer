@@ -28,8 +28,8 @@
             
             try {
                 // const response = await fetch(`http://ec2-34-205-125-68.compute-1.amazonaws.com:8000/plots`, {
-                const response = await fetch(`https://3e68-34-205-125-68.ngrok-free.app/csv`, {
-                // const response = await fetch(`http://localhost:8000/csv`, {
+                // const response = await fetch(`https://3e68-34-205-125-68.ngrok-free.app/csv`, {
+                const response = await fetch(`http://localhost:8000/csv`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -84,8 +84,8 @@
 
             try {
                 // const response = await fetch(`http://ec2-34-205-125-68.compute-1.amazonaws.com:8000/plots`, {
-                const response = await fetch(`https://3e68-34-205-125-68.ngrok-free.app/plots`, {
-                // const response = await fetch(`http://localhost:8000/plots`, {
+                // const response = await fetch(`https://3e68-34-205-125-68.ngrok-free.app/plots`, {
+                const response = await fetch(`http://localhost:8000/plots`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -405,13 +405,15 @@
             <label><input type="checkbox" name="channels" value="hp-ewt" checked>EWT</label><br>
             <label><input type="checkbox" name="channels" value="hp-odu-pwr" checked>Outdoor unit power</label><br>
             <label><input type="checkbox" name="channels" value="hp-idu-pwr" checked>Indoor unit power</label><br>
-            <label><input type="checkbox" name="channels" value="primary-pump-pwr" checked>Primary pump power</label><br>
+            <label><input type="checkbox" name="channels" value="primary-flow" checked>Primary pump flow rate</label><br>
+            <label><input type="checkbox" name="channels" value="primary-pump-pwr">Primary pump power</label><br>
             <h4>Distribution</h4>
             <label><input type="checkbox" name="channels" value="dist-swt" checked>SWT</label><br>
             <label><input type="checkbox" name="channels" value="dist-rwt" checked>RWT</label><br>
-            <label><input type="checkbox" name="channels" value="dist-pump-pwr">Distribution pump power</label><br>
             <label><input type="checkbox" name="channels" value="dist-flow" checked>Distribution pump flow rate</label><br>
-            <label><input type="checkbox" name="channels" value="zone_heat_calls" checked>Zone heat calls</label><br>
+            <label><input type="checkbox" name="channels" value="dist-pump-pwr">Distribution pump power</label><br>
+            <h4>Zones</h4>
+            <label><input type="checkbox" name="channels" value="zone_heat_calls" checked>Heat calls</label><br>
             <h4>Buffer</h4>
             <label><input type="checkbox" name="channels" value="buffer-hot-pipe" checked>Hot pipe</label><br>
             <label><input type="checkbox" name="channels" value="buffer-cold-pipe" checked>Cold pipe</label><br>
@@ -420,10 +422,12 @@
             <label><input type="checkbox" name="channels" value="store-hot-pipe" checked>Hot pipe</label><br>
             <label><input type="checkbox" name="channels" value="store-cold-pipe" checked>Cold pipe</label><br>
             <label><input type="checkbox" name="channels" value="storage-depths" checked>Storage depths</label><br>
-            <label><input type="checkbox" name="channels" value="store-pump-pwr" checked>Storage pump power</label><br>
+            <label><input type="checkbox" name="channels" value="store-flow" checked>Storage pump flow rate</label><br>
+            <label><input type="checkbox" name="channels" value="store-pump-pwr">Storage pump power</label><br>
             <h2>Plots</h2>
             <label><input type="checkbox" name="channels" value="show-points">Show points</label><br>
             <h2>Export to CSV</h2>
+            <label><input type="checkbox" name="channels" value="all-data" checked>Export all data channels</label><br>
             Time step: <label><input type="number" style="width: 50px;" name="csv_inputs" value="5"></label> seconds<br>
             <br>
             <button id="csv_button" onclick='exportCSV()'>Export to CSV</button>
