@@ -22,6 +22,7 @@ import time
 channels = {}
 request_global = None
 MATPLOTLIB_PLOT = True
+PYPLOT_PLOT = False
 
 settings = Settings(_env_file=dotenv.find_dotenv())
 valid_password = settings.thermostat_api_key.get_secret_value()
@@ -269,11 +270,10 @@ async def get_plots(request: DataRequest):
                     channels[state]['times'] = list(sorted_times)
                     channels[state]['values'] = list(sorted_values)
     
-    # 
+    # Start and end times on plots
     diff = max_time_ms - min_time_ms
     min_time_ms += -diff*0.05
     max_time_ms += diff*0.05
-
     min_time_ms_dt = pd.to_datetime(min_time_ms, unit='ms', utc=True)
     min_time_ms_dt = min_time_ms_dt.tz_convert('America/New_York').replace(tzinfo=None)
     max_time_ms_dt = pd.to_datetime(max_time_ms, unit='ms', utc=True)
@@ -284,397 +284,398 @@ async def get_plots(request: DataRequest):
     #     if rc not in channels:
     #         request.selected_channels.remove(rc)
 
-    # --------------------------------------
-    # PLOT 1
-    # --------------------------------------
+    if PYPLOT_PLOT:
+        # --------------------------------------
+        # PLOT 1
+        # --------------------------------------
 
-    fig = go.Figure()
-    fig.update_xaxes(showgrid=False)
+        fig = go.Figure()
+        fig.update_xaxes(showgrid=False)
 
-    # Temperature
-    temp_plot = False
-    if 'hp-lwt' in request.selected_channels:
-        temp_plot = True
-        yf = [to_fahrenheit(x/1000) for x in channels['hp-lwt']['values']]
-        fig.add_trace(go.Scatter(x=channels['hp-lwt']['times'], y=yf, 
-                                mode='lines', opacity=0.7,
-                                line=dict(color='#d62728', dash='solid'),
-                                name='HP LWT'))
-    if 'hp-ewt' in request.selected_channels:
-        temp_plot = True
-        yf = [to_fahrenheit(x/1000) for x in channels['hp-ewt']['values']]
+        # Temperature
+        temp_plot = False
+        if 'hp-lwt' in request.selected_channels:
+            temp_plot = True
+            yf = [to_fahrenheit(x/1000) for x in channels['hp-lwt']['values']]
+            fig.add_trace(go.Scatter(x=channels['hp-lwt']['times'], y=yf, 
+                                    mode='lines', opacity=0.7,
+                                    line=dict(color='#d62728', dash='solid'),
+                                    name='HP LWT'))
+        if 'hp-ewt' in request.selected_channels:
+            temp_plot = True
+            yf = [to_fahrenheit(x/1000) for x in channels['hp-ewt']['values']]
 
-        fig.add_trace(go.Scatter(x=channels['hp-ewt']['times'], y=yf, 
-                                mode='lines', opacity=0.7,
-                                line=dict(color='#1f77b4', dash='solid'),
-                                name='HP EWT'))
+            fig.add_trace(go.Scatter(x=channels['hp-ewt']['times'], y=yf, 
+                                    mode='lines', opacity=0.7,
+                                    line=dict(color='#1f77b4', dash='solid'),
+                                    name='HP EWT'))
 
-    if temp_plot:
-        if 'hp-odu-pwr' in request.selected_channels or 'hp-idu-pwr' in request.selected_channels or 'primary-pump-pwr' in request.selected_channels:
-            fig.update_yaxes(range=[0, 260])
-        fig.update_layout(yaxis=dict(title='Temperature [F]', zeroline=False))
-        fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
-        y_axis_power = 'y2'
-    else:
-        y_axis_power = 'y'
-        fig.update_layout(yaxis=dict(title='Power [kW]', zeroline=False))
-        fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
+        if temp_plot:
+            if 'hp-odu-pwr' in request.selected_channels or 'hp-idu-pwr' in request.selected_channels or 'primary-pump-pwr' in request.selected_channels:
+                fig.update_yaxes(range=[0, 260])
+            fig.update_layout(yaxis=dict(title='Temperature [F]', zeroline=False))
+            fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
+            y_axis_power = 'y2'
+        else:
+            y_axis_power = 'y'
+            fig.update_layout(yaxis=dict(title='Power [kW]', zeroline=False))
+            fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
 
-    # Power
-    power_plot = False
-    if 'hp-odu-pwr' in request.selected_channels:
-        power_plot = True
-        yf = [x/1000 for x in channels['hp-odu-pwr']['values']]
-        fig.add_trace(go.Scatter(x=channels['hp-odu-pwr']['times'], y=yf, 
-                                mode='lines', opacity=0.7,
-                                line=dict(color='#2ca02c', dash='solid'),
-                                name='HP outdoor',
-                                yaxis=y_axis_power))
+        # Power
+        power_plot = False
+        if 'hp-odu-pwr' in request.selected_channels:
+            power_plot = True
+            yf = [x/1000 for x in channels['hp-odu-pwr']['values']]
+            fig.add_trace(go.Scatter(x=channels['hp-odu-pwr']['times'], y=yf, 
+                                    mode='lines', opacity=0.7,
+                                    line=dict(color='#2ca02c', dash='solid'),
+                                    name='HP outdoor',
+                                    yaxis=y_axis_power))
 
-    if 'hp-idu-pwr' in request.selected_channels:
-        power_plot = True
-        yf = [x/1000 for x in channels['hp-idu-pwr']['values']]
-        fig.add_trace(go.Scatter(x=channels['hp-idu-pwr']['times'], y=yf, 
-                                mode='lines', opacity=0.7,
-                                line=dict(color='#ff7f0e', dash='solid'),
-                                name='HP indoor',
-                                yaxis=y_axis_power))
-        
-    if 'primary-pump-pwr' in request.selected_channels:
-        power_plot = True
-        yf = [x/10 for x in channels['primary-pump-pwr']['values']]
-        fig.add_trace(go.Scatter(x=channels['primary-pump-pwr']['times'], y=yf, 
-                                mode='lines', opacity=0.7,
-                                line=dict(color='purple', dash='solid'),
-                                name='Primary pump x100',
-                                yaxis=y_axis_power))
+        if 'hp-idu-pwr' in request.selected_channels:
+            power_plot = True
+            yf = [x/1000 for x in channels['hp-idu-pwr']['values']]
+            fig.add_trace(go.Scatter(x=channels['hp-idu-pwr']['times'], y=yf, 
+                                    mode='lines', opacity=0.7,
+                                    line=dict(color='#ff7f0e', dash='solid'),
+                                    name='HP indoor',
+                                    yaxis=y_axis_power))
+            
+        if 'primary-pump-pwr' in request.selected_channels:
+            power_plot = True
+            yf = [x/10 for x in channels['primary-pump-pwr']['values']]
+            fig.add_trace(go.Scatter(x=channels['primary-pump-pwr']['times'], y=yf, 
+                                    mode='lines', opacity=0.7,
+                                    line=dict(color='purple', dash='solid'),
+                                    name='Primary pump x100',
+                                    yaxis=y_axis_power))
 
-    if power_plot:
-        fig.update_layout(yaxis2=dict(title='Power [kW]', overlaying='y', side='right', showgrid=False, zeroline=False, range=[0, 30]))
+        if power_plot:
+            fig.update_layout(yaxis2=dict(title='Power [kW]', overlaying='y', side='right', showgrid=False, zeroline=False, range=[0, 30]))
 
-    fig.update_layout(
-        title=dict(text='Heat pump', x=0.5, xanchor='center'),
-        margin=dict(t=30, b=30),
-        plot_bgcolor='rgba(0,0,0,0)',
-        paper_bgcolor='rgba(0,0,0,0)',
-        xaxis=dict(
-            range=[min_time_ms_dt, max_time_ms_dt],
-            mirror=True,
-            ticks='outside',
-            showline=True,
-            linecolor='rgb(42,63,96)',
-            ),
-        yaxis=dict(
-            mirror=True,
-            ticks='outside',
-            showline=True,
-            linecolor='rgb(42,63,96)',
-            ),
-        yaxis2=dict(
-            mirror=True,
-            ticks='outside',
-            showline=True,
-            linecolor='rgb(42,63,96)',
-            ),
-        legend=dict(
-            x=0,
-            y=1,
-            xanchor='left',
-            yanchor='top'
+        fig.update_layout(
+            title=dict(text='Heat pump', x=0.5, xanchor='center'),
+            margin=dict(t=30, b=30),
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)',
+            xaxis=dict(
+                range=[min_time_ms_dt, max_time_ms_dt],
+                mirror=True,
+                ticks='outside',
+                showline=True,
+                linecolor='rgb(42,63,96)',
+                ),
+            yaxis=dict(
+                mirror=True,
+                ticks='outside',
+                showline=True,
+                linecolor='rgb(42,63,96)',
+                ),
+            yaxis2=dict(
+                mirror=True,
+                ticks='outside',
+                showline=True,
+                linecolor='rgb(42,63,96)',
+                ),
+            legend=dict(
+                x=0,
+                y=1,
+                xanchor='left',
+                yanchor='top'
+            )
         )
-    )
 
-    fig.write_html("heatpump.html")
+        fig.write_html("heatpump.html")
 
-    # --------------------------------------
-    # PLOT 2
-    # --------------------------------------
+        # --------------------------------------
+        # PLOT 2
+        # --------------------------------------
 
-    fig = go.Figure()
-    fig.update_xaxes(showgrid=False)
+        fig = go.Figure()
+        fig.update_xaxes(showgrid=False)
 
-    fig.update_layout(
-        title=dict(text='Distribution', x=0.5, xanchor='center'),
-        plot_bgcolor='rgba(0,0,0,0)',
-        paper_bgcolor='rgba(0,0,0,0)',
-        margin=dict(t=30, b=30),)
+        fig.update_layout(
+            title=dict(text='Distribution', x=0.5, xanchor='center'),
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)',
+            margin=dict(t=30, b=30),)
 
-    # Temperature
-    temp_plot = False
-    if 'dist-swt' in request.selected_channels:
-        temp_plot = True
-        yf = [to_fahrenheit(x/1000) for x in channels['dist-swt']['values']]
-        fig.add_trace(go.Scatter(x=channels['dist-swt']['times'], y=yf, 
-                                mode='lines', opacity=0.7,
-                                line=dict(color='#d62728', dash='solid'),
-                                name='Distribution SWT'))
-    if 'dist-rwt' in request.selected_channels:
-        temp_plot = True
-        yf = [to_fahrenheit(x/1000) for x in channels['dist-rwt']['values']]
-        fig.add_trace(go.Scatter(x=channels['dist-rwt']['times'], y=yf, 
-                                mode='lines', opacity=0.7,
-                                line=dict(color='#1f77b4', dash='solid'),
-                                name='Distribution RWT'))
-        
-    if temp_plot:
+        # Temperature
+        temp_plot = False
+        if 'dist-swt' in request.selected_channels:
+            temp_plot = True
+            yf = [to_fahrenheit(x/1000) for x in channels['dist-swt']['values']]
+            fig.add_trace(go.Scatter(x=channels['dist-swt']['times'], y=yf, 
+                                    mode='lines', opacity=0.7,
+                                    line=dict(color='#d62728', dash='solid'),
+                                    name='Distribution SWT'))
+        if 'dist-rwt' in request.selected_channels:
+            temp_plot = True
+            yf = [to_fahrenheit(x/1000) for x in channels['dist-rwt']['values']]
+            fig.add_trace(go.Scatter(x=channels['dist-rwt']['times'], y=yf, 
+                                    mode='lines', opacity=0.7,
+                                    line=dict(color='#1f77b4', dash='solid'),
+                                    name='Distribution RWT'))
+            
+        if temp_plot:
+            if 'zone_heat_calls' in request.selected_channels:
+                fig.update_yaxes(range=[0, 260])
+            fig.update_layout(yaxis=dict(title='Temperature [F]', zeroline=False))
+            fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
+            y_axis_power = 'y2'
+        else:
+            y_axis_power = 'y'
+            fig.update_layout(yaxis=dict('Power [kW]', zeroline=False))
+            fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
+
+        # Distribution pump power
+        power_plot = False   
+        if 'dist-pump-pwr'in request.selected_channels:
+            power_plot = True
+            yf = [x/10 for x in channels['dist-pump-pwr']['values']]
+            fig.add_trace(go.Scatter(x=channels['dist-pump-pwr']['times'], y=yf, 
+                                    mode='lines', opacity=0.7,
+                                    line=dict(color='pink', dash='solid'),
+                                    name='Distribution pump power /10',
+                                    yaxis = y_axis_power))
+        if 'dist-flow' in request.selected_channels and 'dist-flow' in channels:
+            power_plot = True
+            yf = [x/100 for x in channels['dist-flow']['values']]
+            fig.add_trace(go.Scatter(x=channels['dist-flow']['times'], y=yf, 
+                                    mode='lines', opacity=0.4,
+                                    line=dict(color='purple', dash='solid'),
+                                    name='Distribution flow',
+                                    yaxis = y_axis_power))
+            
+        if power_plot:
+            fig.update_layout(yaxis2=dict(title='Flow [GPM] or Power [W]', overlaying='y', side='right', showgrid=False, zeroline=False, range=[0,20]))
+
+        fig.update_layout(
+            legend=dict(
+                x=0,
+                y=1,
+                xanchor='left',
+                yanchor='top'
+            )
+        )
+
+        fig.update_layout(
+            xaxis=dict(
+                range=[min_time_ms_dt, max_time_ms_dt],
+                mirror=True,
+                ticks='outside',
+                showline=True,
+                linecolor='rgb(42,63,96)',
+                ),
+            yaxis=dict(
+                mirror=True,
+                ticks='outside',
+                showline=True,
+                linecolor='rgb(42,63,96)',
+                ),
+            yaxis2=dict(
+                mirror=True,
+                ticks='outside',
+                showline=True,
+                linecolor='rgb(42,63,96)',
+                ),
+            legend=dict(
+                x=0,
+                y=1,
+                xanchor='left',
+                yanchor='top'
+            )
+        )
+
+        fig.write_html("distribution.html")
+
+        # --------------------------------------
+        # PLOT 3
+        # --------------------------------------
+
+        fig = go.Figure()
+        fig.update_xaxes(showgrid=False)
+
+        fig.update_layout(
+            title=dict(text='Heat calls', x=0.5, xanchor='center'),
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)',
+            margin=dict(t=30, b=30),)
+
+        # Zone heat calls
+        num_zones = len(zones.keys())
         if 'zone_heat_calls' in request.selected_channels:
-            fig.update_yaxes(range=[0, 260])
-        fig.update_layout(yaxis=dict(title='Temperature [F]', zeroline=False))
-        fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
-        y_axis_power = 'y2'
-    else:
-        y_axis_power = 'y'
-        fig.update_layout(yaxis=dict('Power [kW]', zeroline=False))
-        fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
 
-    # Distribution pump power
-    power_plot = False   
-    if 'dist-pump-pwr'in request.selected_channels:
-        power_plot = True
-        yf = [x/10 for x in channels['dist-pump-pwr']['values']]
-        fig.add_trace(go.Scatter(x=channels['dist-pump-pwr']['times'], y=yf, 
-                                mode='lines', opacity=0.7,
-                                line=dict(color='pink', dash='solid'),
-                                name='Distribution pump power /10',
-                                yaxis = y_axis_power))
-    if 'dist-flow' in request.selected_channels and 'dist-flow' in channels:
-        power_plot = True
-        yf = [x/100 for x in channels['dist-flow']['values']]
-        fig.add_trace(go.Scatter(x=channels['dist-flow']['times'], y=yf, 
-                                mode='lines', opacity=0.4,
-                                line=dict(color='purple', dash='solid'),
-                                name='Distribution flow',
-                                yaxis = y_axis_power))
-        
-    if power_plot:
-        fig.update_layout(yaxis2=dict(title='Flow [GPM] or Power [W]', overlaying='y', side='right', showgrid=False, zeroline=False, range=[0,20]))
+            y_labels = []
 
-    fig.update_layout(
-        legend=dict(
-            x=0,
-            y=1,
-            xanchor='left',
-            yanchor='top'
-        )
-    )
+            for zone in zones:
+                for key in [x for x in zones[zone] if 'state' in x]:
 
-    fig.update_layout(
-        xaxis=dict(
-            range=[min_time_ms_dt, max_time_ms_dt],
-            mirror=True,
-            ticks='outside',
-            showline=True,
-            linecolor='rgb(42,63,96)',
-            ),
-        yaxis=dict(
-            mirror=True,
-            ticks='outside',
-            showline=True,
-            linecolor='rgb(42,63,96)',
-            ),
-        yaxis2=dict(
-            mirror=True,
-            ticks='outside',
-            showline=True,
-            linecolor='rgb(42,63,96)',
-            ),
-        legend=dict(
-            x=0,
-            y=1,
-            xanchor='left',
-            yanchor='top'
-        )
-    )
+                    y_labels.append(key)
+                    zone_colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
+                    zone_color = zone_colors[int(key[4])-1]
+            
+                    for i in range(len(channels[key]['values'])):
+                        if channels[key]['values'][i] == 1:
+                            y_start = int(key[4]) - 1
+                            y_end = int(key[4])
+                            x_value = channels[key]['times'][i]
 
-    fig.write_html("distribution.html")
-
-    # --------------------------------------
-    # PLOT 3
-    # --------------------------------------
-
-    fig = go.Figure()
-    fig.update_xaxes(showgrid=False)
-
-    fig.update_layout(
-        title=dict(text='Heat calls', x=0.5, xanchor='center'),
-        plot_bgcolor='rgba(0,0,0,0)',
-        paper_bgcolor='rgba(0,0,0,0)',
-        margin=dict(t=30, b=30),)
-
-    # Zone heat calls
-    num_zones = len(zones.keys())
-    if 'zone_heat_calls' in request.selected_channels:
-
-        y_labels = []
-
-        for zone in zones:
-            for key in [x for x in zones[zone] if 'state' in x]:
-
-                y_labels.append(key)
-                zone_colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
-                zone_color = zone_colors[int(key[4])-1]
-        
-                for i in range(len(channels[key]['values'])):
-                    if channels[key]['values'][i] == 1:
-                        y_start = int(key[4]) - 1
-                        y_end = int(key[4])
-                        x_value = channels[key]['times'][i]
-
-                        fig.add_trace(go.Scatter(
-                            x=[x_value, x_value],
-                            y=[y_start, y_end],
-                            mode='lines',
-                            line=dict(color=zone_color, width=2),
-                            showlegend=False,
-                        ))
-                
-                fig.add_trace(go.Scatter(
-                    x=[None], y=[None],
-                    mode='lines',
-                    line=dict(color=zone_color, width=2),
-                    name=key.replace('-state','')
-                ))
-
-                # fig.add_annotation(
-                #     x=min_time_ms_dt,
-                #     y=y_end - 0.5,
-                #     text=key,
-                #     showarrow=False,
-                #     font=dict(color=zone_color)  # Use the same color for the text
-                # )
-
-    # fig.update_yaxes(
-    #     tickvals=[i+0.5 for i in range(len(y_labels))],  # Tick positions
-    #     ticktext=list(y_labels),  # Labels
-    # )
-
-    fig.update_layout(yaxis=dict(zeroline=False))
-    fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGray', tickvals=list(range(num_zones+1)),)
-
-    fig.update_layout(
-        xaxis=dict(
-            range=[min_time_ms_dt, max_time_ms_dt],
-            mirror=True,
-            ticks='outside',
-            showline=True,
-            linecolor='rgb(42,63,96)',
-            ),
-        yaxis=dict(
-            range = [-0.5, num_zones*2],
-            mirror=True,
-            ticks='outside',
-            showline=True,
-            linecolor='rgb(42,63,96)',
-            ),
-        yaxis2=dict(
-            mirror=True,
-            ticks='outside',
-            showline=True,
-            linecolor='rgb(42,63,96)',
-            ),
-        legend=dict(
-            x=0,
-            y=1,
-            xanchor='left',
-            yanchor='top',
-        )
-    )
-
-    fig.write_html('heatcalls.html')
-
-    # --------------------------------------
-    # PLOT 4
-    # --------------------------------------
-
-    fig = go.Figure()
-    fig.update_xaxes(showgrid=False)
-
-    fig.update_layout(
-        title=dict(text='Zones', x=0.5, xanchor='center'),
-        plot_bgcolor='rgba(0,0,0,0)',
-        paper_bgcolor='rgba(0,0,0,0)',
-        margin=dict(t=30, b=30),)
-    
-    # zone_colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
-    # zone_color_by_number = {}
-    # for key in [x for x in zones[zone] if 'state' in x]:   
-    #     zone_color_by_number[int(key[4])] = zone_colors[int(key[4])-1]
-    
-    for zone in zones:
-        for temp in zones[zone]:
-            if 'temp' in temp:
-                fig.add_trace(go.Scatter(x=channels[temp]['times'], y=channels[temp]['values'], 
-                                mode='lines', opacity=0.7,
-                                line=dict(color=zone_colors[int(temp[4])-1], dash='solid'),
-                                name=temp.replace('-temp','')))
-            elif 'set' in temp:
-                fig.add_trace(go.Scatter(x=channels[temp]['times'], y=channels[temp]['values'], 
-                                mode='lines', opacity=0.7,
-                                line=dict(color=zone_colors[int(temp[4])-1], dash='dash'),
-                                showlegend=False))
-
-
-
-    fig.update_layout(yaxis=dict(zeroline=False))
-    fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
-
-    fig.update_layout(
-        xaxis=dict(
-            range=[min_time_ms_dt, max_time_ms_dt],
-            mirror=True,
-            ticks='outside',
-            showline=True,
-            linecolor='rgb(42,63,96)',
-            ),
-        yaxis=dict(
-            range = [50, 80],
-            mirror=True,
-            ticks='outside',
-            showline=True,
-            linecolor='rgb(42,63,96)',
-            ),
-        legend=dict(
-            x=0,
-            y=1,
-            xanchor='left',
-            yanchor='top',
-        )
-    )
-
-    fig.write_html('zones.html')
-
-    # --------------------------------------
-    # PLOT 5
-    # --------------------------------------
-
-
-
-
-    # ax[2].set_title('Zones')
-    # ax22 = ax[2].twinx()
-
-    # colors = {}
-    # for zone in zones:
-    #     for temp in zones[zone]:
-    #         if 'temp' in temp:
-    #             color = ax[2].plot(channels[temp]['times'], channels[temp]['values'], line_style, label=temp, alpha=0.7)[0].get_color()
-    #             colors[temp] = color
-    #         elif 'set' in temp:
-    #             base_temp = temp.replace('-set', '-temp')
-    #             if base_temp in colors:
-    #                 ax22.plot(channels[temp]['times'], channels[temp]['values'], '-'+line_style, label=temp, 
-    #                             color=colors[base_temp], alpha=0.7)
+                            fig.add_trace(go.Scatter(
+                                x=[x_value, x_value],
+                                y=[y_start, y_end],
+                                mode='lines',
+                                line=dict(color=zone_color, width=2),
+                                showlegend=False,
+                            ))
                     
-    # ax[2].set_ylabel('Temperature [F]')
-    # ax22.set_yticks([])
-    # lower_bound = min(ax[2].get_ylim()[0], ax22.get_ylim()[0]) - 5
-    # upper_bound = max(ax[2].get_ylim()[1], ax22.get_ylim()[1]) + 15
-    # ax[2].set_ylim([lower_bound, upper_bound])
-    # ax22.set_ylim([lower_bound, upper_bound])
-    # legend = ax[2].legend(loc='upper left', fontsize=9)
-    # legend.get_frame().set_facecolor('none')
-    # legend = ax22.legend(loc='upper right', fontsize=9)
-    # legend.get_frame().set_facecolor('none')
+                    fig.add_trace(go.Scatter(
+                        x=[None], y=[None],
+                        mode='lines',
+                        line=dict(color=zone_color, width=2),
+                        name=key.replace('-state','')
+                    ))
+
+                    # fig.add_annotation(
+                    #     x=min_time_ms_dt,
+                    #     y=y_end - 0.5,
+                    #     text=key,
+                    #     showarrow=False,
+                    #     font=dict(color=zone_color)  # Use the same color for the text
+                    # )
+
+        # fig.update_yaxes(
+        #     tickvals=[i+0.5 for i in range(len(y_labels))],  # Tick positions
+        #     ticktext=list(y_labels),  # Labels
+        # )
+
+        fig.update_layout(yaxis=dict(zeroline=False))
+        fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGray', tickvals=list(range(num_zones+1)),)
+
+        fig.update_layout(
+            xaxis=dict(
+                range=[min_time_ms_dt, max_time_ms_dt],
+                mirror=True,
+                ticks='outside',
+                showline=True,
+                linecolor='rgb(42,63,96)',
+                ),
+            yaxis=dict(
+                range = [-0.5, num_zones*2],
+                mirror=True,
+                ticks='outside',
+                showline=True,
+                linecolor='rgb(42,63,96)',
+                ),
+            yaxis2=dict(
+                mirror=True,
+                ticks='outside',
+                showline=True,
+                linecolor='rgb(42,63,96)',
+                ),
+            legend=dict(
+                x=0,
+                y=1,
+                xanchor='left',
+                yanchor='top',
+            )
+        )
+
+        fig.write_html('heatcalls.html')
+
+        # --------------------------------------
+        # PLOT 4
+        # --------------------------------------
+
+        fig = go.Figure()
+        fig.update_xaxes(showgrid=False)
+
+        fig.update_layout(
+            title=dict(text='Zones', x=0.5, xanchor='center'),
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)',
+            margin=dict(t=30, b=30),)
+        
+        # zone_colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
+        # zone_color_by_number = {}
+        # for key in [x for x in zones[zone] if 'state' in x]:   
+        #     zone_color_by_number[int(key[4])] = zone_colors[int(key[4])-1]
+        
+        for zone in zones:
+            for temp in zones[zone]:
+                if 'temp' in temp:
+                    fig.add_trace(go.Scatter(x=channels[temp]['times'], y=channels[temp]['values'], 
+                                    mode='lines', opacity=0.7,
+                                    line=dict(color=zone_colors[int(temp[4])-1], dash='solid'),
+                                    name=temp.replace('-temp','')))
+                elif 'set' in temp:
+                    fig.add_trace(go.Scatter(x=channels[temp]['times'], y=channels[temp]['values'], 
+                                    mode='lines', opacity=0.7,
+                                    line=dict(color=zone_colors[int(temp[4])-1], dash='dash'),
+                                    showlegend=False))
+
+
+
+        fig.update_layout(yaxis=dict(zeroline=False))
+        fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
+
+        fig.update_layout(
+            xaxis=dict(
+                range=[min_time_ms_dt, max_time_ms_dt],
+                mirror=True,
+                ticks='outside',
+                showline=True,
+                linecolor='rgb(42,63,96)',
+                ),
+            yaxis=dict(
+                range = [50, 80],
+                mirror=True,
+                ticks='outside',
+                showline=True,
+                linecolor='rgb(42,63,96)',
+                ),
+            legend=dict(
+                x=0,
+                y=1,
+                xanchor='left',
+                yanchor='top',
+            )
+        )
+
+        fig.write_html('zones.html')
+
+        # --------------------------------------
+        # PLOT 5
+        # --------------------------------------
+
+
+
+
+        # ax[2].set_title('Zones')
+        # ax22 = ax[2].twinx()
+
+        # colors = {}
+        # for zone in zones:
+        #     for temp in zones[zone]:
+        #         if 'temp' in temp:
+        #             color = ax[2].plot(channels[temp]['times'], channels[temp]['values'], line_style, label=temp, alpha=0.7)[0].get_color()
+        #             colors[temp] = color
+        #         elif 'set' in temp:
+        #             base_temp = temp.replace('-set', '-temp')
+        #             if base_temp in colors:
+        #                 ax22.plot(channels[temp]['times'], channels[temp]['values'], '-'+line_style, label=temp, 
+        #                             color=colors[base_temp], alpha=0.7)
+                        
+        # ax[2].set_ylabel('Temperature [F]')
+        # ax22.set_yticks([])
+        # lower_bound = min(ax[2].get_ylim()[0], ax22.get_ylim()[0]) - 5
+        # upper_bound = max(ax[2].get_ylim()[1], ax22.get_ylim()[1]) + 15
+        # ax[2].set_ylim([lower_bound, upper_bound])
+        # ax22.set_ylim([lower_bound, upper_bound])
+        # legend = ax[2].legend(loc='upper left', fontsize=9)
+        # legend.get_frame().set_facecolor('none')
+        # legend = ax22.legend(loc='upper right', fontsize=9)
+        # legend.get_frame().set_facecolor('none')
 
 
 
