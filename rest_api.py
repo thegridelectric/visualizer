@@ -385,7 +385,9 @@ async def get_plots(request: DataRequest):
             )
         )
 
-        fig.write_html(f"heatpump_{request.house_alias}.html")
+        html_buf1 = io.StringIO()
+        fig.write_html(html_buf1)
+        html_buf1.seek(0)
 
         # --------------------------------------
         # PLOT 2
@@ -487,7 +489,9 @@ async def get_plots(request: DataRequest):
             )
         )
 
-        fig.write_html(f"distribution_{request.house_alias}.html")
+        html_buf2 = io.StringIO()
+        fig.write_html(html_buf2)
+        html_buf2.seek(0) 
 
         # --------------------------------------
         # PLOT 3
@@ -581,7 +585,9 @@ async def get_plots(request: DataRequest):
             )
         )
 
-        fig.write_html(f'heatcalls_{request.house_alias}.html')
+        html_buf3 = io.StringIO()
+        fig.write_html(html_buf3)
+        html_buf3.seek(0)
 
         # --------------------------------------
         # PLOT 4
@@ -642,7 +648,9 @@ async def get_plots(request: DataRequest):
             )
         )
 
-        fig.write_html(f'zones_{request.house_alias}.html')
+        html_buf4 = io.StringIO()
+        fig.write_html(html_buf4)
+        html_buf4.seek(0)
 
         # --------------------------------------
         # PLOT 5
@@ -988,14 +996,10 @@ async def get_plots(request: DataRequest):
 
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
-        with open(f'heatpump_{request.house_alias}.html', 'rb') as html_file:
-            zip_file.writestr('plot1.html', html_file.read())
-        with open(f'distribution_{request.house_alias}.html', 'rb') as html_file:
-            zip_file.writestr('plot2.html', html_file.read())
-        with open(f'heatcalls_{request.house_alias}.html', 'rb') as html_file:
-            zip_file.writestr('plot3.html', html_file.read())
-        with open(f'zones_{request.house_alias}.html', 'rb') as html_file:
-            zip_file.writestr('plot4.html', html_file.read())
+        zip_file.writestr('plot1.html', html_buf1.read())
+        zip_file.writestr('plot2.html', html_buf2.read())
+        zip_file.writestr('plot3.html', html_buf3.read())
+        zip_file.writestr('plot4.html', html_buf4.read())
         if MATPLOTLIB_PLOT:
             zip_file.writestr(f'plot.png', img_buf.getvalue())
 
