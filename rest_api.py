@@ -667,11 +667,16 @@ async def get_plots(request: DataRequest):
             paper_bgcolor='rgba(0,0,0,0)',
             margin=dict(t=30, b=30)
             )
+        
+        min_buffer_temp = 1e5
+        max_buffer_temp = 0
 
         if 'buffer-depths' in request.selected_channels:
             buffer_channels = sorted([key for key in channels.keys() if 'buffer-depth' in key and 'micro-v' not in key])
             for buffer_channel in buffer_channels:
                 yf = [to_fahrenheit(x/1000) for x in channels[buffer_channel]['values']]
+                min_buffer_temp = min(min_buffer_temp, min(yf))
+                max_buffer_temp = max(max_buffer_temp, max(yf))
                 fig.add_trace(
                     go.Scatter(x=channels[buffer_channel]['times'], y=yf, 
                     mode='lines', opacity=0.7,
@@ -682,6 +687,8 @@ async def get_plots(request: DataRequest):
         if not buffer_channels:
             if 'buffer-hot-pipe' in request.selected_channels:
                 yf = [to_fahrenheit(x/1000) for x in channels['buffer-hot-pipe']['values']]
+                min_buffer_temp = min(min_buffer_temp, min(yf))
+                max_buffer_temp = max(max_buffer_temp, max(yf))
                 fig.add_trace(
                     go.Scatter(x=channels['buffer-hot-pipe']['times'], y=yf, 
                     mode='lines', opacity=0.7,
@@ -690,14 +697,14 @@ async def get_plots(request: DataRequest):
                     )
             if 'buffer-cold-pipe' in request.selected_channels:
                 yf = [to_fahrenheit(x/1000) for x in channels['buffer-cold-pipe']['values']]
+                min_buffer_temp = min(min_buffer_temp, min(yf))
+                max_buffer_temp = max(max_buffer_temp, max(yf))
                 fig.add_trace(
                     go.Scatter(x=channels['buffer-cold-pipe']['times'], y=yf, 
                     mode='lines', opacity=0.7,
                     name='Cold pipe',
                     line=dict(color='#1f77b4', dash='solid'))
                     )
-                
-        fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
                 
         fig.update_layout(yaxis=dict(title='Temperature [F]', zeroline=False))
         fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
@@ -711,7 +718,7 @@ async def get_plots(request: DataRequest):
                 linecolor='rgb(42,63,96)',
                 ),
             yaxis=dict(
-                range = [45, 200],
+                range = [min_buffer_temp-15, max_buffer_temp+30],
                 mirror=True,
                 ticks='outside',
                 showline=True,
@@ -746,6 +753,8 @@ async def get_plots(request: DataRequest):
         
         # Temperature
         temp_plot = False
+        min_store_temp = 1e5
+        max_store_temp = 0
         tank_channels = []
 
         if 'storage-depths' in request.selected_channels:
@@ -753,6 +762,8 @@ async def get_plots(request: DataRequest):
             tank_channels = sorted([key for key in channels.keys() if 'tank' in key and 'micro-v' not in key])
             for tank_channel in tank_channels:
                 yf = [to_fahrenheit(x/1000) for x in channels[tank_channel]['values']]
+                min_store_temp = min(min_store_temp, min(yf))
+                max_store_temp = max(max_store_temp, max(yf))
                 fig.add_trace(
                     go.Scatter(x=channels[tank_channel]['times'], y=yf, 
                     mode='lines', opacity=0.7,
@@ -764,6 +775,8 @@ async def get_plots(request: DataRequest):
             if 'store-hot-pipe' in request.selected_channels:
                 temp_plot = True
                 yf = [to_fahrenheit(x/1000) for x in channels['store-hot-pipe']['values']]
+                min_store_temp = min(min_store_temp, min(yf))
+                max_store_temp = max(max_store_temp, max(yf))
                 fig.add_trace(
                     go.Scatter(x=channels['store-hot-pipe']['times'], y=yf, 
                     mode='lines', opacity=0.7,
@@ -773,6 +786,8 @@ async def get_plots(request: DataRequest):
             if 'store-cold-pipe' in request.selected_channels:
                 temp_plot = True
                 yf = [to_fahrenheit(x/1000) for x in channels['store-cold-pipe']['values']]
+                min_store_temp = min(min_store_temp, min(yf))
+                max_store_temp = max(max_store_temp, max(yf))
                 fig.add_trace(
                     go.Scatter(x=channels['store-cold-pipe']['times'], y=yf, 
                     mode='lines', opacity=0.7,
@@ -781,8 +796,8 @@ async def get_plots(request: DataRequest):
                     )
 
         if temp_plot:
-            if 'store-pump-pwr' in request.selected_channels:
-                fig.update_yaxes(range=[0, 260])
+            if 'store-pump-pwr' not in request.selected_channels:
+                fig.update_yaxes(range=[min_store_temp-10, max_store_temp+20])
             fig.update_layout(yaxis=dict(title='Temperature [F]', zeroline=False))
             y_axis_power = 'y2'
             fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
@@ -802,6 +817,7 @@ async def get_plots(request: DataRequest):
                                     yaxis=y_axis_power))
 
         if power_plot:
+            fig.update_yaxes(range=[min_store_temp-20, max_store_temp+20])
             fig.update_layout(yaxis2=dict(title='Power [kW]', 
                                           overlaying='y', side='right', showgrid=False, 
                                           zeroline=False, range=[-1, 40]))
@@ -817,7 +833,6 @@ async def get_plots(request: DataRequest):
                 linecolor='rgb(42,63,96)',
                 ),
             yaxis=dict(
-                range = [45, 200],
                 mirror=True,
                 ticks='outside',
                 showline=True,
