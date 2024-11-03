@@ -119,11 +119,15 @@
                     const plotsDiv2 = document.getElementById('Plot2');
                     const plotsDiv3 = document.getElementById('Plot3');
                     const plotsDiv4 = document.getElementById('Plot4');
+                    const plotsDiv5 = document.getElementById('Plot5');
+                    const plotsDiv6 = document.getElementById('Plot6');
                     const plotsDivPng = document.getElementById('PlotPng');
                     plotsDiv1.innerHTML = '';
                     plotsDiv2.innerHTML = '';
                     plotsDiv3.innerHTML = '';
                     plotsDiv4.innerHTML = '';
+                    plotsDiv5.innerHTML = '';
+                    plotsDiv6.innerHTML = '';
                     plotsDivPng.innerHTML = '';
 
                     let iframeCount = 0; // Counter for iframes
@@ -138,7 +142,7 @@
                             iframe.src = htmlUrl;
                             iframe.style.width = '90%';
                             iframe.style.maxWidth = '1500px';
-                            iframe.style.height = '350px';
+                            iframe.style.height = '400px';
                             iframe.style.border = 'none';
                             if (iframeCount === 0) {
                                 plotsDiv1.appendChild(iframe);
@@ -149,6 +153,10 @@
                                 plotsDiv3.appendChild(iframe);
                             } else if (iframeCount === 3) {
                                 plotsDiv4.appendChild(iframe);
+                            } else if (iframeCount === 4) {
+                                plotsDiv5.appendChild(iframe);
+                            } else if (iframeCount === 5) {
+                                plotsDiv6.appendChild(iframe);
                             }
                             iframeCount++;
                         } else if (filename.endsWith('.png')) {
@@ -288,13 +296,13 @@
             font-family: 'Montserrat';
         }
 
-        #PlotPng, #Plot1, #Plot2, #Plot3, #Plot4 {
+        #PlotPng, #Plot1, #Plot2, #Plot3, #Plot4, #Plot5, #Plot6 {
             display: flex;
             justify-content: center;
             /* margin-top: 10px; */
         }
 
-        #PlotPng img, #Plot1 img, #Plot2 img, #Plot3 img {
+        #PlotPng img, #Plot1 img, #Plot2 img, #Plot3 img, #Plot4 img, #Plot5 img {
             width: 100%;
             max-width: 1100px;
             height: auto;
@@ -472,6 +480,8 @@
         <div id="Plot2"></div>
         <div id="Plot3"></div>
         <div id="Plot4"></div>
+        <div id="Plot5"></div>
+        <div id="Plot6"></div>
         <div id="PlotPng"></div>
     </div>
 </body>

@@ -21,7 +21,7 @@ import time
 
 channels = {}
 request_global = None
-MATPLOTLIB_PLOT = True
+MATPLOTLIB_PLOT = False
 PYPLOT_PLOT = True
 
 settings = Settings(_env_file=dotenv.find_dotenv())
@@ -58,6 +58,10 @@ class CsvRequest(BaseModel):
 def to_fahrenheit(t):
     return t*9/5+32
 
+def rgba_to_hex(rgba):
+    r, g, b, a = (int(c * 255) for c in rgba)
+    return f'#{r:02x}{g:02x}{b:02x}'
+
 gradient = plt.get_cmap('coolwarm', 4)
 buffer_colors = {
     'buffer-depth1': gradient(3),
@@ -65,6 +69,7 @@ buffer_colors = {
     'buffer-depth3': gradient(1),
     'buffer-depth4': gradient(0)
     }
+buffer_colors_hex = {key: rgba_to_hex(value) for key, value in buffer_colors.items()}
 
 gradient = plt.get_cmap('coolwarm', 12)
 storage_colors = {
@@ -81,6 +86,7 @@ storage_colors = {
     'tank3-depth3': gradient(1),
     'tank3-depth4': gradient(0),
     }
+storage_colors_hex = {key: rgba_to_hex(value) for key, value in storage_colors.items()}
 
 @app.post('/csv')
 async def get_csv(request: CsvRequest):
@@ -582,6 +588,7 @@ async def get_plots(request: DataRequest):
                 y=1,
                 xanchor='left',
                 yanchor='top',
+                # orientation='h'
             )
         )
 
@@ -601,12 +608,7 @@ async def get_plots(request: DataRequest):
             plot_bgcolor='rgba(0,0,0,0)',
             paper_bgcolor='rgba(0,0,0,0)',
             margin=dict(t=30, b=30),)
-        
-        # zone_colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
-        # zone_color_by_number = {}
-        # for key in [x for x in zones[zone] if 'state' in x]:   
-        #     zone_color_by_number[int(key[4])] = zone_colors[int(key[4])-1]
-        
+                
         for zone in zones:
             for temp in zones[zone]:
                 if 'temp' in temp:
@@ -618,9 +620,8 @@ async def get_plots(request: DataRequest):
                     fig.add_trace(go.Scatter(x=channels[temp]['times'], y=channels[temp]['values'], 
                                     mode='lines', opacity=0.7,
                                     line=dict(color=zone_colors[int(temp[4])-1], dash='dash'),
+                                    name=temp.replace('-set',''),
                                     showlegend=False))
-
-
 
         fig.update_layout(yaxis=dict(zeroline=False))
         fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
@@ -634,7 +635,7 @@ async def get_plots(request: DataRequest):
                 linecolor='rgb(42,63,96)',
                 ),
             yaxis=dict(
-                range = [50, 80],
+                range = [45, 80],
                 mirror=True,
                 ticks='outside',
                 showline=True,
@@ -645,6 +646,7 @@ async def get_plots(request: DataRequest):
                 y=1,
                 xanchor='left',
                 yanchor='top',
+                orientation='h'
             )
         )
 
@@ -656,45 +658,183 @@ async def get_plots(request: DataRequest):
         # PLOT 5
         # --------------------------------------
 
+        fig = go.Figure()
+        fig.update_xaxes(showgrid=False)
 
+        fig.update_layout(
+            title=dict(text='Buffer', x=0.5, xanchor='center'),
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)',
+            margin=dict(t=30, b=30)
+            )
 
+        if 'buffer-depths' in request.selected_channels:
+            buffer_channels = sorted([key for key in channels.keys() if 'buffer-depth' in key and 'micro-v' not in key])
+            for buffer_channel in buffer_channels:
+                yf = [to_fahrenheit(x/1000) for x in channels[buffer_channel]['values']]
+                fig.add_trace(
+                    go.Scatter(x=channels[buffer_channel]['times'], y=yf, 
+                    mode='lines', opacity=0.7,
+                    name=buffer_channel.replace('buffer-',''),
+                    line=dict(color=buffer_colors_hex[buffer_channel], dash='solid'))
+                    )
+        
+        if not buffer_channels:
+            if 'buffer-hot-pipe' in request.selected_channels:
+                yf = [to_fahrenheit(x/1000) for x in channels['buffer-hot-pipe']['values']]
+                fig.add_trace(
+                    go.Scatter(x=channels['buffer-hot-pipe']['times'], y=yf, 
+                    mode='lines', opacity=0.7,
+                    name='Hot pipe',
+                    line=dict(color='#2ca02c', dash='solid'))
+                    )
+            if 'buffer-cold-pipe' in request.selected_channels:
+                yf = [to_fahrenheit(x/1000) for x in channels['buffer-cold-pipe']['values']]
+                fig.add_trace(
+                    go.Scatter(x=channels['buffer-cold-pipe']['times'], y=yf, 
+                    mode='lines', opacity=0.7,
+                    name='Cold pipe',
+                    line=dict(color='#1f77b4', dash='solid'))
+                    )
+                
+        fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
+                
+        fig.update_layout(yaxis=dict(title='Temperature [F]', zeroline=False))
+        fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
 
-        # ax[2].set_title('Zones')
-        # ax22 = ax[2].twinx()
+        fig.update_layout(
+            xaxis=dict(
+                range=[min_time_ms_dt, max_time_ms_dt],
+                mirror=True,
+                ticks='outside',
+                showline=True,
+                linecolor='rgb(42,63,96)',
+                ),
+            yaxis=dict(
+                range = [45, 200],
+                mirror=True,
+                ticks='outside',
+                showline=True,
+                linecolor='rgb(42,63,96)',
+                ),
+            legend=dict(
+                x=0,
+                y=1,
+                xanchor='left',
+                yanchor='top',
+                orientation='h'
+            )
+        )
 
-        # colors = {}
-        # for zone in zones:
-        #     for temp in zones[zone]:
-        #         if 'temp' in temp:
-        #             color = ax[2].plot(channels[temp]['times'], channels[temp]['values'], line_style, label=temp, alpha=0.7)[0].get_color()
-        #             colors[temp] = color
-        #         elif 'set' in temp:
-        #             base_temp = temp.replace('-set', '-temp')
-        #             if base_temp in colors:
-        #                 ax22.plot(channels[temp]['times'], channels[temp]['values'], '-'+line_style, label=temp, 
-        #                             color=colors[base_temp], alpha=0.7)
-                        
-        # ax[2].set_ylabel('Temperature [F]')
-        # ax22.set_yticks([])
-        # lower_bound = min(ax[2].get_ylim()[0], ax22.get_ylim()[0]) - 5
-        # upper_bound = max(ax[2].get_ylim()[1], ax22.get_ylim()[1]) + 15
-        # ax[2].set_ylim([lower_bound, upper_bound])
-        # ax22.set_ylim([lower_bound, upper_bound])
-        # legend = ax[2].legend(loc='upper left', fontsize=9)
-        # legend.get_frame().set_facecolor('none')
-        # legend = ax22.legend(loc='upper right', fontsize=9)
-        # legend.get_frame().set_facecolor('none')
+        html_buf5 = io.StringIO()
+        fig.write_html(html_buf5)
+        html_buf5.seek(0)
 
+        # --------------------------------------
+        # PLOT 6
+        # --------------------------------------
 
+        fig = go.Figure()
+        fig.update_xaxes(showgrid=False)
 
+        fig.update_layout(
+            title=dict(text='Storage', x=0.5, xanchor='center'),
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)',
+            margin=dict(t=30, b=30)
+            )
+        
+        # Temperature
+        temp_plot = False
+        tank_channels = []
 
+        if 'storage-depths' in request.selected_channels:
+            temp_plot = True
+            tank_channels = sorted([key for key in channels.keys() if 'tank' in key and 'micro-v' not in key])
+            for tank_channel in tank_channels:
+                yf = [to_fahrenheit(x/1000) for x in channels[tank_channel]['values']]
+                fig.add_trace(
+                    go.Scatter(x=channels[tank_channel]['times'], y=yf, 
+                    mode='lines', opacity=0.7,
+                    name=tank_channel.replace('storage-',''),
+                    line=dict(color=storage_colors_hex[tank_channel], dash='solid'))
+                    )
+        
+        if not tank_channels:
+            if 'store-hot-pipe' in request.selected_channels:
+                temp_plot = True
+                yf = [to_fahrenheit(x/1000) for x in channels['store-hot-pipe']['values']]
+                fig.add_trace(
+                    go.Scatter(x=channels['store-hot-pipe']['times'], y=yf, 
+                    mode='lines', opacity=0.7,
+                    name='Hot pipe',
+                    line=dict(color='#2ca02c', dash='solid'))
+                    )
+            if 'store-cold-pipe' in request.selected_channels:
+                temp_plot = True
+                yf = [to_fahrenheit(x/1000) for x in channels['store-cold-pipe']['values']]
+                fig.add_trace(
+                    go.Scatter(x=channels['store-cold-pipe']['times'], y=yf, 
+                    mode='lines', opacity=0.7,
+                    name='Cold pipe',
+                    line=dict(color='#1f77b4', dash='solid'))
+                    )
 
+        if temp_plot:
+            if 'store-pump-pwr' in request.selected_channels:
+                fig.update_yaxes(range=[0, 260])
+            fig.update_layout(yaxis=dict(title='Temperature [F]', zeroline=False))
+            y_axis_power = 'y2'
+            fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
+        else:
+            y_axis_power = 'y'
+            fig.update_layout(yaxis=dict(title='Power [kW]', zeroline=False))
 
-    
+        # Power
+        power_plot = False
+        if 'store-pump-pwr' in request.selected_channels:
+            power_plot = True
+            yf = [x/10 for x in channels['store-pump-pwr']['values']]
+            fig.add_trace(go.Scatter(x=channels['store-pump-pwr']['times'], y=yf, 
+                                    mode='lines', opacity=0.7,
+                                    line=dict(color='#2ca02c', dash='solid'),
+                                    name='Storage pump power x100',
+                                    yaxis=y_axis_power))
 
+        if power_plot:
+            fig.update_layout(yaxis2=dict(title='Power [kW]', 
+                                          overlaying='y', side='right', showgrid=False, 
+                                          zeroline=False, range=[-1, 40]))
+            if not temp_plot:
+                fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
 
+        fig.update_layout(
+            xaxis=dict(
+                range=[min_time_ms_dt, max_time_ms_dt],
+                mirror=True,
+                ticks='outside',
+                showline=True,
+                linecolor='rgb(42,63,96)',
+                ),
+            yaxis=dict(
+                range = [45, 200],
+                mirror=True,
+                ticks='outside',
+                showline=True,
+                linecolor='rgb(42,63,96)',
+                ),
+            legend=dict(
+                x=0,
+                y=1,
+                xanchor='left',
+                yanchor='top',
+                orientation='h'
+            )
+        )
 
-
+        html_buf6 = io.StringIO()
+        fig.write_html(html_buf6)
+        html_buf6.seek(0)      
 
     if MATPLOTLIB_PLOT:
         fig, ax = plt.subplots(5,1, figsize=(12,22), sharex=True)
@@ -996,10 +1136,13 @@ async def get_plots(request: DataRequest):
 
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
-        zip_file.writestr('plot1.html', html_buf1.read())
-        zip_file.writestr('plot2.html', html_buf2.read())
-        zip_file.writestr('plot3.html', html_buf3.read())
-        zip_file.writestr('plot4.html', html_buf4.read())
+        if PYPLOT_PLOT:
+            zip_file.writestr('plot1.html', html_buf1.read())
+            zip_file.writestr('plot2.html', html_buf2.read())
+            zip_file.writestr('plot3.html', html_buf3.read())
+            zip_file.writestr('plot4.html', html_buf4.read())
+            zip_file.writestr('plot5.html', html_buf5.read())
+            zip_file.writestr('plot6.html', html_buf6.read())
         if MATPLOTLIB_PLOT:
             zip_file.writestr(f'plot.png', img_buf.getvalue())
 
