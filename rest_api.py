@@ -101,6 +101,8 @@ zone_colors_hex = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
 
 def get_data(request):
 
+    error_msg = ''
+
     if request.password != valid_password:
         with open('failed_logins.log', 'a') as log_file:
             log_entry = f"{pendulum.now()} - Failed login from {request.ip_address} with password: {request.password}\n"
@@ -110,21 +112,21 @@ def get_data(request):
             "success": False, 
             "message": "Wrong password.", 
             "reload":True
-            }
+            }, 0, 0, 0, 0
     
     if request.house_alias == '':
         return {
             "success": False, 
             "message": "Please enter a house alias.", 
             "reload": True
-            }
+            }, 0, 0, 0, 0
     
     if (request.end_ms - request.start_ms)/1000/60/60/24 > 31:
         return {
             "success": False,
             "message": "The time difference between the start and end date exceeds the authorized limit (31 days).", 
             "reload":False
-            }
+            }, 0, 0, 0, 0
 
     session = Session()
 
@@ -143,7 +145,7 @@ def get_data(request):
             "success": False, 
             "message": f"No data found for house '{request.house_alias}' in the selected timeframe.", 
             "reload":False
-            }
+            }, 0, 0, 0, 0
     
     channels = {}
     for message in messages:
@@ -204,7 +206,7 @@ def get_data(request):
     min_time_ms_dt = min_time_ms_dt.tz_convert('America/New_York').replace(tzinfo=None)
     max_time_ms_dt = max_time_ms_dt.tz_convert('America/New_York').replace(tzinfo=None)
 
-    return channels, zones, min_time_ms_dt, max_time_ms_dt
+    return error_msg, channels, zones, min_time_ms_dt, max_time_ms_dt
 
 # ------------------------------
 # Export as CSV
@@ -213,7 +215,10 @@ def get_data(request):
 @app.post('/csv')
 async def get_csv(request: CsvRequest):
 
-    channels, _, __, ___ = get_data(request)
+    error_msg, channels, _, __, ___ = get_data(request)
+
+    if error_msg != '':
+        return error_msg
 
     if 'all-data' in request.selected_channels:
         channels_to_export = channels.keys()
