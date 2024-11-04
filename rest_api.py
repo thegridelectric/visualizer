@@ -287,8 +287,11 @@ async def get_csv(request: CsvRequest):
 @app.post('/plots')
 async def get_plots(request: DataRequest):
 
-    channels, zones, min_time_ms_dt, max_time_ms_dt = get_data(request)
+    error_msg, channels, zones, min_time_ms_dt, max_time_ms_dt = get_data(request)
     zone_colors_hex = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']*200
+
+    if error_msg != '':
+        return error_msg
 
     if PYPLOT_PLOT:
 
