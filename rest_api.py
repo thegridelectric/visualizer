@@ -101,8 +101,6 @@ zone_colors_hex = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
 
 def get_data(request):
 
-    error_msg = ''
-
     if request.password != valid_password:
         with open('failed_logins.log', 'a') as log_file:
             log_entry = f"{pendulum.now()} - Failed login from {request.ip_address} with password: {request.password}\n"
@@ -206,7 +204,7 @@ def get_data(request):
     min_time_ms_dt = min_time_ms_dt.tz_convert('America/New_York').replace(tzinfo=None)
     max_time_ms_dt = max_time_ms_dt.tz_convert('America/New_York').replace(tzinfo=None)
 
-    return error_msg, channels, zones, min_time_ms_dt, max_time_ms_dt
+    return "", channels, zones, min_time_ms_dt, max_time_ms_dt
 
 # ------------------------------
 # Export as CSV
