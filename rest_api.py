@@ -283,6 +283,7 @@ async def get_csv(request: CsvRequest):
 async def get_plots(request: DataRequest):
 
     channels, zones, min_time_ms_dt, max_time_ms_dt = get_data(request)
+    zone_colors_hex = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']*200
 
     if PYPLOT_PLOT:
 
@@ -655,6 +656,8 @@ async def get_plots(request: DataRequest):
                             showlegend=False
                             )
                         )
+        
+        fig.update_layout(yaxis=dict(title='Temperature [F]'))
 
         fig.update_layout(
             title=dict(text='Zones', x=0.5, xanchor='center'),
@@ -902,12 +905,20 @@ async def get_plots(request: DataRequest):
                 ticks='outside',
                 showline=True,
                 linecolor='rgb(42,63,96)',
-                overlaying='y', 
-                side='right', 
                 zeroline=False,
                 showgrid=True, 
                 gridwidth=1, 
                 gridcolor='LightGray'
+                ),
+            yaxis2=dict(
+                mirror=True,
+                ticks='outside',
+                showline=True,
+                linecolor='rgb(42,63,96)',
+                overlaying='y', 
+                side='right', 
+                zeroline=False,
+                showgrid=False, 
                 ),
             legend=dict(
                 x=0,
@@ -920,7 +931,90 @@ async def get_plots(request: DataRequest):
 
         html_buffer6 = io.StringIO()
         fig.write_html(html_buffer6)
-        html_buffer6.seek(0)      
+        html_buffer6.seek(0)     
+
+        # --------------------------------------
+        # PLOT 7: Pico activity
+        # --------------------------------------
+
+        # fig = go.Figure()
+        # bar_height = 0
+
+        # for key in channels:
+
+        #     if not (('depth' in key and 'micro' not in key)
+        #         or ('flow' in key and 'hz' not in key)):
+        #             continue
+
+        #     print(key)
+        
+        #     bar_height+=1
+        #     zone_color = zone_colors_hex[bar_height-1]
+
+        #     for i in range(len(channels[key]['values'])):
+        #         fig.add_trace(
+        #             go.Scatter(
+        #                 x=[channels[key]['times'][i], channels[key]['times'][i]],
+        #                 y=[bar_height-1, bar_height],
+        #                 mode='lines',
+        #                 line=dict(color=zone_color, width=2),
+        #                 name=key,
+        #                 showlegend=False,
+        #             )
+        #         )
+        #     fig.add_trace(
+        #         go.Scatter(
+        #             x=[None], 
+        #             y=[None],
+        #             mode='lines',
+        #             line=dict(color=zone_color, width=2),
+        #             name=key
+        #         )
+        #         )
+
+        # fig.update_layout(
+        #     title=dict(text='Heat calls', x=0.5, xanchor='center'),
+        #     plot_bgcolor='rgba(0,0,0,0)',
+        #     paper_bgcolor='rgba(0,0,0,0)',
+        #     margin=dict(t=30, b=30),
+        #     xaxis=dict(
+        #         range=[min_time_ms_dt, max_time_ms_dt],
+        #         mirror=True,
+        #         ticks='outside',
+        #         showline=True,
+        #         linecolor='rgb(42,63,96)',
+        #         showgrid=False
+        #         ),
+        #     yaxis=dict(
+        #         range=[-0.5, 1.2*len(channels)],
+        #         mirror=True,
+        #         ticks='outside',
+        #         showline=True,
+        #         linecolor='rgb(42,63,96)',
+        #         zeroline=False,
+        #         showgrid=True, 
+        #         gridwidth=1, 
+        #         gridcolor='LightGray', 
+        #         tickvals=list(range(len(channels)+1)),
+        #         ),
+        #     yaxis2=dict(
+        #         mirror=True,
+        #         ticks='outside',
+        #         showline=True,
+        #         linecolor='rgb(42,63,96)',
+        #         ),
+        #     legend=dict(
+        #         x=0,
+        #         y=1,
+        #         xanchor='left',
+        #         yanchor='top',
+        #         orientation='h'
+        #     )
+        # )
+
+        # html_buffer7 = io.StringIO()
+        # fig.write_html(html_buffer7)
+        # html_buffer7.seek(0) 
 
 
     # if MATPLOTLIB_PLOT:
@@ -1230,6 +1324,7 @@ async def get_plots(request: DataRequest):
             zip_file.writestr('plot4.html', html_buffer4.read())
             zip_file.writestr('plot5.html', html_buffer5.read())
             zip_file.writestr('plot6.html', html_buffer6.read())
+            # zip_file.writestr('plot7.html', html_buffer7.read())
         # if MATPLOTLIB_PLOT:
         #     zip_file.writestr(f'plot.png', img_buf.getvalue())
     zip_buffer.seek(0)
