@@ -577,7 +577,8 @@ async def get_plots(request: DataRequest):
                                     if channels[key]['values'][i+1] != 1:
                                         add_trace = True
                             else:
-                                add_trace = True
+                                if i>0:
+                                    add_trace = True
                             if add_trace:
                                 fig.add_trace(
                                     go.Scatter(
@@ -598,7 +599,7 @@ async def get_plots(request: DataRequest):
                                         y0=int(key[4]) - 1,
                                         x1=channels[key]['times'][i+1],
                                         y1=int(key[4]),
-                                        line=dict(color=zone_color, width=0),  # Border properties
+                                        line=dict(color=zone_color, width=0),
                                         fillcolor=zone_color,
                                         opacity=0.2,
                                         name=key.replace('-state', ''),
@@ -698,7 +699,7 @@ async def get_plots(request: DataRequest):
                     x=channels['oat']['times'], 
                     y=[to_fahrenheit(x/1000) for x in channels['oat']['values']], 
                     mode=line_style, 
-                    opacity=0.7,
+                    opacity=0.5,
                     line=dict(color='gray', dash='solid'),
                     name='Outside air',
                     )
