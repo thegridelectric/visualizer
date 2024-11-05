@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     )
     db_pass: SecretStr = SecretStr("Passwd")
     ops_genie_api_key: SecretStr = SecretStr("OpsGenieAPIKey")
-    thermostat_api_key: SecretStr = SecretStr("ThermostatAPIKey")
+    visualizer_api_password: SecretStr = SecretStr("ThermostatAPIKey")
 
     model_config = ConfigDict(
         env_prefix="gjk_",
