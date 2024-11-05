@@ -178,8 +178,16 @@ def get_data(request):
             DataChannelSql.terminal_asset_alias.like(f'%{request.house_alias}%')
             ).all()
 
+        # data_channels_ids = [x.id for x in data_channels]
+        # all_readings = session.query(ReadingSql).filter(
+        #                 ReadingSql.data_channel_id.in_(data_channels_ids),
+        #                 ReadingSql.time_ms >= request.start_ms,
+        #                 ReadingSql.time_ms <= request.end_ms,
+        #             ).order_by(asc(ReadingSql.time_ms)).all()
+
         channels = {}
         for channel in data_channels:
+            # readings = [x for x in all_readings if x.data_channel_id==channel.id]
             readings = session.query(ReadingSql).filter(
                 ReadingSql.data_channel_id.like(channel.id),
                 ReadingSql.time_ms >= request.start_ms,
