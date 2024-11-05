@@ -68,11 +68,15 @@
                         }
                     }
                 } else {
+                    const startDate = new Date(startUnixMilliseconds);
+                    const formattedStartDate = startDate.toISOString().slice(0, 16).replace('T', '-');
+                    const endDate = new Date(endUnixMilliseconds);
+                    const formattedEndDate = endDate.toISOString().slice(0, 16).replace('T', '-');
                     const blob = await response.blob();
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = 'output.csv';
+                    a.download = `${house_alias}_${timestep}s_${formattedStartDate}-${formattedEndDate}.csv`;
                     document.body.appendChild(a);
                     a.click();
                     a.remove();
@@ -306,7 +310,7 @@
     <style>
 
         body {
-            background-color: rgb(248, 248, 248);
+            background-color: #f8f8f8;
             font-family: 'Helvetica Neue', Arial, sans-serif;
             margin: 0;
             padding: 0;

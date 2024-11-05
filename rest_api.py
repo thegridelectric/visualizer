@@ -98,6 +98,7 @@ storage_colors = {
 storage_colors_hex = {key: to_hex(value) for key, value in storage_colors.items()}
 
 zone_colors_hex = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
+plot_background_hex = '#f8f8f8'
 
 def get_data(request):
 
@@ -255,7 +256,7 @@ async def get_csv(request: CsvRequest):
     csv_times_dt = [x.tz_convert('America/New_York').replace(tzinfo=None) for x in csv_times_dt]
     
     csv_values = {}
-    for channel in channels:
+    for channel in channels_to_export:
         merged = pd.merge_asof(
             pd.DataFrame({'times': csv_times_dt}),
             pd.DataFrame(channels[channel]),
@@ -395,8 +396,8 @@ async def get_plots(request: DataRequest):
         fig.update_layout(
             title=dict(text='Heat pump', x=0.5, xanchor='center'),
             margin=dict(t=30, b=30),
-            plot_bgcolor='rgba(0,0,0,0)',
-            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor=plot_background_hex,
+            paper_bgcolor=plot_background_hex,
             xaxis=dict(
                 range=[min_time_ms_dt, max_time_ms_dt],
                 mirror=True,
@@ -512,8 +513,8 @@ async def get_plots(request: DataRequest):
 
         fig.update_layout(
             title=dict(text='Distribution', x=0.5, xanchor='center'),
-            plot_bgcolor='rgba(0,0,0,0)',
-            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor=plot_background_hex,
+            paper_bgcolor=plot_background_hex,
             margin=dict(t=30, b=30),
             xaxis=dict(
                 range=[min_time_ms_dt, max_time_ms_dt],
@@ -589,8 +590,8 @@ async def get_plots(request: DataRequest):
 
         fig.update_layout(
             title=dict(text='Heat calls', x=0.5, xanchor='center'),
-            plot_bgcolor='rgba(0,0,0,0)',
-            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor=plot_background_hex,
+            paper_bgcolor=plot_background_hex,
             margin=dict(t=30, b=30),
             xaxis=dict(
                 range=[min_time_ms_dt, max_time_ms_dt],
@@ -667,8 +668,8 @@ async def get_plots(request: DataRequest):
 
         fig.update_layout(
             title=dict(text='Zones', x=0.5, xanchor='center'),
-            plot_bgcolor='rgba(0,0,0,0)',
-            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor=plot_background_hex,
+            paper_bgcolor=plot_background_hex,
             margin=dict(t=30, b=30),
             xaxis=dict(
                 range=[min_time_ms_dt, max_time_ms_dt],
@@ -761,8 +762,8 @@ async def get_plots(request: DataRequest):
                 
         fig.update_layout(
             title=dict(text='Buffer', x=0.5, xanchor='center'),
-            plot_bgcolor='rgba(0,0,0,0)',
-            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor=plot_background_hex,
+            paper_bgcolor=plot_background_hex,
             margin=dict(t=30, b=30),
             xaxis=dict(
                 range=[min_time_ms_dt, max_time_ms_dt],
@@ -895,8 +896,8 @@ async def get_plots(request: DataRequest):
 
         fig.update_layout(
             title=dict(text='Storage', x=0.5, xanchor='center'),
-            plot_bgcolor='rgba(0,0,0,0)',
-            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor=plot_background_hex,
+            paper_bgcolor=plot_background_hex,
             margin=dict(t=30, b=30),
             xaxis=dict(
                 range=[min_time_ms_dt, max_time_ms_dt],
@@ -980,8 +981,8 @@ async def get_plots(request: DataRequest):
 
         # fig.update_layout(
         #     title=dict(text='Heat calls', x=0.5, xanchor='center'),
-        #     plot_bgcolor='rgba(0,0,0,0)',
-        #     paper_bgcolor='rgba(0,0,0,0)',
+        #     plot_bgcolor=plot_background_hex,
+        #     paper_bgcolor=plot_background_hex,
         #     margin=dict(t=30, b=30),
         #     xaxis=dict(
         #         range=[min_time_ms_dt, max_time_ms_dt],
