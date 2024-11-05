@@ -20,6 +20,7 @@ import plotly.graph_objects as go
 
 PYPLOT_PLOT = True
 MATPLOTLIB_PLOT = False
+MESSAGE_SQL = True
 
 settings = Settings(_env_file=dotenv.find_dotenv())
 valid_password = settings.thermostat_api_key.get_secret_value()
@@ -126,49 +127,89 @@ def get_data(request):
             "message": "The time difference between the start and end date exceeds the authorized limit (31 days).", 
             "reload":False
             }, 0, 0, 0, 0
-
-    session = Session()
-
-    messages = session.query(MessageSql).filter(
-        MessageSql.from_alias.like(f'%{request.house_alias}%'),
-        or_(
-            MessageSql.message_type_name == "batched.readings",
-            MessageSql.message_type_name == "report"
-            ),
-        MessageSql.message_persisted_ms >= request.start_ms,
-        MessageSql.message_persisted_ms <=request.end_ms,
-    ).order_by(asc(MessageSql.message_persisted_ms)).all()
-
-    if not messages:
-        return {
-            "success": False, 
-            "message": f"No data found for house '{request.house_alias}' in the selected timeframe.", 
-            "reload":False
-            }, 0, 0, 0, 0
     
-    channels = {}
-    for message in messages:
-        for channel in message.payload['ChannelReadingList']:
-            # Find the channel name
-            if message.message_type_name == 'report':
-                channel_name = channel['ChannelName']
-            elif message.message_type_name == 'batched.readings':
-                for dc in message.payload['DataChannelList']:
-                    if dc['Id'] == channel['ChannelId']:
-                        channel_name = dc['Name']
-            # Store the values and times for the channel
-            if channel_name not in channels:
-                channels[channel_name] = {
-                    'values': channel['ValueList'],
-                    'times': channel['ScadaReadTimeUnixMsList']
+    if MESSAGE_SQL:
+
+        session = Session()
+
+        messages = session.query(MessageSql).filter(
+            MessageSql.from_alias.like(f'%{request.house_alias}%'),
+            or_(
+                MessageSql.message_type_name == "batched.readings",
+                MessageSql.message_type_name == "report"
+                ),
+            MessageSql.message_persisted_ms >= request.start_ms,
+            MessageSql.message_persisted_ms <=request.end_ms,
+        ).order_by(asc(MessageSql.message_persisted_ms)).all()
+
+        if not messages:
+            return {
+                "success": False, 
+                "message": f"No data found for house '{request.house_alias}' in the selected timeframe.", 
+                "reload":False
+                }, 0, 0, 0, 0
+        
+        channels = {}
+        for message in messages:
+            for channel in message.payload['ChannelReadingList']:
+                # Find the channel name
+                if message.message_type_name == 'report':
+                    channel_name = channel['ChannelName']
+                elif message.message_type_name == 'batched.readings':
+                    for dc in message.payload['DataChannelList']:
+                        if dc['Id'] == channel['ChannelId']:
+                            channel_name = dc['Name']
+                # Store the values and times for the channel
+                if channel_name not in channels:
+                    channels[channel_name] = {
+                        'values': channel['ValueList'],
+                        'times': channel['ScadaReadTimeUnixMsList']
+                    }
+                else:
+                    channels[channel_name]['values'].extend(channel['ValueList'])
+                    channels[channel_name]['times'].extend(channel['ScadaReadTimeUnixMsList'])
+
+    else:
+        from gjk.models import ReadingSql, DataChannelSql
+
+        session = Session()
+
+        data_channels = session.query(DataChannelSql).filter(
+            DataChannelSql.terminal_asset_alias.like(f'%{request.house_alias}%')
+            ).all()
+
+        channels = {}
+        for channel in data_channels:
+            readings = session.query(ReadingSql).filter(
+                ReadingSql.data_channel_id.like(channel.id),
+                ReadingSql.time_ms >= request.start_ms,
+                ReadingSql.time_ms <= request.end_ms,
+            ).order_by(asc(ReadingSql.time_ms)).all()
+            if channel.name not in channels:
+                channels[channel.name] = {
+                    'values': [x.value for x in readings],
+                    'times': [x.time_ms for x in readings]
                 }
             else:
-                channels[channel_name]['values'].extend(channel['ValueList'])
-                channels[channel_name]['times'].extend(channel['ScadaReadTimeUnixMsList'])
+                channels[channel.name]['values'].extend([x.value for x in readings])
+                channels[channel.name]['times'].extend([x.time_ms for x in readings])
+        if channels == {}:
+            return {
+                "success": False, 
+                "message": f"No readings found for house '{request.house_alias}' in the selected timeframe.", 
+                "reload": False
+                }, 0, 0, 0, 0
 
     # Sort values according to time and find min/max
     min_time_ms, max_time_ms = 1e20, 0
+    keys_to_delete = []
     for key in channels.keys():
+        # Check the length
+        if (len(channels[key]['times']) != len(channels[key]['values']) 
+            or not channels[key]['times']):
+            print(f"Warning: channel data is empty or has length mismatch: {key}")
+            keys_to_delete.append(key)
+            continue
         sorted_times_values = sorted(zip(channels[key]['times'], channels[key]['values']))
         sorted_times, sorted_values = zip(*sorted_times_values)
         if list(sorted_times)[0] < min_time_ms:
@@ -179,12 +220,9 @@ def get_data(request):
         channels[key]['times'] = pd.to_datetime(list(sorted_times), unit='ms', utc=True)
         channels[key]['times'] = channels[key]['times'].tz_convert('America/New_York')
         channels[key]['times'] = [x.replace(tzinfo=None) for x in channels[key]['times']]
+    for key in keys_to_delete:
+        del channels[key]
 
-        # Check the length
-        if len(channels[key]['times']) != len(channels[key]['values']):
-            print(f"Length mismatch in channel: {key}")
-            request.selected_channels.remove(key)
-                
     # Find all zone channels
     zones = {}
     for channel_name in channels.keys():
