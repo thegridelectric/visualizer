@@ -294,6 +294,8 @@ async def get_plots(request: DataRequest):
 
     if PYPLOT_PLOT:
 
+        line_style = 'lines+markers' if 'show-points'in request.selected_channels else 'lines'
+
         # --------------------------------------
         # PLOT 1: Heat pump
         # --------------------------------------
@@ -308,7 +310,7 @@ async def get_plots(request: DataRequest):
                 go.Scatter(
                     x=channels['hp-lwt']['times'], 
                     y=[to_fahrenheit(x/1000) for x in channels['hp-lwt']['values']], 
-                    mode='lines',
+                    mode=line_style,
                     opacity=0.7,
                     line=dict(color='#d62728', dash='solid'),
                     name='HP LWT'
@@ -320,7 +322,7 @@ async def get_plots(request: DataRequest):
                 go.Scatter(
                     x=channels['hp-ewt']['times'], 
                     y=[to_fahrenheit(x/1000) for x in channels['hp-ewt']['values']], 
-                    mode='lines', 
+                    mode=line_style, 
                     opacity=0.7,
                     line=dict(color='#1f77b4', dash='solid'),
                     name='HP EWT'
@@ -338,7 +340,7 @@ async def get_plots(request: DataRequest):
                 go.Scatter(
                     x=channels['hp-odu-pwr']['times'], 
                     y=[x/1000 for x in channels['hp-odu-pwr']['values']], 
-                    mode='lines', 
+                    mode=line_style, 
                     opacity=0.7,
                     line=dict(color='#2ca02c', dash='solid'),
                     name='HP outdoor power',
@@ -351,7 +353,7 @@ async def get_plots(request: DataRequest):
                 go.Scatter(
                     x=channels['hp-idu-pwr']['times'], 
                     y=[x/1000 for x in channels['hp-idu-pwr']['values']], 
-                    mode='lines', 
+                    mode=line_style, 
                     opacity=0.7,
                     line=dict(color='#ff7f0e', dash='solid'),
                     name='HP indoor power',
@@ -364,7 +366,7 @@ async def get_plots(request: DataRequest):
                 go.Scatter(
                     x=channels['primary-pump-pwr']['times'], 
                     y=[x/1000*100 for x in channels['primary-pump-pwr']['values']], 
-                    mode='lines', 
+                    mode=line_style, 
                     opacity=0.7,
                     line=dict(color='pink', dash='solid'),
                     name='Primary pump power x100',
@@ -377,7 +379,7 @@ async def get_plots(request: DataRequest):
                 go.Scatter(
                     x=channels['primary-flow']['times'],
                     y=[x/100 for x in channels['primary-flow']['values']], 
-                    mode='lines', 
+                    mode=line_style, 
                     opacity=0.4,
                     line=dict(color='purple', dash='solid'),
                     name='Primary pump flow',
@@ -452,7 +454,7 @@ async def get_plots(request: DataRequest):
                 go.Scatter(
                     x=channels['dist-swt']['times'], 
                     y=[to_fahrenheit(x/1000) for x in channels['dist-swt']['values']], 
-                    mode='lines', 
+                    mode=line_style, 
                     opacity=0.7,
                     line=dict(color='#d62728', dash='solid'),
                     name='Distribution SWT'
@@ -464,7 +466,7 @@ async def get_plots(request: DataRequest):
                 go.Scatter(
                     x=channels['dist-rwt']['times'], 
                     y=[to_fahrenheit(x/1000) for x in channels['dist-rwt']['values']], 
-                    mode='lines', 
+                    mode=line_style, 
                     opacity=0.7,
                     line=dict(color='#1f77b4', dash='solid'),
                     name='Distribution RWT'
@@ -482,7 +484,7 @@ async def get_plots(request: DataRequest):
                 go.Scatter(
                     x=channels['dist-pump-pwr']['times'], 
                     y=[x/10 for x in channels['dist-pump-pwr']['values']], 
-                    mode='lines', 
+                    mode=line_style, 
                     opacity=0.7,
                     line=dict(color='pink', dash='solid'),
                     name='Distribution pump power /10',
@@ -495,7 +497,7 @@ async def get_plots(request: DataRequest):
                 go.Scatter(
                     x=channels['dist-flow']['times'], 
                     y=[x/100 for x in channels['dist-flow']['values']], 
-                    mode='lines', 
+                    mode=line_style, 
                     opacity=0.4,
                     line=dict(color='purple', dash='solid'),
                     name='Distribution flow',
@@ -566,18 +568,43 @@ async def get_plots(request: DataRequest):
             for zone in zones:
                 for key in [x for x in zones[zone] if 'state' in x]:
                     zone_color = zone_colors_hex[int(key[4])-1]
+                    last_was_1 = False
                     for i in range(len(channels[key]['values'])):
                         if channels[key]['values'][i] == 1:
-                            fig.add_trace(
-                                go.Scatter(
-                                    x=[channels[key]['times'][i], channels[key]['times'][i]],
-                                    y=[int(key[4])-1, int(key[4])],
-                                    mode='lines',
-                                    line=dict(color=zone_color, width=2),
-                                    name=key.replace('-state',''),
-                                    showlegend=False,
+                            add_trace = False
+                            if last_was_1: 
+                                if i<len(channels[key]['values'])-1:
+                                    if channels[key]['values'][i+1] != 1:
+                                        add_trace = True
+                            else:
+                                add_trace = True
+                            if add_trace:
+                                fig.add_trace(
+                                    go.Scatter(
+                                        x=[channels[key]['times'][i], channels[key]['times'][i]],
+                                        y=[int(key[4])-1, int(key[4])],
+                                        mode='lines',
+                                        line=dict(color=zone_color, width=2),
+                                        name=key.replace('-state',''),
+                                        showlegend=False,
+                                    )
                                 )
-                            )
+                            if i<len(channels[key]['values'])-1:
+                                if channels[key]['values'][i+1] == 1:
+                                    last_was_1 = True
+                                    fig.add_shape(
+                                        type='rect',
+                                        x0=channels[key]['times'][i],
+                                        y0=int(key[4]) - 1,
+                                        x1=channels[key]['times'][i+1],
+                                        y1=int(key[4]),
+                                        line=dict(color=zone_color, width=0),  # Border properties
+                                        fillcolor=zone_color,
+                                        opacity=0.2,
+                                        name=key.replace('-state', ''),
+                                    )
+                        else:
+                            last_was_1 = False
                     fig.add_trace(
                         go.Scatter(
                             x=[None], 
@@ -645,7 +672,7 @@ async def get_plots(request: DataRequest):
                         go.Scatter(
                             x=channels[key]['times'], 
                             y=channels[key]['values'], 
-                            mode='lines', 
+                            mode=line_style, 
                             opacity=0.7,
                             line=dict(color=zone_colors_hex[int(key[4])-1], dash='solid'),
                             name=key.replace('-temp','')
@@ -656,13 +683,27 @@ async def get_plots(request: DataRequest):
                         go.Scatter(
                             x=channels[key]['times'], 
                             y=channels[key]['values'], 
-                            mode='lines', 
+                            mode=line_style, 
                             opacity=0.7,
                             line=dict(color=zone_colors_hex[int(key[4])-1], dash='dash'),
                             name=key.replace('-set',''),
                             showlegend=False
                             )
                         )
+
+        min_oat = 70    
+        if 'oat' in request.selected_channels and 'oat' in channels:
+            fig.add_trace(
+                go.Scatter(
+                    x=channels['oat']['times'], 
+                    y=[to_fahrenheit(x/1000) for x in channels['oat']['values']], 
+                    mode=line_style, 
+                    opacity=0.7,
+                    line=dict(color='gray', dash='solid'),
+                    name='Outside air',
+                    )
+                )
+            min_oat = to_fahrenheit(min(channels['oat']['values'])/1000)
         
         fig.update_layout(yaxis=dict(title='Temperature [F]'))
 
@@ -680,7 +721,7 @@ async def get_plots(request: DataRequest):
                 showgrid=False
                 ),
             yaxis=dict(
-                range = [45, 80],
+                range = [min_oat-7, 80] if min_oat<55 else [45,80],
                 mirror=True,
                 ticks='outside',
                 showline=True,
@@ -723,7 +764,7 @@ async def get_plots(request: DataRequest):
                     go.Scatter(
                         x=channels[buffer_channel]['times'], 
                         y=yf, 
-                        mode='lines', 
+                        mode=line_style, 
                         opacity=0.7,
                         name=buffer_channel.replace('buffer-',''),
                         line=dict(color=buffer_colors_hex[buffer_channel], dash='solid')
@@ -739,7 +780,7 @@ async def get_plots(request: DataRequest):
                     go.Scatter(
                         x=channels['buffer-hot-pipe']['times'], 
                         y=yf, 
-                        mode='lines', 
+                        mode=line_style, 
                         opacity=0.7,
                         name='Hot pipe',
                         line=dict(color='#d62728', dash='solid')
@@ -753,7 +794,7 @@ async def get_plots(request: DataRequest):
                     go.Scatter(
                         x=channels['buffer-cold-pipe']['times'], 
                         y=yf, 
-                        mode='lines', 
+                        mode=line_style, 
                         opacity=0.7,
                         name='Cold pipe',
                         line=dict(color='#1f77b4', dash='solid')
@@ -819,7 +860,7 @@ async def get_plots(request: DataRequest):
                 max_store_temp = max(max_store_temp, max(yf))
                 fig.add_trace(
                     go.Scatter(x=channels[tank_channel]['times'], y=yf, 
-                    mode='lines', opacity=0.7,
+                    mode=line_style, opacity=0.7,
                     name=tank_channel.replace('storage-',''),
                     line=dict(color=storage_colors_hex[tank_channel], dash='solid'))
                     )
@@ -834,7 +875,7 @@ async def get_plots(request: DataRequest):
                     go.Scatter(
                         x=channels['store-hot-pipe']['times'], 
                         y=yf, 
-                        mode='lines', 
+                        mode=line_style, 
                         opacity=0.7,
                         name='Hot pipe',
                         line=dict(color='#d62728', dash='solid'))
@@ -848,7 +889,7 @@ async def get_plots(request: DataRequest):
                     go.Scatter(
                         x=channels['store-cold-pipe']['times'], 
                         y=yf, 
-                        mode='lines', 
+                        mode=line_style, 
                         opacity=0.7,
                         name='Cold pipe',
                         line=dict(color='#1f77b4', dash='solid'))
@@ -865,7 +906,7 @@ async def get_plots(request: DataRequest):
                 go.Scatter(
                     x=channels['store-pump-pwr']['times'], 
                     y=[x/10 for x in channels['store-pump-pwr']['values']], 
-                    mode='lines', 
+                    mode=line_style, 
                     opacity=0.7,
                     line=dict(color='pink', dash='solid'),
                     name='Storage pump power x100',
@@ -878,7 +919,7 @@ async def get_plots(request: DataRequest):
                 go.Scatter(
                     x=channels['store-flow']['times'], 
                     y=[x/100 for x in channels['store-flow']['values']], 
-                    mode='lines', 
+                    mode=line_style, 
                     opacity=0.4,
                     line=dict(color='purple', dash='solid'),
                     name='Storage pump flow',
@@ -963,7 +1004,7 @@ async def get_plots(request: DataRequest):
         #             go.Scatter(
         #                 x=[channels[key]['times'][i], channels[key]['times'][i]],
         #                 y=[bar_height-1, bar_height],
-        #                 mode='lines',
+        #                 mode=line_style,
         #                 line=dict(color=zone_color, width=2),
         #                 name=key,
         #                 showlegend=False,
@@ -973,7 +1014,7 @@ async def get_plots(request: DataRequest):
         #         go.Scatter(
         #             x=[None], 
         #             y=[None],
-        #             mode='lines',
+        #             mode=line_style,
         #             line=dict(color=zone_color, width=2),
         #             name=key
         #         )
