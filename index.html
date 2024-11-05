@@ -6,9 +6,12 @@
     <meta charset="UTF-8">
     <title>GridWorks Visualizer</title>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-
+    <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
+
+    <!-- Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/luxon@3.0.1/build/global/luxon.min.js"></script>
     
     <script>
         let house_alias, password;
@@ -22,13 +25,13 @@
 
             const startdate = document.getElementById('startDatePicker').value;
             const starttime = document.getElementById('startTimePicker').value;
-            const startDateObject = new Date(`${startdate}T${starttime}-05:00`);
-            const startUnixMilliseconds = startDateObject.getTime();
+            const starttime_luxon = luxon.DateTime.fromFormat(`${startdate} ${starttime}`, 'yyyy-MM-dd HH:mm', { zone: 'America/New_York' });
+            const startUnixMilliseconds = starttime_luxon.toUTC().toMillis();
 
             const enddate = document.getElementById('endDatePicker').value;
             const endtime = document.getElementById('endTimePicker').value;
-            const enddateObject = new Date(`${enddate}T${endtime}-05:00`);
-            const endUnixMilliseconds = enddateObject.getTime();
+            const endtime_luxon = luxon.DateTime.fromFormat(`${enddate} ${endtime}`, 'yyyy-MM-dd HH:mm', { zone: 'America/New_York' });
+            const endUnixMilliseconds = endtime_luxon.toUTC().toMillis();
 
             const selectedChannels = Array.from(document.querySelectorAll('input[name="channels"]:checked'))
                 .map(checkbox => checkbox.value);
@@ -283,13 +286,13 @@
 
             const startdate = document.getElementById('startDatePicker').value;
             const starttime = document.getElementById('startTimePicker').value;
-            const startDateObject = new Date(`${startdate}T${starttime}-05:00`);
-            const startUnixMilliseconds = startDateObject.getTime();
+            const starttime_luxon = luxon.DateTime.fromFormat(`${startdate} ${starttime}`, 'yyyy-MM-dd HH:mm', { zone: 'America/New_York' });
+            const startUnixMilliseconds = starttime_luxon.toUTC().toMillis();
 
             const enddate = document.getElementById('endDatePicker').value;
             const endtime = document.getElementById('endTimePicker').value;
-            const enddateObject = new Date(`${enddate}T${endtime}-05:00`);
-            const endUnixMilliseconds = enddateObject.getTime();
+            const endtime_luxon = luxon.DateTime.fromFormat(`${enddate} ${endtime}`, 'yyyy-MM-dd HH:mm', { zone: 'America/New_York' });
+            const endUnixMilliseconds = endtime_luxon.toUTC().toMillis();
 
             fetchPlots(house_alias, password, startUnixMilliseconds, endUnixMilliseconds, selectedChannels)
         }
