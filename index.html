@@ -210,9 +210,9 @@
             if (is_start) { 
                 nyDate.setDate(nyDate.getDate() - 1);
                 nyDate.setHours(20, 0, 0, 0);
-            }
-
-            nyDate.setMinutes(nyDate.getMinutes() + 1);    
+            } else {
+                nyDate.setMinutes(nyDate.getMinutes() + 1);  
+            }  
             const hours = String(nyDate.getHours()).padStart(2, '0');
             const minutes = String(nyDate.getMinutes()).padStart(2, '0');
 
