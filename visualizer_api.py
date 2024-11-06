@@ -99,7 +99,7 @@ storage_colors = {
 storage_colors_hex = {key: to_hex(value) for key, value in storage_colors.items()}
 
 zone_colors_hex = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
-plot_background_hex = '#f8f8f8'
+plot_background_hex = 'white'
 
 def get_data(request):
 
