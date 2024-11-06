@@ -215,7 +215,7 @@
             nyDate.setMinutes(nyDate.getMinutes() + 1);    
             const hours = String(nyDate.getHours()).padStart(2, '0');
             const minutes = String(nyDate.getMinutes()).padStart(2, '0');
-            
+
             return `${hours}:${minutes}`;
         }
 
@@ -346,10 +346,17 @@
             margin-bottom: 0;
         }
 
-        #houseAliasHeader, #LoginHeader {
+        #houseAliasHeader {
             font-family: 'Montserrat';
             font-size: 35px;
             padding-bottom: 25px;
+            margin: 0px;
+        }
+
+        #LoginHeader {
+            font-family: 'Montserrat';
+            font-size: 35px;
+            padding-bottom: 15px;
             margin: 0px;
         }
 
@@ -420,6 +427,10 @@
             margin-bottom: 10px;
             font-size: 14px;
             font-family: 'Montserrat';
+        }
+
+        #housealias {
+            margin-bottom: 0px;
         }
 
         #checkboxDiv{
