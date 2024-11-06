@@ -159,7 +159,7 @@
                             iframe.src = htmlUrl;
                             iframe.style.width = '90%';
                             iframe.style.maxWidth = '1500px';
-                            iframe.style.height = '400px';
+                            iframe.style.height = '375px';
                             iframe.style.border = 'none';
                             if (iframeCount === 0) {
                                 plotsDiv1.appendChild(iframe);
@@ -294,11 +294,11 @@
             const checkboxDiv = document.getElementById("checkboxDiv");
             if (checkboxDiv.style.display === "none") {
                 checkboxDiv.style.display = "block";
-                document.getElementById("content").style.opacity = "0";
+                document.getElementById("content").style.display = "none";
 
             } else {
                 checkboxDiv.style.display = "none";
-                document.getElementById("content").style.opacity = "1";
+                document.getElementById("content").style.display = "block";
             }
         }
     </script>
@@ -316,7 +316,7 @@
         #PlotPng, #Plot1, #Plot2, #Plot3, #Plot4, #Plot5, #Plot6 {
             display: flex;
             justify-content: center;
-            padding-top:10px;
+            padding-bottom:15px;
         }
 
         #PlotPng img {
@@ -380,7 +380,7 @@
             transition: background-color 0.5s;
         }
         .menuItem:hover{
-            background-color: rgb(36, 41, 51);
+            background-color: rgb(46, 46, 46);
         }
 
         a{
@@ -504,10 +504,10 @@
         <div id="Inputs">
             <h2 id="houseAliasHeader" style="color: rgb(55, 55, 55);"></h2>
             <form onsubmit="getData(event)" onkeydown="handleKey(event)">
-                <label style="color: rgb(55, 55, 55);" for="startDatePicker"></label>
+                <label style="color: rgb(55, 55, 55);" for="startDatePicker">Start:<br></label>
                 <input type="date" id="startDatePicker" name="startDatePicker">
-                <input type="time" id="startTimePicker" name="startTimePicker">
-                <label style="color: rgb(55, 55, 55);" for="endDatePicker"><br><br></label>
+                <input type="time" id="startTimePicker" name="startTimePicker"><br><br>
+                <label style="color: rgb(55, 55, 55);" for="endDatePicker">End:<br></label>
                 <input type="date" id="endDatePicker" name="endDatePicker">
                 <input type="time" id="endTimePicker" name="endTimePicker">
                 <button type="button" id="nowButton" onclick=setNow()>Latest</button><br>

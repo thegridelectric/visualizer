@@ -101,6 +101,10 @@ storage_colors_hex = {key: to_hex(value) for key, value in storage_colors.items(
 zone_colors_hex = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
 plot_background_hex = 'white'
 
+# ------------------------------
+# Pull data from journaldb
+# ------------------------------
+
 def get_data(request):
 
     if request.password != valid_password:
