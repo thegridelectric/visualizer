@@ -212,14 +212,16 @@
                 nyDate.setHours(20, 0, 0, 0);
             }
 
+            nyDate.setMinutes(nyDate.getMinutes() + 1);    
             const hours = String(nyDate.getHours()).padStart(2, '0');
             const minutes = String(nyDate.getMinutes()).padStart(2, '0');
+            
             return `${hours}:${minutes}`;
         }
 
         function setNow() {
             const nyDate = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
-            nyDate.setHours(nyDate.getHours() + 1);
+            nyDate.setMinutes(nyDate.getMinutes() + 1);
             document.getElementById('endDatePicker').value = nyDate.toISOString().split('T')[0];
             document.getElementById('endTimePicker').value = nyDate.toTimeString().split(' ')[0].substring(0, 5);
             getData(event)
@@ -236,7 +238,7 @@
         }
 
         function resetButton() {
-            const submitButton = document.querySelector('input[type="submit"]');
+            const submitButton = document.querySelector('#form2 input[type="submit"]');
             const nowButton = document.getElementById('nowButton');
             const csvButton= document.getElementById('csv_button');
             const loadingText = document.getElementById('loadingText');
@@ -246,10 +248,17 @@
             loadingText.style.display = 'none';
         }
 
-        function HousePassword() {
-            house_alias = prompt("Enter house alias:");
-            password = prompt("Enter password:");
+        function HousePassword(event) {
+            event.preventDefault();
+            
+            house_alias = document.getElementById("housealias").value;
+            password = document.getElementById("passwd").value;
+            if (!house_alias) {
+                alert("Please enter a house alias.");
+                return;
+            }
 
+            document.getElementById("login").style.display = "none";
             document.getElementById("houseAliasHeader").textContent = `${house_alias.charAt(0).toUpperCase()}${house_alias.slice(1)}`;
             document.getElementById('startDatePicker').value = getDefaultDate(true);
             document.getElementById('startTimePicker').value = getDefaultTime(true);
@@ -257,13 +266,14 @@
             document.getElementById('endTimePicker').value = getDefaultTime();
             document.getElementById("content").style.display = "block";
 
-            getData(event)
+            getData(event);
         }
+
 
         function getData(event) {
             event.preventDefault();
 
-            const submitButton = document.querySelector('input[type="submit"]');
+            const submitButton = document.querySelector('#form2 input[type="submit"]');
             const nowButton = document.getElementById('nowButton');
             const csvButton = document.getElementById('csv_button');
             const loadingText = document.getElementById('loadingText');
@@ -295,10 +305,12 @@
             if (checkboxDiv.style.display === "none") {
                 checkboxDiv.style.display = "block";
                 document.getElementById("content").style.display = "none";
+                document.getElementById("header").style.display = "none";
 
             } else {
                 checkboxDiv.style.display = "none";
                 document.getElementById("content").style.display = "block";
+                document.getElementById("header").style.display = "flex";
             }
         }
     </script>
@@ -334,7 +346,7 @@
             margin-bottom: 0;
         }
 
-        #houseAliasHeader {
+        #houseAliasHeader, #LoginHeader {
             font-family: 'Montserrat';
             font-size: 35px;
             padding-bottom: 25px;
@@ -345,7 +357,7 @@
             margin-right: 12px;
         }
 
-        #submit_button, #checkboxButton, #close-button, #csv_button {
+        #submit_button, #close-button, #csv_button, #login-button, #nowButton, #checkboxButton {
             cursor: pointer;
             font-size:15px;
             font-family: 'Montserrat';
@@ -358,14 +370,21 @@
             padding-right: 20px;
             background-color:rgb(63, 63, 63); 
             border: none;
-            /* transition: background-color 0.5s; */
         }
 
-        #submit_button:hover, #checkboxButton:hover, #close-button:hover, #csv_button:hover {
+        #login-button {
+            margin-top: 10px;
+        }
+
+        #nowButton {
+            margin-left:10px
+        }
+
+        #submit_button:hover, #checkboxButton:hover, #close-button:hover, #csv_button:hover, #login-button:hover, #nowButton:hover {
             background-color:rgb(55, 55, 55);
         }
 
-        #Inputs{
+        #Inputs, #LoginBox{
             min-height: 110px;
             margin-left: 5%;
             margin-right: 5%;
@@ -374,6 +393,10 @@
             padding: 30px;
             background-color: #eeeeee;
             border-radius: 10px;
+        }
+
+        #LoginBox {
+            padding-bottom: 80px;
         }
 
         .menuItem{
@@ -385,6 +408,18 @@
 
         a{
             text-decoration: none;
+        }
+
+        #housealias, #passwd, #startDatePicker, #startTimePicker, #endDatePicker, #endTimePicker {
+            margin-top: 10px;
+            height: 40px;
+            border-radius: 5px;
+            border: none;
+            color: rgb(53, 53, 53);
+            padding-left: 15px;
+            margin-bottom: 10px;
+            font-size: 14px;
+            font-family: 'Montserrat';
         }
 
         #checkboxDiv{
@@ -431,7 +466,7 @@
 
 </head>
 
-<body onload="HousePassword()">
+<body>
 
     <div id='container_of_checkbox'>
         <div id="checkboxDiv" style="display: none;">
@@ -474,7 +509,7 @@
         </div>   
     </div>
 
-    <div id="content" style="display: none;">
+    <div>
         <div id="header">
             <div style="height: 100%; margin: 0; padding: 0; width: 175px;">
                 <span style="color: white; font-family: 'Montserrat'; font-weight:400; display: flex; align-items: center; margin-top: 10px; margin-left: 30px;">
@@ -500,18 +535,32 @@
                     </div>
                 </div>
             </a>
-        </div>                 
+        </div> 
+
+        <!-- Login -->
+        <div id="login" style="display: block;">               
+            <div id="LoginBox">
+                <h2 id="LoginHeader" style="color: rgb(55, 55, 55);">Log in</h2>
+                <form id="form1" onsubmit="HousePassword(event)">
+                    <input type="text" id="housealias" name="housealiaspicker" placeholder="House alias"><br>
+                    <input type="password" id="passwd" name="passwordpicker" placeholder="Password"><br>
+                    <input id='login-button' type="submit" style='position: absolute' value="Log in">
+                </form>
+            </div>
+        </div> 
+
+
+        <div id="content" style="display: none;">               
         <div id="Inputs">
             <h2 id="houseAliasHeader" style="color: rgb(55, 55, 55);"></h2>
-            <form onsubmit="getData(event)" onkeydown="handleKey(event)">
+            <form  id="form2" onsubmit="getData(event)" onkeydown="handleKey(event)">
                 <label style="color: rgb(55, 55, 55);" for="startDatePicker">Start:<br></label>
                 <input type="date" id="startDatePicker" name="startDatePicker">
                 <input type="time" id="startTimePicker" name="startTimePicker"><br><br>
                 <label style="color: rgb(55, 55, 55);" for="endDatePicker">End:<br></label>
                 <input type="date" id="endDatePicker" name="endDatePicker">
                 <input type="time" id="endTimePicker" name="endTimePicker">
-                <button type="button" id="nowButton" onclick=setNow()>Latest</button><br>
-                <br><br>
+                <button type="button" id="nowButton" onclick=setNow()>Now</button><br><br>
                 <button type="button" id="checkboxButton" onclick=toggleCheckbox()>Options</button>
                 <input id='submit_button' type="submit" style='position: absolute' value="Plot">
                 <span id="loadingText" style="font-weight: bold; color: rgb(55, 55, 55); display: none; position: absolute; margin-top:11px;">Loading data...</span>
@@ -526,6 +575,8 @@
         <div id="Plot6"></div>
         <div id="PlotPng"></div>
         </div>
+    <!-- content -->
+    </div> 
     </div>
 
     <!-- <div id="footer">
