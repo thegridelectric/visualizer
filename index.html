@@ -198,7 +198,9 @@
             if (is_start) { 
                 nyDate.setDate(nyDate.getDate() - 1);
                 nyDate.setHours(20, 0, 0, 0);
-            }
+            } else {
+                nyDate.setMinutes(nyDate.getMinutes() + 1);  
+            } 
             const year = nyDate.getFullYear();
             const month = String(nyDate.getMonth() + 1).padStart(2, '0');
             const day = String(nyDate.getDate()).padStart(2, '0');
