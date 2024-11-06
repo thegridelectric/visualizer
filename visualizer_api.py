@@ -619,39 +619,48 @@ async def get_plots(request: DataRequest):
                     last_was_1 = False
                     for i in range(len(channels[key]['values'])):
                         if channels[key]['values'][i] == 1:
-                            add_trace = False
-                            if last_was_1: 
-                                if i<len(channels[key]['values'])-1:
-                                    if channels[key]['values'][i+1] != 1:
-                                        add_trace = True
-                            else:
-                                if i>0:
-                                    add_trace = True
-                            if add_trace:
-                                fig.add_trace(
-                                    go.Scatter(
-                                        x=[channels[key]['times'][i], channels[key]['times'][i]],
-                                        y=[int(key[4])-1, int(key[4])],
-                                        mode='lines',
-                                        line=dict(color=zone_color, width=2),
-                                        name=key.replace('-state',''),
-                                        showlegend=False,
-                                    )
-                                )
+                            # if last_was_1: 
                             if i<len(channels[key]['values'])-1:
-                                if channels[key]['values'][i+1] == 1:
-                                    last_was_1 = True
-                                    fig.add_shape(
-                                        type='rect',
-                                        x0=channels[key]['times'][i],
-                                        y0=int(key[4]) - 1,
-                                        x1=channels[key]['times'][i+1],
-                                        y1=int(key[4]),
-                                        line=dict(color=zone_color, width=0),
-                                        fillcolor=zone_color,
-                                        opacity=0.2,
-                                        name=key.replace('-state', ''),
+                                if channels[key]['values'][i+1] != 1:
+                                    fig.add_trace(
+                                        go.Scatter(
+                                            x=[channels[key]['times'][i+1], channels[key]['times'][i+1]],
+                                            y=[int(key[4])-1, int(key[4])],
+                                            mode='lines',
+                                            line=dict(color=zone_color, width=2),
+                                            opacity=0.7,
+                                            name=key.replace('-state',''),
+                                            showlegend=False,
+                                        )
                                     )
+                            if not last_was_1:
+                                if i>0: 
+                                    fig.add_trace(
+                                        go.Scatter(
+                                            x=[channels[key]['times'][i], channels[key]['times'][i]],
+                                            y=[int(key[4])-1, int(key[4])],
+                                            mode='lines',
+                                            line=dict(color=zone_color, width=2),
+                                            opacity=0.7,
+                                            name=key.replace('-state',''),
+                                            showlegend=False,
+                                        )
+                                    )
+                            if i<len(channels[key]['values'])-1:
+                                # if channels[key]['values'][i+1] == 1:
+                                last_was_1 = True
+                                fig.add_shape(
+                                    type='rect',
+                                    x0=channels[key]['times'][i],
+                                    y0=int(key[4]) - 1,
+                                    x1=channels[key]['times'][i+1],
+                                    y1=int(key[4]),
+                                    line=dict(color=zone_color, width=0),
+                                    fillcolor=zone_color,
+                                    opacity=0.2,
+                                    name=key.replace('-state', ''),
+                                )
+
                         else:
                             last_was_1 = False
                     fig.add_trace(
