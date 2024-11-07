@@ -278,7 +278,6 @@ async def get_csv(request: CsvRequest):
                 for c in channels.keys():
                     if 'zone' in c:
                         channels_to_export.append(c)
-            # TODO not working buffer depths
             elif channel=='buffer-depths':
                 for c in channels.keys():
                     if 'depth' in c and 'buffer' in c:
