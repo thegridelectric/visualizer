@@ -278,6 +278,7 @@ async def get_csv(request: CsvRequest):
                 for c in channels.keys():
                     if 'zone' in c:
                         channels_to_export.append(c)
+            # TODO not working buffer depths
             elif channel=='buffer_depths':
                 for c in channels.keys():
                     if 'depth' in c and 'buffer' in c:
@@ -289,7 +290,7 @@ async def get_csv(request: CsvRequest):
 
     num_points = int((request.end_ms-request.start_ms) / (request.timestep*1000) + 1)
     
-    if num_points*len(channels_to_export) > 3600/5*24*7*len(channels):
+    if num_points*len(channels_to_export) > 3600*24*7*len(channels):
         error_message = f"This request would generate {num_points} data points, which is too much data in one go."
         error_message += "\n\nSuggestions:\n- Increase the time step\n- Reduce the number of channels"
         error_message += "\n- Change the start and end times"
