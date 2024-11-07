@@ -14,7 +14,9 @@
     <script>
         let house_alias, password;
 
-        async function exportCSV(start_ms, end_ms) {
+        async function exportCSV(event) {
+
+            event.preventDefault();
 
             const csvButton= document.getElementById('csv_button');
             const csvLoadingText = document.getElementById('csvLoadingText');
@@ -190,6 +192,7 @@
                 alert(`Error fetching plots for house '${house_alias}'.`);
             } finally {
                 resetButton();
+                loading.style.display = 'none';
             }
         }
 
@@ -654,6 +657,20 @@
             border: none;
         } 
 
+        #loader {
+            border: 10px solid rgb(55, 55, 55);
+            border-top: 10px solid transparent;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
     </style>
 
 </head>
@@ -695,12 +712,12 @@
         <label><input type="checkbox" name="channels" value="all-data" checked>Export all data channels</label><br><br>
         <span style="color: #555;">Time step (seconds):</span><br><label><input type="number" style="width: 50px;" name="csv_inputs" id="csv_inputs" value="5"></label><br>
         <br>
-        <div style="position:absolute">
+        <!-- <div style="position:absolute">
         <button id="csv_button" style='position:relative;' onclick='exportCSV()'>Export to CSV</button>
         <button id="csvLoadingText" style='display:none;'>Export to CSV</button><br>
         <div style="position: absolute; height:35px; width: 100%;"></div>
         <br>
-        </div>
+        </div> -->
     </div>
     
     <div>
@@ -750,7 +767,7 @@
         <div id="content" style="display: none;">               
         <div id="Inputs">
             <h2 id="houseAliasHeader" style="color: rgb(55, 55, 55);"></h2>
-            <form  id="form2" onsubmit="getData(event)" onkeydown="handleKey(event)">
+            <form  id="form2">
                 <label style="color: rgb(55, 55, 55); font-size: 16px;" for="startDatePicker">Start<br></label>
                 <input type="date" id="startDatePicker" name="startDatePicker">
                 <input type="time" id="startTimePicker" name="startTimePicker"><br><br>
@@ -760,7 +777,14 @@
                 <button type="button" id="nowButton" onclick=setNow()>Now</button><br><br>
                 <button type="button" id="checkboxButton" onclick=toggleCheckbox()>Options</button>
                 <input id='loadingText' type="button" style='position: absolute' value="Plot">
-                <input id='submit_button' type="submit" style='position: absolute' value="Plot">
+                <input id='submit_button' type="submit" style='position: absolute' value="Plot" onclick="getData(event)">
+                <div style="margin-left: 80px; position:absolute; display:inline">
+                    <button id="csv_button" style='position:relative;' onclick='exportCSV(event)'>CSV</button>
+                    <button id="csvLoadingText" style='display:none;'>CSV</button><br>
+                    <div style="position: absolute; height:35px; width: 100%;"></div>
+                    <br>
+                </div>
+                <div id="loader" style="margin-left: 175px; position:absolute; display:none"></div>
                 <!-- <span id="loadingText" style="font-weight: bold; color: rgb(55, 55, 55); display: none; position: absolute; margin-top:11px;">Loading data...</span> -->
             </form>
         </div>

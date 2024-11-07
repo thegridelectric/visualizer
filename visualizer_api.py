@@ -280,11 +280,11 @@ async def get_csv(request: CsvRequest):
                         channels_to_export.append(c)
             elif channel=='buffer-depths':
                 for c in channels.keys():
-                    if 'depth' in c and 'buffer' in c:
+                    if 'depth' in c and 'buffer' in c and 'micro' not in c:
                         channels_to_export.append(c)
             elif channel=='storage-depths':
                 for c in channels.keys():
-                    if 'depth' in c and 'tank' in c:
+                    if 'depth' in c and 'tank' in c and 'micro' not in c:
                         channels_to_export.append(c)
 
     num_points = int((request.end_ms-request.start_ms) / (request.timestep*1000) + 1)
