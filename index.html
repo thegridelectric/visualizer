@@ -266,7 +266,7 @@
             document.getElementById('endTimePicker').value = getDefaultTime();
             document.getElementById("content").style.display = "block";
 
-            getData(event);
+            // getData(event);
         }
 
 
@@ -315,7 +315,7 @@
         function dropDownMenu(){
             const header = document.getElementById("header");
             if (header.style.height === '75px') {
-                document.getElementById("header").style.height = "150px";
+                document.getElementById("header").style.height = "155px";
 
             } else {
                 document.getElementById("header").style.height = "75px";
@@ -347,7 +347,7 @@
         }
 
         #header{
-            height: 80px; 
+            height: 75px; 
             background-color: #F5F5F7; 
             color: #555555; 
             display: flex; 
@@ -398,16 +398,44 @@
             border: none;
         }
 
+        #nowButton, #checkboxButton {
+            cursor: pointer;
+            font-size:15px;
+            font-family: 'Montserrat';
+            margin-top:0px;
+            color:rgb(63, 63, 63);
+            background-color: transparent;
+            border-radius:30px;
+            text-align:center;
+            height:40px;
+            padding-left: 15px;
+            padding-right: 15px;
+            border: rgb(63, 63, 63) 2px solid;
+        }
+
         #login-button {
             margin-top: 10px;
         }
 
         #nowButton {
-            margin-left:10px
+            background-color: white;
+            margin-left:0px;
+            border-radius: 5px;
+            border: none
         }
 
         #submit_button:hover, #checkboxButton:hover, #close-button:hover, #csv_button:hover, #login-button:hover, #nowButton:hover {
             background-color:rgb(55, 55, 55);
+        }
+
+        #checkboxButton:hover {
+            background-color:rgb(63, 63, 63);
+            color:white;
+        }
+
+        #nowButton:hover {
+            background-color: white;
+            /* font-weight: bold; */
         }
 
         #Inputs, #LoginBox{
@@ -417,6 +445,7 @@
             margin-bottom: 30px;
             margin-top:30px;
             padding: 30px;
+            /* padding-bottom: 75px; */
             background-color: #f5f5f5;
             border-radius: 10px;
             /* border: #d6d6d6 0.5px solid; */
@@ -426,8 +455,31 @@
             padding-bottom: 80px;
         }
 
+        #checkboxDiv{
+            box-sizing: border-box;
+            left: 50%;
+            height: auto;
+            max-height: 90%;
+            overflow:scroll ;
+            transform: translate(-50%, -0%);
+            background-color: #F5F5F7;
+            /* border: #d6d6d6 0.5px solid; */
+            color: rgb(53, 53, 53);
+            position: absolute;
+            width: 100%;
+            max-width: 800px;
+            margin-top: 20px;
+            border-radius: 10px;
+            padding-left: 40px;
+            padding-right: 30px;
+            padding-bottom: 25px;
+            padding-top: 15px;
+            /* box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); */
+            z-index: 10000;
+        }
+
         #GWlogo {
-            height: 100%; 
+            height: 75px; 
             margin: 0; 
             padding: 0; 
             width:100%; 
@@ -435,10 +487,11 @@
             display: flex; 
             justify-content: center; 
             align-items: center;
+            font-size: 16px;
         }
 
         .menuItem {
-            height: 100%; 
+            height: 75px; 
             margin: 0; 
             padding: 0; 
             display: flex; 
@@ -460,12 +513,7 @@
             .menuItem {
                 width: 100%;
                 max-width: 100%;
-                padding-top:10px;
-                padding-bottom:10px;
-            }
-            #GWlogo{
-                padding-top:10px;
-                padding-bottom:10px;
+                height:40px
             }
             #header {
                 flex-direction: column;
@@ -483,6 +531,12 @@
                 justify-content: center;
                 align-items: center; 
                 flex-direction: column;
+            }
+            #checkboxDiv{
+                height:100%;
+                max-height: 100%;
+                margin: 0px;
+                margin-top:0px
             }
         }
 
@@ -508,29 +562,6 @@
 
         #housealias {
             margin-bottom: 0px;
-        }
-
-        #checkboxDiv{
-            box-sizing: border-box;
-            left: 50%;
-            height: auto;
-            max-height: 90%;
-            overflow:scroll ;
-            transform: translate(-50%, -0%);
-            background-color: #F5F5F7;
-            /* border: #d6d6d6 0.5px solid; */
-            color: rgb(53, 53, 53);
-            position: absolute;
-            width: 100%;
-            max-width: 800px;
-            margin-top: 20px;
-            border-radius: 10px;
-            padding-left: 40px;
-            padding-right: 30px;
-            padding-bottom: 25px;
-            padding-top: 15px;
-            /* box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); */
-            z-index: 10000;
         }
 
         #PlotContainer {
@@ -566,18 +597,8 @@
         }
 
         input[type="checkbox"]:checked {
-            background-color: #787878;
-            border-color: #787878;
-        }
-
-        input[type="checkbox"]:checked::after {
-            content: "✔";
-            color: white;
-            font-size: 13px;
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
+            background-color: #d1d1d6;
+            border-color: #d1d1d6;
         }
 
         #checkboxDiv label {
@@ -610,10 +631,6 @@
             border-color: #535353;
             outline: none;
         }
-
-
-        
-
 
     </style>
 
