@@ -311,6 +311,16 @@
                 document.getElementById("header").style.display = "flex";
             }
         }
+
+        function dropDownMenu(){
+            const header = document.getElementById("header");
+            if (header.style.height === '75px') {
+                document.getElementById("header").style.height = "150px";
+
+            } else {
+                document.getElementById("header").style.height = "75px";
+            }
+        }
     </script>
 
     <style>
@@ -343,6 +353,7 @@
             display: flex; 
             align-items: stretch;
             margin-bottom: 0;
+            /* flex-direction: column; */
             /* border-bottom: #d6d6d6 0.5px solid; */
         }
 
@@ -415,9 +426,64 @@
             padding-bottom: 80px;
         }
 
-        .menuItem{
-            color:rgb(55, 55, 55);
-            transition: background-color 0.5s;
+        #GWlogo {
+            height: 100%; 
+            margin: 0; 
+            padding: 0; 
+            width:100%; 
+            min-width: 175px; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center;
+        }
+
+        .menuItem {
+            height: 100%; 
+            margin: 0; 
+            padding: 0; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center;
+            flex: 1;
+            width: 20vw;
+            max-width: 135px;
+            min-width: 100px;
+            transition: all 0.3s ease;
+        }
+
+        #menubutton{
+            display: none;
+        }
+
+
+        @media (max-width: 600px) {
+            .menuItem {
+                width: 100%;
+                max-width: 100%;
+                padding-top:10px;
+                padding-bottom:10px;
+            }
+            #GWlogo{
+                padding-top:10px;
+                padding-bottom:10px;
+            }
+            #header {
+                flex-direction: column;
+                height: 75px;
+                overflow:hidden
+            }
+            #menubutton {
+                position: absolute;
+                display: flex; 
+                font-size: 20px;
+                right:0;
+                height:75px;
+                width: 75px;
+                cursor: pointer;
+                justify-content: center;
+                align-items: center; 
+                flex-direction: column;
+            }
         }
 
         a {
@@ -593,34 +659,34 @@
         <button id="csv_button" onclick='exportCSV()'>Export to CSV</button>
         <span id="csvLoadingText" style="color: rgb(55, 55, 55); display: none; position: absolute">Preparing for download, please wait...</span>
         <br>
-    </div>   
-
+    </div>
+    
     <div>
         <div id="header">
+            <div id="menubutton" onclick="dropDownMenu()">
+                <div style="width: 30%; height:2px; background-color: #535353;margin-bottom: 6px;"></div>
+                <div style="width: 30%; height:2px; background-color: #535353;"></div>
+            </div>
             <a href="">
-            <div style="height: 100%; margin: 0; padding: 0; width: 175px; display: flex; justify-content: center; align-items: center;">
-                <span style="font-family: 'Montserrat'; text-align: center;">
+            <div id="GWlogo">
+                <span style="font-family: 'Montserrat'">
                     <span style="font-weight: normal;">GRIDWORKS</span><br>CONSULTING
                 </span>
             </div>
             </a>
             <a href="">
-            <div class='menuItem' style="height: 100%; margin: 0; padding: 0; width: 135px; display: flex; align-items: center; justify-content: center;">
-                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;">
-                    <span style="font-size: 14px; font-weight: bold;">
-                        Visualizer
-                    </span>
-                </div>
+            <div class='menuItem'>
+                <span style="font-size: 14px; font-weight: bold;">
+                    Visualizer
+                </span>
             </div>
             </a>
             <a href="https://gridworks-consulting.com/">
-                <div class='menuItem' style="height: 100%; margin: 0; padding: 0; width: 135px; display: flex; align-items: center; justify-content: center;">
-                    <div style="text-align: center;">
-                        <span style="font-size: 14px;">
-                            About
-                        </span>
-                    </div>
-                </div>
+            <div class='menuItem'>
+                <span style="font-size: 14px;">
+                    About
+                </span>
+            </div>
             </a>
         </div> 
 
