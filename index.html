@@ -253,10 +253,10 @@
             
             house_alias = document.getElementById("housealias").value;
             password = document.getElementById("passwd").value;
-            // if (!house_alias) {
-            //     alert("Please enter a house alias.");
-            //     return;
-            // }
+            if (!house_alias) {
+                alert("Please enter a house alias.");
+                return;
+            }
 
             document.getElementById("login").style.display = "none";
             document.getElementById("houseAliasHeader").textContent = `${house_alias.charAt(0).toUpperCase()}${house_alias.slice(1)}`;
@@ -266,7 +266,7 @@
             document.getElementById('endTimePicker').value = getDefaultTime();
             document.getElementById("content").style.display = "block";
 
-            // getData(event);
+            getData(event);
         }
 
 
