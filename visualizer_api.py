@@ -274,16 +274,16 @@ async def get_csv(request: CsvRequest):
         for channel in request.selected_channels:
             if channel in channels:
                 channels_to_export.append(channel)
-            elif channel=='zone_heat_calls':
+            elif channel=='zone-heat-calls':
                 for c in channels.keys():
                     if 'zone' in c:
                         channels_to_export.append(c)
             # TODO not working buffer depths
-            elif channel=='buffer_depths':
+            elif channel=='buffer-depths':
                 for c in channels.keys():
                     if 'depth' in c and 'buffer' in c:
                         channels_to_export.append(c)
-            elif channel=='storage_depths':
+            elif channel=='storage-depths':
                 for c in channels.keys():
                     if 'depth' in c and 'tank' in c:
                         channels_to_export.append(c)
@@ -613,7 +613,7 @@ async def get_plots(request: DataRequest):
 
         fig = go.Figure()
 
-        if 'zone_heat_calls' in request.selected_channels:
+        if 'zone-heat-calls' in request.selected_channels:
             for zone in zones:
                 for key in [x for x in zones[zone] if 'state' in x]:
                     zone_color = zone_colors_hex[int(key[4])-1]
@@ -1203,7 +1203,7 @@ async def get_plots(request: DataRequest):
     #         ax[1].plot(channels['dist-rwt']['times'], channels['dist-rwt']['values'], line_style, color='tab:blue', alpha=0.7, label='Distribution RWT')
     #     if temp_plot:
     #         ax[1].set_ylabel('Temperature [F]')
-    #         if 'zone_heat_calls' in request.selected_channels:
+    #         if 'zone-heat-calls' in request.selected_channels:
     #             ax[1].set_ylim([0,260])
     #         else:
     #             lower_bound = ax[1].get_ylim()[0] - 5
@@ -1231,7 +1231,7 @@ async def get_plots(request: DataRequest):
     #     height_of_stack = 0
     #     stacked_values = None
     #     scale = 1
-    #     if 'zone_heat_calls' in request.selected_channels:
+    #     if 'zone-heat-calls' in request.selected_channels:
     #         for zone in zones:
     #             for key in [x for x in zones[zone] if 'state' in x]:
     #                 if stacked_values is None:
