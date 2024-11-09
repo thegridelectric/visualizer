@@ -473,7 +473,7 @@ async def get_plots(request: DataRequest):
                 elif temp_plot and not power_plot:
                     fig.update_layout(yaxis=dict(title='Temperature [F]'))
                 elif power_plot and not temp_plot:
-                    fig.update_layout(yaxis=dict(title='Power [kW] or Flow [GPM]', range=[0,260]))
+                    fig.update_layout(yaxis=dict(title='Power [kW] or Flow [GPM]', range=[0,10]))
                 
                 fig.update_layout(
                     title=dict(text='Heat pump', x=0.5, xanchor='center'),
