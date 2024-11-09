@@ -480,7 +480,8 @@ async def get_plots(request: DataRequest):
                 x=0,
                 y=1,
                 xanchor='left',
-                yanchor='top'
+                yanchor='top',
+                bgcolor='rgba(0, 0, 0, 0)'
                 )
             )
 
@@ -598,7 +599,8 @@ async def get_plots(request: DataRequest):
                 x=0,
                 y=1,
                 xanchor='left',
-                yanchor='top'
+                yanchor='top',
+                bgcolor='rgba(0, 0, 0, 0)'
                 )
             )
 
@@ -709,7 +711,8 @@ async def get_plots(request: DataRequest):
                 y=1,
                 xanchor='left',
                 yanchor='top',
-                orientation='h'
+                orientation='h',
+                bgcolor='rgba(0, 0, 0, 0)'
             )
         )
 
@@ -756,14 +759,17 @@ async def get_plots(request: DataRequest):
                     x=channels['oat']['times'], 
                     y=[to_fahrenheit(x/1000) for x in channels['oat']['values']], 
                     mode=line_style, 
-                    opacity=0.5,
+                    opacity=0.2,
                     line=dict(color='gray', dash='solid'),
                     name='Outside air',
+                    yaxis='y2'
                     )
                 )
             min_oat = to_fahrenheit(min(channels['oat']['values'])/1000)
+            max_oat = to_fahrenheit(max(channels['oat']['values'])/1000)
+            fig.update_layout(yaxis2=dict(title='Outside air temperature [F]'))
         
-        fig.update_layout(yaxis=dict(title='Temperature [F]'))
+        fig.update_layout(yaxis=dict(title='Zone temperature [F]'))
 
         fig.update_layout(
             title=dict(text='Zones', x=0.5, xanchor='center'),
@@ -789,12 +795,24 @@ async def get_plots(request: DataRequest):
                 gridwidth=1, 
                 gridcolor='LightGray'
                 ),
+            yaxis2=dict(
+                range = [min_oat-2, max_oat+20],
+                mirror=True,
+                ticks='outside',
+                showline=True,
+                linecolor='rgb(42,63,96)',
+                overlaying='y', 
+                side='right', 
+                zeroline=False,
+                showgrid=False, 
+                ),
             legend=dict(
                 x=0,
                 y=1,
                 xanchor='left',
                 yanchor='top',
-                orientation='h'
+                orientation='h',
+                bgcolor='rgba(0, 0, 0, 0)'
                 )
             )
 
@@ -890,6 +908,7 @@ async def get_plots(request: DataRequest):
                 xanchor='left',
                 yanchor='top',
                 orientation='h',
+                bgcolor='rgba(0, 0, 0, 0)'
                 )
             )
 
@@ -1031,7 +1050,8 @@ async def get_plots(request: DataRequest):
                 y=1,
                 xanchor='left',
                 yanchor='top',
-                orientation='h'
+                orientation='h',
+                bgcolor='rgba(0, 0, 0, 0)'
             )
         )
 
