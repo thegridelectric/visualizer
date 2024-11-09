@@ -18,10 +18,7 @@
 
             event.preventDefault();
 
-            const csvButton= document.getElementById('csv_button');
-            const csvLoadingText = document.getElementById('csvLoadingText');
-            csvButton.style.display = 'none';
-            csvLoadingText.style.display = 'inline';
+            disable_csv_buttons()
 
             const startdate = document.getElementById('startDatePicker').value;
             const starttime = document.getElementById('startTimePicker').value;
@@ -89,12 +86,13 @@
                 console.error('Error downloading CSV:', error);
                 alert(`Error downloading CSV`);
             } finally {
-                csvLoadingText.style.display = 'none';
-                csvButton.style.display = 'inline';
+                enable_csv_buttons()
             }
         }
 
-        async function fetchPlots(house_alias, password, start_ms, end_ms, channels) {
+        async function fetchPlots(house_alias, password, start_ms, end_ms, channels, continueOption) {
+
+            disable_plot_buttons()
 
             const ipResponse = await fetch('https://api.ipify.org?format=json');
             const ipData = await ipResponse.json();
@@ -117,7 +115,8 @@
                         selected_channels: channels,
                         ip_address: ipAddress,
                         user_agent: userAgent,
-                        timezone: timezone
+                        timezone: timezone,
+                        continue_option: continueOption,
                     })
                 });
 
@@ -126,9 +125,17 @@
                 if (contentType && contentType.includes("application/json")) {
                     const data = await response.json();
                     if ('success' in data && data.success === false) {
-                        alert(data.message);
-                        if (data.reload) {
-                            location.reload();
+                        if (data.continue_option) {
+                            const userChoice = confirm(data.message);
+                            console.log(userChoice ? "User chose to Continue" : "User chose to Abort");
+                            if (userChoice) {
+                                await fetchPlots(house_alias, password, start_ms, end_ms, channels, true); 
+                            }
+                        } else { 
+                            alert(data.message);
+                            if (data.reload) {
+                                location.reload();
+                            }
                         }
                     }
                 } else {
@@ -191,7 +198,7 @@
                 console.error('Error fetching plots:', error);
                 alert(`Error fetching plots for house '${house_alias}'.`);
             } finally {
-                resetButton();
+                enable_plot_buttons();
             }
         }
 
@@ -241,7 +248,8 @@
             }
         }
 
-        function resetButton() {
+        function enable_plot_buttons() {
+            console.log('Enabled')
             const submitButton = document.querySelector('#form2 input[type="submit"]');
             const nowButton = document.getElementById('nowButton');
             const loadingText = document.getElementById('loadingText');
@@ -249,6 +257,31 @@
             nowButton.style.display = 'inline';
             loadingText.style.display = 'none';
         }
+
+        function disable_plot_buttons() {
+            console.log('Disabled')
+            const submitButton = document.querySelector('#form2 input[type="submit"]');
+            const nowButton = document.getElementById('nowButton');
+            const loadingText = document.getElementById('loadingText');
+            submitButton.style.display = 'none';
+            nowButton.style.display = 'none';
+            loadingText.style.display = 'inline';
+        }
+
+        function enable_csv_buttons() {
+            const csvButton= document.getElementById('csv_button');
+            const csvLoadingText = document.getElementById('csvLoadingText');
+            csvButton.style.display = 'inline';
+            csvLoadingText.style.display = 'none';
+        }
+
+        function disable_csv_buttons() {
+            const csvButton= document.getElementById('csv_button');
+            const csvLoadingText = document.getElementById('csvLoadingText');
+            csvButton.style.display = 'none';
+            csvLoadingText.style.display = 'inline';
+        }
+
 
         function LogInFunction(event) {
             event.preventDefault();
@@ -275,15 +308,6 @@
         function getData(event) {
             event.preventDefault();
 
-            const submitButton = document.querySelector('#form2 input[type="submit"]');
-            const nowButton = document.getElementById('nowButton');
-            const loadingText = document.getElementById('loadingText');
-            const checkboxDiv = document.getElementById("checkboxDiv");
-            submitButton.style.display = 'none';
-            nowButton.style.display = 'none';
-            loadingText.style.display = 'inline';
-            checkboxDiv.style.display = "none";
-
             const selectedChannels = Array.from(document.querySelectorAll('input[name="channels"]:checked'))
                 .map(checkbox => checkbox.value);
 
@@ -297,7 +321,7 @@
             const endtime_luxon = luxon.DateTime.fromFormat(`${enddate} ${endtime}`, 'yyyy-MM-dd HH:mm', { zone: 'America/New_York' });
             const endUnixMilliseconds = endtime_luxon.toUTC().toMillis();
 
-            fetchPlots(house_alias, password, startUnixMilliseconds, endUnixMilliseconds, selectedChannels)
+            fetchPlots(house_alias, password, startUnixMilliseconds, endUnixMilliseconds, selectedChannels, false)
         }
 
         function toggleCheckbox() {
@@ -704,7 +728,7 @@
         <label><input type="checkbox" name="channels" value="store-cold-pipe" checked>Cold pipe</label><br>
         <label><input type="checkbox" name="channels" value="storage-depths" checked>Storage depths</label><br>
         <label><input type="checkbox" name="channels" value="store-flow" checked>Storage pump flow rate</label><br>
-        <label><input type="checkbox" name="channels" value="store-pump-pwr">Storage pump power</label><br>
+        <label><input type="checkbox" name="channels" value="store-pump-pwr" checked>Storage pump power</label><br>
         <h2>Plots</h2>
         <label><input type="checkbox" name="channels" value="show-points">Show points</label><br>
         <h2>Export to CSV</h2>

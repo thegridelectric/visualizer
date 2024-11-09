@@ -2,7 +2,7 @@ import io
 import zipfile
 import numpy as np
 import pandas as pd
-from typing import List
+from typing import List, Optional
 import time
 import asyncio
 import async_timeout
@@ -25,6 +25,7 @@ PYPLOT_PLOT = True
 MATPLOTLIB_PLOT = False
 MESSAGE_SQL = True
 TIMEOUT_SECONDS = 5*60
+MAX_DAYS_WARNING = 1
 
 settings = Settings(_env_file=dotenv.find_dotenv())
 valid_password = settings.visualizer_api_password.get_secret_value()
@@ -59,6 +60,7 @@ class DataRequest(BaseModel):
     ip_address: str
     user_agent: str
     timezone: str
+    continue_option: Optional[bool] = False
 
 class CsvRequest(BaseModel):
     house_alias: str
@@ -67,6 +69,7 @@ class CsvRequest(BaseModel):
     end_ms: int
     selected_channels: List[str]
     timestep: int
+    continue_option: Optional[bool] = False
 
 # ------------------------------
 # Plot colors
@@ -129,12 +132,17 @@ def get_data(request):
             "reload": True
             }, 0, 0, 0, 0
     
-    if (request.end_ms - request.start_ms)/1000/60/60/24 > 31:
-        return {
-            "success": False,
-            "message": "The time difference between the start and end date exceeds the authorized limit (31 days).", 
-            "reload":False
-            }, 0, 0, 0, 0
+    if not request.continue_option:
+        if (request.end_ms - request.start_ms)/1000/60/60/24 > MAX_DAYS_WARNING:
+            warning_message = f"That's a lot of data! This could take a while, "
+            warning_message += f"and eventually trigger a timeout (after {int(TIMEOUT_SECONDS/60)} minutes). "
+            warning_message += f"It might be best to get this data in several smaller requests.\n\nAre you sure you would like to continue?"
+            return {
+                "success": False,
+                "message": warning_message, 
+                "reload":False,
+                "continue_option": True,
+                }, 0, 0, 0, 0
     
     if MESSAGE_SQL:
 
@@ -659,7 +667,7 @@ async def get_plots(request: DataRequest):
                                                     showlegend=False,
                                                 )
                                             )
-                                    if not last_was_1:
+                                    if not last_was_1 or 'show-points' in request.selected_channels:
                                         if i>0: 
                                             fig.add_trace(
                                                 go.Scatter(
