@@ -25,7 +25,7 @@ PYPLOT_PLOT = True
 MATPLOTLIB_PLOT = False
 MESSAGE_SQL = True
 TIMEOUT_SECONDS = 5*60
-MAX_DAYS_WARNING = 1
+MAX_DAYS_WARNING = 3
 
 settings = Settings(_env_file=dotenv.find_dotenv())
 valid_password = settings.visualizer_api_password.get_secret_value()
