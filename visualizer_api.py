@@ -7,7 +7,6 @@ import time
 import asyncio
 import async_timeout
 from fastapi import FastAPI
-from fastapi import HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 import dotenv
@@ -25,7 +24,7 @@ import plotly.graph_objects as go
 PYPLOT_PLOT = True
 MATPLOTLIB_PLOT = False
 MESSAGE_SQL = True
-TIMEOUT_SECONDS = 1 #5*60
+TIMEOUT_SECONDS = 5*60
 
 settings = Settings(_env_file=dotenv.find_dotenv())
 valid_password = settings.visualizer_api_password.get_secret_value()
@@ -352,7 +351,6 @@ async def get_csv(request: CsvRequest):
 
 @app.post('/plots')
 async def get_plots(request: DataRequest):
-
 
     try:
         async with async_timeout.timeout(TIMEOUT_SECONDS):
