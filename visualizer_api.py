@@ -3,7 +3,11 @@ import zipfile
 import numpy as np
 import pandas as pd
 from typing import List
+import time
+import asyncio
+import async_timeout
 from fastapi import FastAPI
+from fastapi import HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 import dotenv
@@ -21,6 +25,7 @@ import plotly.graph_objects as go
 PYPLOT_PLOT = True
 MATPLOTLIB_PLOT = False
 MESSAGE_SQL = True
+TIMEOUT_SECONDS = 1 #5*60
 
 settings = Settings(_env_file=dotenv.find_dotenv())
 valid_password = settings.visualizer_api_password.get_secret_value()
@@ -261,71 +266,85 @@ def get_data(request):
 
 @app.post('/csv')
 async def get_csv(request: CsvRequest):
+    try:
+        async with async_timeout.timeout(TIMEOUT_SECONDS):
+            
+            start_time = time.time()
+            error_msg, channels, _, __, ___ = await asyncio.to_thread(get_data, request)
+            print("Time to fetch data:", time.time() - start_time)
 
-    error_msg, channels, _, __, ___ = get_data(request)
+            if error_msg != '':
+                return {"success": False, "message": error_msg}
 
-    if error_msg != '':
-        return error_msg
+            if 'all-data' in request.selected_channels:
+                channels_to_export = channels.keys()
+            else:
+                channels_to_export = []
+                for channel in request.selected_channels:
+                    if channel in channels:
+                        channels_to_export.append(channel)
+                    elif channel == 'zone-heat-calls':
+                        for c in channels.keys():
+                            if 'zone' in c:
+                                channels_to_export.append(c)
+                    elif channel == 'buffer-depths':
+                        for c in channels.keys():
+                            if 'depth' in c and 'buffer' in c and 'micro' not in c:
+                                channels_to_export.append(c)
+                    elif channel == 'storage-depths':
+                        for c in channels.keys():
+                            if 'depth' in c and 'tank' in c and 'micro' not in c:
+                                channels_to_export.append(c)
 
-    if 'all-data' in request.selected_channels:
-        channels_to_export = channels.keys()
-    else:
-        channels_to_export = []
-        for channel in request.selected_channels:
-            if channel in channels:
-                channels_to_export.append(channel)
-            elif channel=='zone-heat-calls':
-                for c in channels.keys():
-                    if 'zone' in c:
-                        channels_to_export.append(c)
-            elif channel=='buffer-depths':
-                for c in channels.keys():
-                    if 'depth' in c and 'buffer' in c and 'micro' not in c:
-                        channels_to_export.append(c)
-            elif channel=='storage-depths':
-                for c in channels.keys():
-                    if 'depth' in c and 'tank' in c and 'micro' not in c:
-                        channels_to_export.append(c)
+            num_points = int((request.end_ms - request.start_ms) / (request.timestep * 1000) + 1)
+            
+            if num_points * len(channels_to_export) > 3600 * 24 * 7 * len(channels):
+                error_message = f"This request would generate {num_points} data points, which is too much data in one go."
+                error_message += "\n\nSuggestions:\n- Increase the time step\n- Reduce the number of channels"
+                error_message += "\n- Change the start and end times"
+                return {"success": False, "message": error_message, "reload": False}
 
-    num_points = int((request.end_ms-request.start_ms) / (request.timestep*1000) + 1)
-    
-    if num_points*len(channels_to_export) > 3600*24*7*len(channels):
-        error_message = f"This request would generate {num_points} data points, which is too much data in one go."
-        error_message += "\n\nSuggestions:\n- Increase the time step\n- Reduce the number of channels"
-        error_message += "\n- Change the start and end times"
+            csv_times = np.linspace(request.start_ms, request.end_ms, num_points)
+            csv_times_dt = pd.to_datetime(csv_times, unit='ms', utc=True)
+            csv_times_dt = [x.tz_convert('America/New_York').replace(tzinfo=None) for x in csv_times_dt]
+            
+            csv_values = {}
+            for channel in channels_to_export:
+                merged = await asyncio.to_thread(pd.merge_asof, 
+                                                  pd.DataFrame({'times': csv_times_dt}),
+                                                  pd.DataFrame(channels[channel]),
+                                                  on='times',
+                                                  direction='backward')
+                csv_values[channel] = list(merged['values'])
+
+            df = pd.DataFrame(csv_values)
+            df['timestamps'] = csv_times_dt
+            df = df[['timestamps'] + [col for col in df.columns if col != 'timestamps']]
+
+            csv_buffer = io.StringIO()
+            df.to_csv(csv_buffer, index=False)
+            csv_buffer.seek(0)
+
+            response = StreamingResponse(
+                iter([csv_buffer.getvalue()]),
+                media_type="text/csv",
+                headers={"Content-Disposition": "attachment; filename=output.csv"}
+            )
+            return response
+
+    except asyncio.TimeoutError:
         return {
                 "success": False, 
-                "message": error_message, 
+                "message": f"The data request timed out. Please try loading a smaller amount of data at a time.", 
                 "reload": False
                 }
-
-    csv_times = np.linspace(request.start_ms, request.end_ms, num_points)
-    csv_times_dt = [pd.to_datetime(x, unit='ms', utc=True) for x in csv_times]
-    csv_times_dt = [x.tz_convert('America/New_York').replace(tzinfo=None) for x in csv_times_dt]
     
-    csv_values = {}
-    for channel in channels_to_export:
-        merged = pd.merge_asof(
-            pd.DataFrame({'times': csv_times_dt}),
-            pd.DataFrame(channels[channel]),
-            on='times',
-            direction='backward'
-        )
-        csv_values[channel] = list(merged['values'])
-
-    df = pd.DataFrame(csv_values)
-    df['timestamps'] = csv_times_dt
-    df = df[['timestamps'] + [col for col in df.columns if col != 'timestamps']]
-
-    csv_buffer = io.StringIO()
-    df.to_csv(csv_buffer, index=False)
-    csv_buffer.seek(0)
-    response = StreamingResponse(
-        iter([csv_buffer.getvalue()]),
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=output.csv"}
-    )
-    return response
+    except Exception as e:
+        return {
+            "success": False, 
+            "message": f"An error occurred: {str(e)}", 
+            "reload": False
+            }
 
 # ------------------------------
 # Generate interactive plots
@@ -334,813 +353,751 @@ async def get_csv(request: CsvRequest):
 @app.post('/plots')
 async def get_plots(request: DataRequest):
 
-    error_msg, channels, zones, min_time_ms_dt, max_time_ms_dt = get_data(request)
-    zone_colors_hex = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']*200
 
-    if error_msg != '':
-        return error_msg
-
-    if PYPLOT_PLOT:
-
-        line_style = 'lines+markers' if 'show-points'in request.selected_channels else 'lines'
-
-        # --------------------------------------
-        # PLOT 1: Heat pump
-        # --------------------------------------
-
-        fig = go.Figure()
-
-        # Temperature
-        temp_plot = False
-        if 'hp-lwt' in request.selected_channels and 'hp-lwt' in channels:
-            temp_plot = True
-            fig.add_trace(
-                go.Scatter(
-                    x=channels['hp-lwt']['times'], 
-                    y=[to_fahrenheit(x/1000) for x in channels['hp-lwt']['values']], 
-                    mode=line_style,
-                    opacity=0.7,
-                    line=dict(color='#d62728', dash='solid'),
-                    name='HP LWT'
-                    )
-                )
-        if 'hp-ewt' in request.selected_channels and 'hp-ewt' in channels:
-            temp_plot = True
-            fig.add_trace(
-                go.Scatter(
-                    x=channels['hp-ewt']['times'], 
-                    y=[to_fahrenheit(x/1000) for x in channels['hp-ewt']['values']], 
-                    mode=line_style, 
-                    opacity=0.7,
-                    line=dict(color='#1f77b4', dash='solid'),
-                    name='HP EWT'
-                    )
-                )
-
-        # Secondary yaxis
-        y_axis_power = 'y2' if temp_plot else 'y'
+    try:
+        async with async_timeout.timeout(TIMEOUT_SECONDS):
             
-        # Power and flow
-        power_plot = False
-        if 'hp-odu-pwr' in request.selected_channels and 'hp-odu-pwr' in channels:
-            power_plot = True
-            fig.add_trace(
-                go.Scatter(
-                    x=channels['hp-odu-pwr']['times'], 
-                    y=[x/1000 for x in channels['hp-odu-pwr']['values']], 
-                    mode=line_style, 
-                    opacity=0.7,
-                    line=dict(color='#2ca02c', dash='solid'),
-                    name='HP outdoor power',
-                    yaxis=y_axis_power
-                    )
-                )
-        if 'hp-idu-pwr' in request.selected_channels and 'hp-idu-pwr' in channels:
-            power_plot = True
-            fig.add_trace(
-                go.Scatter(
-                    x=channels['hp-idu-pwr']['times'], 
-                    y=[x/1000 for x in channels['hp-idu-pwr']['values']], 
-                    mode=line_style, 
-                    opacity=0.7,
-                    line=dict(color='#ff7f0e', dash='solid'),
-                    name='HP indoor power',
-                    yaxis=y_axis_power
-                    )
-                )
-        if 'primary-pump-pwr' in request.selected_channels and 'primary-pump-pwr' in channels:
-            power_plot = True
-            fig.add_trace(
-                go.Scatter(
-                    x=channels['primary-pump-pwr']['times'], 
-                    y=[x/1000*100 for x in channels['primary-pump-pwr']['values']], 
-                    mode=line_style, 
-                    opacity=0.7,
-                    line=dict(color='pink', dash='solid'),
-                    name='Primary pump power x100',
-                    yaxis=y_axis_power
-                    )
-                )
-        if 'primary-flow' in request.selected_channels and 'primary-flow' in channels:
-            power_plot = True
-            fig.add_trace(
-                go.Scatter(
-                    x=channels['primary-flow']['times'],
-                    y=[x/100 for x in channels['primary-flow']['values']], 
-                    mode=line_style, 
-                    opacity=0.4,
-                    line=dict(color='purple', dash='solid'),
-                    name='Primary pump flow',
-                    yaxis=y_axis_power
-                    )
-                )
-
-        if power_plot and temp_plot:
-            fig.update_layout(yaxis=dict(title='Temperature [F]', range=[0,260]))
-            fig.update_layout(yaxis2=dict(title='Power [kW] or Flow [GPM]', range=[0,35]))
-        elif temp_plot and not power_plot:
-            fig.update_layout(yaxis=dict(title='Temperature [F]'))
-        elif power_plot and not temp_plot:
-            fig.update_layout(yaxis=dict(title='Power [kW] or Flow [GPM]', range=[0,260]))
-        
-        fig.update_layout(
-            title=dict(text='Heat pump', x=0.5, xanchor='center'),
-            margin=dict(t=30, b=30),
-            plot_bgcolor=plot_background_hex,
-            paper_bgcolor=plot_background_hex,
-            xaxis=dict(
-                range=[min_time_ms_dt, max_time_ms_dt],
-                mirror=True,
-                ticks='outside',
-                showline=True,
-                linecolor='rgb(42,63,96)',
-                showgrid=False
-                ),
-            yaxis=dict(
-                mirror=True,
-                ticks='outside',
-                showline=True,
-                linecolor='rgb(42,63,96)',
-                zeroline=False,
-                showgrid=True, 
-                gridwidth=1, 
-                gridcolor='LightGray'
-                ),
-            yaxis2=dict(
-                mirror=True,
-                ticks='outside',
-                zeroline=False,
-                showline=True,
-                linecolor='rgb(42,63,96)',
-                showgrid=False,
-                overlaying='y', 
-                side='right'
-                ),
-            legend=dict(
-                x=0,
-                y=1,
-                xanchor='left',
-                yanchor='top',
-                bgcolor='rgba(0, 0, 0, 0)'
-                )
-            )
-
-        html_buffer1 = io.StringIO()
-        fig.write_html(html_buffer1)
-        html_buffer1.seek(0)
-
-        # --------------------------------------
-        # PLOT 2: Distribution
-        # --------------------------------------
-
-        fig = go.Figure()
-
-        # Temperature
-        temp_plot = False
-        if 'dist-swt' in request.selected_channels and 'dist-swt' in channels:
-            temp_plot = True
-            fig.add_trace(
-                go.Scatter(
-                    x=channels['dist-swt']['times'], 
-                    y=[to_fahrenheit(x/1000) for x in channels['dist-swt']['values']], 
-                    mode=line_style, 
-                    opacity=0.7,
-                    line=dict(color='#d62728', dash='solid'),
-                    name='Distribution SWT'
-                    )
-                )
-        if 'dist-rwt' in request.selected_channels and 'dist-rwt' in channels:
-            temp_plot = True
-            fig.add_trace(
-                go.Scatter(
-                    x=channels['dist-rwt']['times'], 
-                    y=[to_fahrenheit(x/1000) for x in channels['dist-rwt']['values']], 
-                    mode=line_style, 
-                    opacity=0.7,
-                    line=dict(color='#1f77b4', dash='solid'),
-                    name='Distribution RWT'
-                    )
-                )
+            start_time = time.time()
+            error_msg, channels, zones, min_time_ms_dt, max_time_ms_dt = await asyncio.to_thread(get_data, request)
+            print("Time to fetch data:", time.time() - start_time)
+    
+            if error_msg != '':
+                return error_msg
             
-        # Secondary yaxis
-        y_axis_power = 'y2' if temp_plot else 'y'
+            zone_colors_hex = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']*200
 
-        # Power and flow
-        power_plot = False   
-        if 'dist-pump-pwr' in request.selected_channels and 'dist-pump-pwr' in channels:
-            power_plot = True
-            fig.add_trace(
-                go.Scatter(
-                    x=channels['dist-pump-pwr']['times'], 
-                    y=[x/10 for x in channels['dist-pump-pwr']['values']], 
-                    mode=line_style, 
-                    opacity=0.7,
-                    line=dict(color='pink', dash='solid'),
-                    name='Distribution pump power /10',
-                    yaxis = y_axis_power
+            if PYPLOT_PLOT:
+
+                line_style = 'lines+markers' if 'show-points'in request.selected_channels else 'lines'
+
+                # --------------------------------------
+                # PLOT 1: Heat pump
+                # --------------------------------------
+
+                fig = go.Figure()
+
+                # Temperature
+                temp_plot = False
+                if 'hp-lwt' in request.selected_channels and 'hp-lwt' in channels:
+                    temp_plot = True
+                    fig.add_trace(
+                        go.Scatter(
+                            x=channels['hp-lwt']['times'], 
+                            y=[to_fahrenheit(x/1000) for x in channels['hp-lwt']['values']], 
+                            mode=line_style,
+                            opacity=0.7,
+                            line=dict(color='#d62728', dash='solid'),
+                            name='HP LWT'
+                            )
+                        )
+                if 'hp-ewt' in request.selected_channels and 'hp-ewt' in channels:
+                    temp_plot = True
+                    fig.add_trace(
+                        go.Scatter(
+                            x=channels['hp-ewt']['times'], 
+                            y=[to_fahrenheit(x/1000) for x in channels['hp-ewt']['values']], 
+                            mode=line_style, 
+                            opacity=0.7,
+                            line=dict(color='#1f77b4', dash='solid'),
+                            name='HP EWT'
+                            )
+                        )
+
+                # Secondary yaxis
+                y_axis_power = 'y2' if temp_plot else 'y'
+                    
+                # Power and flow
+                power_plot = False
+                if 'hp-odu-pwr' in request.selected_channels and 'hp-odu-pwr' in channels:
+                    power_plot = True
+                    fig.add_trace(
+                        go.Scatter(
+                            x=channels['hp-odu-pwr']['times'], 
+                            y=[x/1000 for x in channels['hp-odu-pwr']['values']], 
+                            mode=line_style, 
+                            opacity=0.7,
+                            line=dict(color='#2ca02c', dash='solid'),
+                            name='HP outdoor power',
+                            yaxis=y_axis_power
+                            )
+                        )
+                if 'hp-idu-pwr' in request.selected_channels and 'hp-idu-pwr' in channels:
+                    power_plot = True
+                    fig.add_trace(
+                        go.Scatter(
+                            x=channels['hp-idu-pwr']['times'], 
+                            y=[x/1000 for x in channels['hp-idu-pwr']['values']], 
+                            mode=line_style, 
+                            opacity=0.7,
+                            line=dict(color='#ff7f0e', dash='solid'),
+                            name='HP indoor power',
+                            yaxis=y_axis_power
+                            )
+                        )
+                if 'primary-pump-pwr' in request.selected_channels and 'primary-pump-pwr' in channels:
+                    power_plot = True
+                    fig.add_trace(
+                        go.Scatter(
+                            x=channels['primary-pump-pwr']['times'], 
+                            y=[x/1000*100 for x in channels['primary-pump-pwr']['values']], 
+                            mode=line_style, 
+                            opacity=0.7,
+                            line=dict(color='pink', dash='solid'),
+                            name='Primary pump power x100',
+                            yaxis=y_axis_power
+                            )
+                        )
+                if 'primary-flow' in request.selected_channels and 'primary-flow' in channels:
+                    power_plot = True
+                    fig.add_trace(
+                        go.Scatter(
+                            x=channels['primary-flow']['times'],
+                            y=[x/100 for x in channels['primary-flow']['values']], 
+                            mode=line_style, 
+                            opacity=0.4,
+                            line=dict(color='purple', dash='solid'),
+                            name='Primary pump flow',
+                            yaxis=y_axis_power
+                            )
+                        )
+
+                if power_plot and temp_plot:
+                    fig.update_layout(yaxis=dict(title='Temperature [F]', range=[0,260]))
+                    fig.update_layout(yaxis2=dict(title='Power [kW] or Flow [GPM]', range=[0,35]))
+                elif temp_plot and not power_plot:
+                    fig.update_layout(yaxis=dict(title='Temperature [F]'))
+                elif power_plot and not temp_plot:
+                    fig.update_layout(yaxis=dict(title='Power [kW] or Flow [GPM]', range=[0,260]))
+                
+                fig.update_layout(
+                    title=dict(text='Heat pump', x=0.5, xanchor='center'),
+                    margin=dict(t=30, b=30),
+                    plot_bgcolor=plot_background_hex,
+                    paper_bgcolor=plot_background_hex,
+                    xaxis=dict(
+                        range=[min_time_ms_dt, max_time_ms_dt],
+                        mirror=True,
+                        ticks='outside',
+                        showline=True,
+                        linecolor='rgb(42,63,96)',
+                        showgrid=False
+                        ),
+                    yaxis=dict(
+                        mirror=True,
+                        ticks='outside',
+                        showline=True,
+                        linecolor='rgb(42,63,96)',
+                        zeroline=False,
+                        showgrid=True, 
+                        gridwidth=1, 
+                        gridcolor='LightGray'
+                        ),
+                    yaxis2=dict(
+                        mirror=True,
+                        ticks='outside',
+                        zeroline=False,
+                        showline=True,
+                        linecolor='rgb(42,63,96)',
+                        showgrid=False,
+                        overlaying='y', 
+                        side='right'
+                        ),
+                    legend=dict(
+                        x=0,
+                        y=1,
+                        xanchor='left',
+                        yanchor='top',
+                        bgcolor='rgba(0, 0, 0, 0)'
+                        )
                     )
-                )
-        if 'dist-flow' in request.selected_channels and 'dist-flow' in channels:
-            power_plot = True
-            fig.add_trace(
-                go.Scatter(
-                    x=channels['dist-flow']['times'], 
-                    y=[x/100 for x in channels['dist-flow']['values']], 
-                    mode=line_style, 
-                    opacity=0.4,
-                    line=dict(color='purple', dash='solid'),
-                    name='Distribution flow',
-                    yaxis = y_axis_power
+
+                html_buffer1 = io.StringIO()
+                fig.write_html(html_buffer1)
+                html_buffer1.seek(0)
+
+                # --------------------------------------
+                # PLOT 2: Distribution
+                # --------------------------------------
+
+                fig = go.Figure()
+
+                # Temperature
+                temp_plot = False
+                if 'dist-swt' in request.selected_channels and 'dist-swt' in channels:
+                    temp_plot = True
+                    fig.add_trace(
+                        go.Scatter(
+                            x=channels['dist-swt']['times'], 
+                            y=[to_fahrenheit(x/1000) for x in channels['dist-swt']['values']], 
+                            mode=line_style, 
+                            opacity=0.7,
+                            line=dict(color='#d62728', dash='solid'),
+                            name='Distribution SWT'
+                            )
+                        )
+                if 'dist-rwt' in request.selected_channels and 'dist-rwt' in channels:
+                    temp_plot = True
+                    fig.add_trace(
+                        go.Scatter(
+                            x=channels['dist-rwt']['times'], 
+                            y=[to_fahrenheit(x/1000) for x in channels['dist-rwt']['values']], 
+                            mode=line_style, 
+                            opacity=0.7,
+                            line=dict(color='#1f77b4', dash='solid'),
+                            name='Distribution RWT'
+                            )
+                        )
+                    
+                # Secondary yaxis
+                y_axis_power = 'y2' if temp_plot else 'y'
+
+                # Power and flow
+                power_plot = False   
+                if 'dist-pump-pwr' in request.selected_channels and 'dist-pump-pwr' in channels:
+                    power_plot = True
+                    fig.add_trace(
+                        go.Scatter(
+                            x=channels['dist-pump-pwr']['times'], 
+                            y=[x/10 for x in channels['dist-pump-pwr']['values']], 
+                            mode=line_style, 
+                            opacity=0.7,
+                            line=dict(color='pink', dash='solid'),
+                            name='Distribution pump power /10',
+                            yaxis = y_axis_power
+                            )
+                        )
+                if 'dist-flow' in request.selected_channels and 'dist-flow' in channels:
+                    power_plot = True
+                    fig.add_trace(
+                        go.Scatter(
+                            x=channels['dist-flow']['times'], 
+                            y=[x/100 for x in channels['dist-flow']['values']], 
+                            mode=line_style, 
+                            opacity=0.4,
+                            line=dict(color='purple', dash='solid'),
+                            name='Distribution flow',
+                            yaxis = y_axis_power
+                            )
+                        )
+                    
+                if temp_plot and power_plot:
+                    fig.update_layout(yaxis=dict(title='Temperature [F]', range=[0,260]))
+                    fig.update_layout(yaxis2=dict(title='Flow [GPM] or Power [W]', range=[0,20]))
+                elif temp_plot and not power_plot:
+                    fig.update_layout(yaxis=dict(title='Temperature [F]'))
+                elif power_plot and not temp_plot:
+                    fig.update_layout(yaxis=dict('Flow [GPM] or Power [W]'))
+
+                fig.update_layout(
+                    title=dict(text='Distribution', x=0.5, xanchor='center'),
+                    plot_bgcolor=plot_background_hex,
+                    paper_bgcolor=plot_background_hex,
+                    margin=dict(t=30, b=30),
+                    xaxis=dict(
+                        range=[min_time_ms_dt, max_time_ms_dt],
+                        mirror=True,
+                        ticks='outside',
+                        showline=True,
+                        linecolor='rgb(42,63,96)',
+                        showgrid=False
+                        ),
+                    yaxis=dict(
+                        mirror=True,
+                        ticks='outside',
+                        showline=True,
+                        linecolor='rgb(42,63,96)',
+                        zeroline=False,
+                        showgrid=True, 
+                        gridwidth=1, 
+                        gridcolor='LightGray'
+                        ),
+                    yaxis2=dict(
+                        mirror=True,
+                        ticks='outside',
+                        showline=True,
+                        linecolor='rgb(42,63,96)',
+                        zeroline=False,
+                        overlaying='y', 
+                        side='right', 
+                        showgrid=False,
+                        ),
+                    legend=dict(
+                        x=0,
+                        y=1,
+                        xanchor='left',
+                        yanchor='top',
+                        bgcolor='rgba(0, 0, 0, 0)'
+                        )
                     )
-                )
-            
-        if temp_plot and power_plot:
-            fig.update_layout(yaxis=dict(title='Temperature [F]', range=[0,260]))
-            fig.update_layout(yaxis2=dict(title='Flow [GPM] or Power [W]', range=[0,20]))
-        elif temp_plot and not power_plot:
-            fig.update_layout(yaxis=dict(title='Temperature [F]'))
-        elif power_plot and not temp_plot:
-            fig.update_layout(yaxis=dict('Flow [GPM] or Power [W]'))
 
-        fig.update_layout(
-            title=dict(text='Distribution', x=0.5, xanchor='center'),
-            plot_bgcolor=plot_background_hex,
-            paper_bgcolor=plot_background_hex,
-            margin=dict(t=30, b=30),
-            xaxis=dict(
-                range=[min_time_ms_dt, max_time_ms_dt],
-                mirror=True,
-                ticks='outside',
-                showline=True,
-                linecolor='rgb(42,63,96)',
-                showgrid=False
-                ),
-            yaxis=dict(
-                mirror=True,
-                ticks='outside',
-                showline=True,
-                linecolor='rgb(42,63,96)',
-                zeroline=False,
-                showgrid=True, 
-                gridwidth=1, 
-                gridcolor='LightGray'
-                ),
-            yaxis2=dict(
-                mirror=True,
-                ticks='outside',
-                showline=True,
-                linecolor='rgb(42,63,96)',
-                zeroline=False,
-                overlaying='y', 
-                side='right', 
-                showgrid=False,
-                ),
-            legend=dict(
-                x=0,
-                y=1,
-                xanchor='left',
-                yanchor='top',
-                bgcolor='rgba(0, 0, 0, 0)'
-                )
-            )
+                html_buffer2 = io.StringIO()
+                fig.write_html(html_buffer2)
+                html_buffer2.seek(0) 
 
-        html_buffer2 = io.StringIO()
-        fig.write_html(html_buffer2)
-        html_buffer2.seek(0) 
+                # --------------------------------------
+                # PLOT 3: Heat calls
+                # --------------------------------------
 
-        # --------------------------------------
-        # PLOT 3: Heat calls
-        # --------------------------------------
+                fig = go.Figure()
 
-        fig = go.Figure()
-
-        if 'zone-heat-calls' in request.selected_channels:
-            for zone in zones:
-                for key in [x for x in zones[zone] if 'state' in x]:
-                    zone_color = zone_colors_hex[int(key[4])-1]
-                    last_was_1 = False
-                    for i in range(len(channels[key]['values'])):
-                        if channels[key]['values'][i] == 1:
-                            # if last_was_1: 
-                            if i<len(channels[key]['values'])-1:
-                                if channels[key]['values'][i+1] != 1:
-                                    fig.add_trace(
-                                        go.Scatter(
-                                            x=[channels[key]['times'][i+1], channels[key]['times'][i+1]],
-                                            y=[int(key[4])-1, int(key[4])],
-                                            mode='lines',
-                                            line=dict(color=zone_color, width=2),
-                                            opacity=0.7,
-                                            name=key.replace('-state',''),
-                                            showlegend=False,
+                if 'zone-heat-calls' in request.selected_channels:
+                    for zone in zones:
+                        for key in [x for x in zones[zone] if 'state' in x]:
+                            zone_color = zone_colors_hex[int(key[4])-1]
+                            last_was_1 = False
+                            for i in range(len(channels[key]['values'])):
+                                if channels[key]['values'][i] == 1:
+                                    # if last_was_1: 
+                                    if i<len(channels[key]['values'])-1:
+                                        if channels[key]['values'][i+1] != 1:
+                                            fig.add_trace(
+                                                go.Scatter(
+                                                    x=[channels[key]['times'][i+1], channels[key]['times'][i+1]],
+                                                    y=[int(key[4])-1, int(key[4])],
+                                                    mode='lines',
+                                                    line=dict(color=zone_color, width=2),
+                                                    opacity=0.7,
+                                                    name=key.replace('-state',''),
+                                                    showlegend=False,
+                                                )
+                                            )
+                                    if not last_was_1:
+                                        if i>0: 
+                                            fig.add_trace(
+                                                go.Scatter(
+                                                    x=[channels[key]['times'][i], channels[key]['times'][i]],
+                                                    y=[int(key[4])-1, int(key[4])],
+                                                    mode='lines',
+                                                    line=dict(color=zone_color, width=2),
+                                                    opacity=0.7,
+                                                    name=key.replace('-state',''),
+                                                    showlegend=False,
+                                                )
+                                            )
+                                    if i<len(channels[key]['values'])-1:
+                                        # if channels[key]['values'][i+1] == 1:
+                                        last_was_1 = True
+                                        fig.add_shape(
+                                            type='rect',
+                                            x0=channels[key]['times'][i],
+                                            y0=int(key[4]) - 1,
+                                            x1=channels[key]['times'][i+1],
+                                            y1=int(key[4]),
+                                            line=dict(color=zone_color, width=0),
+                                            fillcolor=zone_color,
+                                            opacity=0.2,
+                                            name=key.replace('-state', ''),
                                         )
+
+                                else:
+                                    last_was_1 = False
+                            fig.add_trace(
+                                go.Scatter(
+                                    x=[None], 
+                                    y=[None],
+                                    mode='lines',
+                                    line=dict(color=zone_color, width=2),
+                                    name=key.replace('-state','')
+                                )
+                            )
+
+                fig.update_layout(
+                    title=dict(text='Heat calls', x=0.5, xanchor='center'),
+                    plot_bgcolor=plot_background_hex,
+                    paper_bgcolor=plot_background_hex,
+                    margin=dict(t=30, b=30),
+                    xaxis=dict(
+                        range=[min_time_ms_dt, max_time_ms_dt],
+                        mirror=True,
+                        ticks='outside',
+                        showline=True,
+                        linecolor='rgb(42,63,96)',
+                        showgrid=False
+                        ),
+                    yaxis=dict(
+                        range = [-0.5, len(zones.keys())*1.3],
+                        mirror=True,
+                        ticks='outside',
+                        showline=True,
+                        linecolor='rgb(42,63,96)',
+                        zeroline=False,
+                        showgrid=True, 
+                        gridwidth=1, 
+                        gridcolor='LightGray', 
+                        tickvals=list(range(len(zones.keys())+1)),
+                        ),
+                    yaxis2=dict(
+                        mirror=True,
+                        ticks='outside',
+                        showline=True,
+                        linecolor='rgb(42,63,96)',
+                        ),
+                    legend=dict(
+                        x=0,
+                        y=1,
+                        xanchor='left',
+                        yanchor='top',
+                        orientation='h',
+                        bgcolor='rgba(0, 0, 0, 0)'
+                    )
+                )
+
+                html_buffer3 = io.StringIO()
+                fig.write_html(html_buffer3)
+                html_buffer3.seek(0)
+
+                # --------------------------------------
+                # PLOT 4: Zones
+                # --------------------------------------
+
+                fig = go.Figure()
+
+                for zone in zones:
+                    for key in zones[zone]:
+                        if 'temp' in key:
+                            fig.add_trace(
+                                go.Scatter(
+                                    x=channels[key]['times'], 
+                                    y=channels[key]['values'], 
+                                    mode=line_style, 
+                                    opacity=0.7,
+                                    line=dict(color=zone_colors_hex[int(key[4])-1], dash='solid'),
+                                    name=key.replace('-temp','')
                                     )
-                            if not last_was_1:
-                                if i>0: 
-                                    fig.add_trace(
-                                        go.Scatter(
-                                            x=[channels[key]['times'][i], channels[key]['times'][i]],
-                                            y=[int(key[4])-1, int(key[4])],
-                                            mode='lines',
-                                            line=dict(color=zone_color, width=2),
-                                            opacity=0.7,
-                                            name=key.replace('-state',''),
-                                            showlegend=False,
-                                        )
+                                )
+                        elif 'set' in key:
+                            fig.add_trace(
+                                go.Scatter(
+                                    x=channels[key]['times'], 
+                                    y=channels[key]['values'], 
+                                    mode=line_style, 
+                                    opacity=0.7,
+                                    line=dict(color=zone_colors_hex[int(key[4])-1], dash='dash'),
+                                    name=key.replace('-set',''),
+                                    showlegend=False
                                     )
-                            if i<len(channels[key]['values'])-1:
-                                # if channels[key]['values'][i+1] == 1:
-                                last_was_1 = True
-                                fig.add_shape(
-                                    type='rect',
-                                    x0=channels[key]['times'][i],
-                                    y0=int(key[4]) - 1,
-                                    x1=channels[key]['times'][i+1],
-                                    y1=int(key[4]),
-                                    line=dict(color=zone_color, width=0),
-                                    fillcolor=zone_color,
-                                    opacity=0.2,
-                                    name=key.replace('-state', ''),
                                 )
 
-                        else:
-                            last_was_1 = False
+                min_oat = 70    
+                if 'oat' in request.selected_channels and 'oat' in channels:
                     fig.add_trace(
                         go.Scatter(
-                            x=[None], 
-                            y=[None],
-                            mode='lines',
-                            line=dict(color=zone_color, width=2),
-                            name=key.replace('-state','')
-                        )
-                    )
-
-        fig.update_layout(
-            title=dict(text='Heat calls', x=0.5, xanchor='center'),
-            plot_bgcolor=plot_background_hex,
-            paper_bgcolor=plot_background_hex,
-            margin=dict(t=30, b=30),
-            xaxis=dict(
-                range=[min_time_ms_dt, max_time_ms_dt],
-                mirror=True,
-                ticks='outside',
-                showline=True,
-                linecolor='rgb(42,63,96)',
-                showgrid=False
-                ),
-            yaxis=dict(
-                range = [-0.5, len(zones.keys())*1.3],
-                mirror=True,
-                ticks='outside',
-                showline=True,
-                linecolor='rgb(42,63,96)',
-                zeroline=False,
-                showgrid=True, 
-                gridwidth=1, 
-                gridcolor='LightGray', 
-                tickvals=list(range(len(zones.keys())+1)),
-                ),
-            yaxis2=dict(
-                mirror=True,
-                ticks='outside',
-                showline=True,
-                linecolor='rgb(42,63,96)',
-                ),
-            legend=dict(
-                x=0,
-                y=1,
-                xanchor='left',
-                yanchor='top',
-                orientation='h',
-                bgcolor='rgba(0, 0, 0, 0)'
-            )
-        )
-
-        html_buffer3 = io.StringIO()
-        fig.write_html(html_buffer3)
-        html_buffer3.seek(0)
-
-        # --------------------------------------
-        # PLOT 4: Zones
-        # --------------------------------------
-
-        fig = go.Figure()
-
-        for zone in zones:
-            for key in zones[zone]:
-                if 'temp' in key:
-                    fig.add_trace(
-                        go.Scatter(
-                            x=channels[key]['times'], 
-                            y=channels[key]['values'], 
+                            x=channels['oat']['times'], 
+                            y=[to_fahrenheit(x/1000) for x in channels['oat']['values']], 
                             mode=line_style, 
-                            opacity=0.7,
-                            line=dict(color=zone_colors_hex[int(key[4])-1], dash='solid'),
-                            name=key.replace('-temp','')
+                            opacity=0.2,
+                            line=dict(color='gray', dash='solid'),
+                            name='Outside air',
+                            yaxis='y2',
                             )
                         )
-                elif 'set' in key:
-                    fig.add_trace(
-                        go.Scatter(
-                            x=channels[key]['times'], 
-                            y=channels[key]['values'], 
-                            mode=line_style, 
-                            opacity=0.7,
-                            line=dict(color=zone_colors_hex[int(key[4])-1], dash='dash'),
-                            name=key.replace('-set',''),
-                            showlegend=False
-                            )
-                        )
-
-        min_oat = 70    
-        if 'oat' in request.selected_channels and 'oat' in channels:
-            fig.add_trace(
-                go.Scatter(
-                    x=channels['oat']['times'], 
-                    y=[to_fahrenheit(x/1000) for x in channels['oat']['values']], 
-                    mode=line_style, 
-                    opacity=0.2,
-                    line=dict(color='gray', dash='solid'),
-                    name='Outside air',
-                    yaxis='y2'
-                    )
-                )
-            min_oat = to_fahrenheit(min(channels['oat']['values'])/1000)
-            max_oat = to_fahrenheit(max(channels['oat']['values'])/1000)
-            fig.update_layout(yaxis2=dict(title='Outside air temperature [F]'))
-        
-        fig.update_layout(yaxis=dict(title='Zone temperature [F]'))
-
-        fig.update_layout(
-            title=dict(text='Zones', x=0.5, xanchor='center'),
-            plot_bgcolor=plot_background_hex,
-            paper_bgcolor=plot_background_hex,
-            margin=dict(t=30, b=30),
-            xaxis=dict(
-                range=[min_time_ms_dt, max_time_ms_dt],
-                mirror=True,
-                ticks='outside',
-                showline=True,
-                linecolor='rgb(42,63,96)',
-                showgrid=False
-                ),
-            yaxis=dict(
-                range = [min_oat-7, 80] if min_oat<55 else [45,80],
-                mirror=True,
-                ticks='outside',
-                showline=True,
-                linecolor='rgb(42,63,96)',
-                zeroline=False,
-                showgrid=True, 
-                gridwidth=1, 
-                gridcolor='LightGray'
-                ),
-            yaxis2=dict(
-                range = [min_oat-2, max_oat+20],
-                mirror=True,
-                ticks='outside',
-                showline=True,
-                linecolor='rgb(42,63,96)',
-                overlaying='y', 
-                side='right', 
-                zeroline=False,
-                showgrid=False, 
-                ),
-            legend=dict(
-                x=0,
-                y=1,
-                xanchor='left',
-                yanchor='top',
-                orientation='h',
-                bgcolor='rgba(0, 0, 0, 0)'
-                )
-            )
-
-        html_buffer4 = io.StringIO()
-        fig.write_html(html_buffer4)
-        html_buffer4.seek(0)
-
-        # --------------------------------------
-        # PLOT 5: Buffer
-        # --------------------------------------
-
-        fig = go.Figure()
-
-        min_buffer_temp = 1e5
-        max_buffer_temp = 0
-        buffer_channels = []
-
-        if 'buffer-depths' in request.selected_channels:
-            buffer_channels = sorted([key for key in channels.keys() if 'buffer-depth' in key and 'micro-v' not in key])
-            for buffer_channel in buffer_channels:
-                yf = [to_fahrenheit(x/1000) for x in channels[buffer_channel]['values']]
-                min_buffer_temp = min(min_buffer_temp, min(yf))
-                max_buffer_temp = max(max_buffer_temp, max(yf))
-                fig.add_trace(
-                    go.Scatter(
-                        x=channels[buffer_channel]['times'], 
-                        y=yf, 
-                        mode=line_style, 
-                        opacity=0.7,
-                        name=buffer_channel.replace('buffer-',''),
-                        line=dict(color=buffer_colors_hex[buffer_channel], dash='solid')
-                        )
-                    )
-        
-        if not buffer_channels:
-            if 'buffer-hot-pipe' in request.selected_channels and 'buffer-hot-pipe' in channels:
-                yf = [to_fahrenheit(x/1000) for x in channels['buffer-hot-pipe']['values']]
-                min_buffer_temp = min(min_buffer_temp, min(yf))
-                max_buffer_temp = max(max_buffer_temp, max(yf))
-                fig.add_trace(
-                    go.Scatter(
-                        x=channels['buffer-hot-pipe']['times'], 
-                        y=yf, 
-                        mode=line_style, 
-                        opacity=0.7,
-                        name='Hot pipe',
-                        line=dict(color='#d62728', dash='solid')
-                        )
-                    )
-            if 'buffer-cold-pipe' in request.selected_channels and 'buffer-cold-pipe' in channels:
-                yf = [to_fahrenheit(x/1000) for x in channels['buffer-cold-pipe']['values']]
-                min_buffer_temp = min(min_buffer_temp, min(yf))
-                max_buffer_temp = max(max_buffer_temp, max(yf))
-                fig.add_trace(
-                    go.Scatter(
-                        x=channels['buffer-cold-pipe']['times'], 
-                        y=yf, 
-                        mode=line_style, 
-                        opacity=0.7,
-                        name='Cold pipe',
-                        line=dict(color='#1f77b4', dash='solid')
-                        )
-                    )
+                    min_oat = to_fahrenheit(min(channels['oat']['values'])/1000)
+                    max_oat = to_fahrenheit(max(channels['oat']['values'])/1000)
+                    fig.update_layout(yaxis2=dict(title='Outside air temperature [F]'))
                 
-        fig.update_layout(
-            title=dict(text='Buffer', x=0.5, xanchor='center'),
-            plot_bgcolor=plot_background_hex,
-            paper_bgcolor=plot_background_hex,
-            margin=dict(t=30, b=30),
-            xaxis=dict(
-                range=[min_time_ms_dt, max_time_ms_dt],
-                mirror=True,
-                ticks='outside',
-                showline=True,
-                linecolor='rgb(42,63,96)',
-                showgrid=False,
-                ),
-            yaxis=dict(
-                range = [min_buffer_temp-15, max_buffer_temp+30],
-                mirror=True,
-                ticks='outside',
-                showline=True,
-                linecolor='rgb(42,63,96)',
-                title='Temperature [F]', 
-                zeroline=False,
-                showgrid=True, 
-                gridwidth=1, 
-                gridcolor='LightGray',
-                ),
-            legend=dict(
-                x=0,
-                y=1,
-                xanchor='left',
-                yanchor='top',
-                orientation='h',
-                bgcolor='rgba(0, 0, 0, 0)'
+                fig.update_layout(yaxis=dict(title='Zone temperature [F]'))
+
+                fig.update_layout(
+                    title=dict(text='Zones', x=0.5, xanchor='center'),
+                    plot_bgcolor=plot_background_hex,
+                    paper_bgcolor=plot_background_hex,
+                    margin=dict(t=30, b=30),
+                    xaxis=dict(
+                        range=[min_time_ms_dt, max_time_ms_dt],
+                        mirror=True,
+                        ticks='outside',
+                        showline=True,
+                        linecolor='rgb(42,63,96)',
+                        showgrid=False
+                        ),
+                    yaxis=dict(
+                        range = [min_oat-7, 80] if min_oat<55 else [45,80],
+                        mirror=True,
+                        ticks='outside',
+                        showline=True,
+                        linecolor='rgb(42,63,96)',
+                        zeroline=False,
+                        showgrid=True, 
+                        gridwidth=1, 
+                        gridcolor='LightGray'
+                        ),
+                    yaxis2=dict(
+                        range = [min_oat-2, max_oat+20],
+                        mirror=True,
+                        ticks='outside',
+                        showline=True,
+                        linecolor='rgb(42,63,96)',
+                        overlaying='y', 
+                        side='right', 
+                        zeroline=False,
+                        showgrid=False, 
+                        ),
+                    legend=dict(
+                        x=0,
+                        y=1,
+                        xanchor='left',
+                        yanchor='top',
+                        orientation='h',
+                        bgcolor='rgba(0, 0, 0, 0)'
+                        )
+                    )
+
+                html_buffer4 = io.StringIO()
+                fig.write_html(html_buffer4)
+                html_buffer4.seek(0)
+
+                # --------------------------------------
+                # PLOT 5: Buffer
+                # --------------------------------------
+
+                fig = go.Figure()
+
+                min_buffer_temp = 1e5
+                max_buffer_temp = 0
+                buffer_channels = []
+
+                if 'buffer-depths' in request.selected_channels:
+                    buffer_channels = sorted([key for key in channels.keys() if 'buffer-depth' in key and 'micro-v' not in key])
+                    for buffer_channel in buffer_channels:
+                        yf = [to_fahrenheit(x/1000) for x in channels[buffer_channel]['values']]
+                        min_buffer_temp = min(min_buffer_temp, min(yf))
+                        max_buffer_temp = max(max_buffer_temp, max(yf))
+                        fig.add_trace(
+                            go.Scatter(
+                                x=channels[buffer_channel]['times'], 
+                                y=yf, 
+                                mode=line_style, 
+                                opacity=0.7,
+                                name=buffer_channel.replace('buffer-',''),
+                                line=dict(color=buffer_colors_hex[buffer_channel], dash='solid')
+                                )
+                            )
+                
+                if not buffer_channels:
+                    if 'buffer-hot-pipe' in request.selected_channels and 'buffer-hot-pipe' in channels:
+                        yf = [to_fahrenheit(x/1000) for x in channels['buffer-hot-pipe']['values']]
+                        min_buffer_temp = min(min_buffer_temp, min(yf))
+                        max_buffer_temp = max(max_buffer_temp, max(yf))
+                        fig.add_trace(
+                            go.Scatter(
+                                x=channels['buffer-hot-pipe']['times'], 
+                                y=yf, 
+                                mode=line_style, 
+                                opacity=0.7,
+                                name='Hot pipe',
+                                line=dict(color='#d62728', dash='solid')
+                                )
+                            )
+                    if 'buffer-cold-pipe' in request.selected_channels and 'buffer-cold-pipe' in channels:
+                        yf = [to_fahrenheit(x/1000) for x in channels['buffer-cold-pipe']['values']]
+                        min_buffer_temp = min(min_buffer_temp, min(yf))
+                        max_buffer_temp = max(max_buffer_temp, max(yf))
+                        fig.add_trace(
+                            go.Scatter(
+                                x=channels['buffer-cold-pipe']['times'], 
+                                y=yf, 
+                                mode=line_style, 
+                                opacity=0.7,
+                                name='Cold pipe',
+                                line=dict(color='#1f77b4', dash='solid')
+                                )
+                            )
+                        
+                fig.update_layout(
+                    title=dict(text='Buffer', x=0.5, xanchor='center'),
+                    plot_bgcolor=plot_background_hex,
+                    paper_bgcolor=plot_background_hex,
+                    margin=dict(t=30, b=30),
+                    xaxis=dict(
+                        range=[min_time_ms_dt, max_time_ms_dt],
+                        mirror=True,
+                        ticks='outside',
+                        showline=True,
+                        linecolor='rgb(42,63,96)',
+                        showgrid=False,
+                        ),
+                    yaxis=dict(
+                        range = [min_buffer_temp-15, max_buffer_temp+30],
+                        mirror=True,
+                        ticks='outside',
+                        showline=True,
+                        linecolor='rgb(42,63,96)',
+                        title='Temperature [F]', 
+                        zeroline=False,
+                        showgrid=True, 
+                        gridwidth=1, 
+                        gridcolor='LightGray',
+                        ),
+                    legend=dict(
+                        x=0,
+                        y=1,
+                        xanchor='left',
+                        yanchor='top',
+                        orientation='h',
+                        bgcolor='rgba(0, 0, 0, 0)'
+                        )
+                    )
+
+                html_buffer5 = io.StringIO()
+                fig.write_html(html_buffer5)
+                html_buffer5.seek(0)
+
+                # --------------------------------------
+                # PLOT 6: Storage
+                # --------------------------------------
+
+                fig = go.Figure()
+                
+                # Temperature
+                temp_plot = False
+                min_store_temp = 1e5
+                max_store_temp = 0
+                tank_channels = []
+
+                if 'storage-depths' in request.selected_channels:
+                    temp_plot = True
+                    tank_channels = sorted([key for key in channels.keys() if 'tank' in key and 'micro-v' not in key])
+                    for tank_channel in tank_channels:
+                        yf = [to_fahrenheit(x/1000) for x in channels[tank_channel]['values']]
+                        min_store_temp = min(min_store_temp, min(yf))
+                        max_store_temp = max(max_store_temp, max(yf))
+                        fig.add_trace(
+                            go.Scatter(x=channels[tank_channel]['times'], y=yf, 
+                            mode=line_style, opacity=0.7,
+                            name=tank_channel.replace('storage-',''),
+                            line=dict(color=storage_colors_hex[tank_channel], dash='solid'))
+                            )
+                
+                if not tank_channels:
+                    if 'store-hot-pipe' in request.selected_channels and 'store-hot-pipe' in channels:
+                        temp_plot = True
+                        yf = [to_fahrenheit(x/1000) for x in channels['store-hot-pipe']['values']]
+                        min_store_temp = min(min_store_temp, min(yf))
+                        max_store_temp = max(max_store_temp, max(yf))
+                        fig.add_trace(
+                            go.Scatter(
+                                x=channels['store-hot-pipe']['times'], 
+                                y=yf, 
+                                mode=line_style, 
+                                opacity=0.7,
+                                name='Hot pipe',
+                                line=dict(color='#d62728', dash='solid'))
+                            )
+                    if 'store-cold-pipe' in request.selected_channels and 'store-cold-pipe' in channels:
+                        temp_plot = True
+                        yf = [to_fahrenheit(x/1000) for x in channels['store-cold-pipe']['values']]
+                        min_store_temp = min(min_store_temp, min(yf))
+                        max_store_temp = max(max_store_temp, max(yf))
+                        fig.add_trace(
+                            go.Scatter(
+                                x=channels['store-cold-pipe']['times'], 
+                                y=yf, 
+                                mode=line_style, 
+                                opacity=0.7,
+                                name='Cold pipe',
+                                line=dict(color='#1f77b4', dash='solid'))
+                            )
+
+                # Secondary yaxis
+                y_axis_power = 'y2' if temp_plot else 'y'
+
+                # Power
+                power_plot = False
+                if 'store-pump-pwr' in request.selected_channels and 'store_pump_pwr' in channels:
+                    power_plot = True
+                    fig.add_trace(
+                        go.Scatter(
+                            x=channels['store-pump-pwr']['times'], 
+                            y=[x/10 for x in channels['store-pump-pwr']['values']], 
+                            mode=line_style, 
+                            opacity=0.7,
+                            line=dict(color='pink', dash='solid'),
+                            name='Storage pump power x100',
+                            yaxis=y_axis_power
+                            )
+                        )
+                if 'store-flow' in request.selected_channels and 'store-flow' in channels:
+                    power_plot = True
+                    fig.add_trace(
+                        go.Scatter(
+                            x=channels['store-flow']['times'], 
+                            y=[x/100 for x in channels['store-flow']['values']], 
+                            mode=line_style, 
+                            opacity=0.4,
+                            line=dict(color='purple', dash='solid'),
+                            name='Storage pump flow',
+                            yaxis=y_axis_power
+                            )
+                        )
+
+                if temp_plot and power_plot:
+                    fig.update_layout(yaxis=dict(title='Temperature [F]', range=[min_store_temp-40, max_store_temp+20]))
+                    fig.update_layout(yaxis2=dict(title='Flow [GPM] or Power [kW]', range=[-1, 40]))
+                elif temp_plot and not power_plot:
+                    fig.update_layout(yaxis=dict(title='Temperature [F]', range=[min_store_temp-20, max_store_temp+20]))
+                elif power_plot and not temp_plot:
+                    fig.update_layout(yaxis=dict(title='Flow [GPM] or Power [kW]'))
+
+                fig.update_layout(
+                    title=dict(text='Storage', x=0.5, xanchor='center'),
+                    plot_bgcolor=plot_background_hex,
+                    paper_bgcolor=plot_background_hex,
+                    margin=dict(t=30, b=30),
+                    xaxis=dict(
+                        range=[min_time_ms_dt, max_time_ms_dt],
+                        mirror=True,
+                        ticks='outside',
+                        showline=True,
+                        linecolor='rgb(42,63,96)',
+                        showgrid=False,
+                        ),
+                    yaxis=dict(
+                        mirror=True,
+                        ticks='outside',
+                        showline=True,
+                        linecolor='rgb(42,63,96)',
+                        zeroline=False,
+                        showgrid=True, 
+                        gridwidth=1, 
+                        gridcolor='LightGray'
+                        ),
+                    yaxis2=dict(
+                        mirror=True,
+                        ticks='outside',
+                        showline=True,
+                        linecolor='rgb(42,63,96)',
+                        overlaying='y', 
+                        side='right', 
+                        zeroline=False,
+                        showgrid=False, 
+                        ),
+                    legend=dict(
+                        x=0,
+                        y=1,
+                        xanchor='left',
+                        yanchor='top',
+                        orientation='h',
+                        bgcolor='rgba(0, 0, 0, 0)'
+                    )
                 )
-            )
 
-        html_buffer5 = io.StringIO()
-        fig.write_html(html_buffer5)
-        html_buffer5.seek(0)
-
-        # --------------------------------------
-        # PLOT 6: Storage
-        # --------------------------------------
-
-        fig = go.Figure()
+                html_buffer6 = io.StringIO()
+                fig.write_html(html_buffer6)
+                html_buffer6.seek(0)
         
-        # Temperature
-        temp_plot = False
-        min_store_temp = 1e5
-        max_store_temp = 0
-        tank_channels = []
-
-        if 'storage-depths' in request.selected_channels:
-            temp_plot = True
-            tank_channels = sorted([key for key in channels.keys() if 'tank' in key and 'micro-v' not in key])
-            for tank_channel in tank_channels:
-                yf = [to_fahrenheit(x/1000) for x in channels[tank_channel]['values']]
-                min_store_temp = min(min_store_temp, min(yf))
-                max_store_temp = max(max_store_temp, max(yf))
-                fig.add_trace(
-                    go.Scatter(x=channels[tank_channel]['times'], y=yf, 
-                    mode=line_style, opacity=0.7,
-                    name=tank_channel.replace('storage-',''),
-                    line=dict(color=storage_colors_hex[tank_channel], dash='solid'))
-                    )
-        
-        if not tank_channels:
-            if 'store-hot-pipe' in request.selected_channels and 'store-hot-pipe' in channels:
-                temp_plot = True
-                yf = [to_fahrenheit(x/1000) for x in channels['store-hot-pipe']['values']]
-                min_store_temp = min(min_store_temp, min(yf))
-                max_store_temp = max(max_store_temp, max(yf))
-                fig.add_trace(
-                    go.Scatter(
-                        x=channels['store-hot-pipe']['times'], 
-                        y=yf, 
-                        mode=line_style, 
-                        opacity=0.7,
-                        name='Hot pipe',
-                        line=dict(color='#d62728', dash='solid'))
-                    )
-            if 'store-cold-pipe' in request.selected_channels and 'store-cold-pipe' in channels:
-                temp_plot = True
-                yf = [to_fahrenheit(x/1000) for x in channels['store-cold-pipe']['values']]
-                min_store_temp = min(min_store_temp, min(yf))
-                max_store_temp = max(max_store_temp, max(yf))
-                fig.add_trace(
-                    go.Scatter(
-                        x=channels['store-cold-pipe']['times'], 
-                        y=yf, 
-                        mode=line_style, 
-                        opacity=0.7,
-                        name='Cold pipe',
-                        line=dict(color='#1f77b4', dash='solid'))
-                    )
-
-        # Secondary yaxis
-        y_axis_power = 'y2' if temp_plot else 'y'
-
-        # Power
-        power_plot = False
-        if 'store-pump-pwr' in request.selected_channels and 'store_pump_pwr' in channels:
-            power_plot = True
-            fig.add_trace(
-                go.Scatter(
-                    x=channels['store-pump-pwr']['times'], 
-                    y=[x/10 for x in channels['store-pump-pwr']['values']], 
-                    mode=line_style, 
-                    opacity=0.7,
-                    line=dict(color='pink', dash='solid'),
-                    name='Storage pump power x100',
-                    yaxis=y_axis_power
-                    )
-                )
-        if 'store-flow' in request.selected_channels and 'store-flow' in channels:
-            power_plot = True
-            fig.add_trace(
-                go.Scatter(
-                    x=channels['store-flow']['times'], 
-                    y=[x/100 for x in channels['store-flow']['values']], 
-                    mode=line_style, 
-                    opacity=0.4,
-                    line=dict(color='purple', dash='solid'),
-                    name='Storage pump flow',
-                    yaxis=y_axis_power
-                    )
-                )
-
-        if temp_plot and power_plot:
-            fig.update_layout(yaxis=dict(title='Temperature [F]', range=[min_store_temp-40, max_store_temp+20]))
-            fig.update_layout(yaxis2=dict(title='Flow [GPM] or Power [kW]', range=[-1, 40]))
-        elif temp_plot and not power_plot:
-            fig.update_layout(yaxis=dict(title='Temperature [F]', range=[min_store_temp-20, max_store_temp+20]))
-        elif power_plot and not temp_plot:
-            fig.update_layout(yaxis=dict(title='Flow [GPM] or Power [kW]'))
-
-        fig.update_layout(
-            title=dict(text='Storage', x=0.5, xanchor='center'),
-            plot_bgcolor=plot_background_hex,
-            paper_bgcolor=plot_background_hex,
-            margin=dict(t=30, b=30),
-            xaxis=dict(
-                range=[min_time_ms_dt, max_time_ms_dt],
-                mirror=True,
-                ticks='outside',
-                showline=True,
-                linecolor='rgb(42,63,96)',
-                showgrid=False,
-                ),
-            yaxis=dict(
-                mirror=True,
-                ticks='outside',
-                showline=True,
-                linecolor='rgb(42,63,96)',
-                zeroline=False,
-                showgrid=True, 
-                gridwidth=1, 
-                gridcolor='LightGray'
-                ),
-            yaxis2=dict(
-                mirror=True,
-                ticks='outside',
-                showline=True,
-                linecolor='rgb(42,63,96)',
-                overlaying='y', 
-                side='right', 
-                zeroline=False,
-                showgrid=False, 
-                ),
-            legend=dict(
-                x=0,
-                y=1,
-                xanchor='left',
-                yanchor='top',
-                orientation='h',
-                bgcolor='rgba(0, 0, 0, 0)'
-            )
-        )
-
-        html_buffer6 = io.StringIO()
-        fig.write_html(html_buffer6)
-        html_buffer6.seek(0)     
-
-        # --------------------------------------
-        # PLOT 7: Pico activity
-        # --------------------------------------
-
-        # fig = go.Figure()
-        # bar_height = 0
-
-        # for key in channels:
-
-        #     if not (('depth' in key and 'micro' not in key)
-        #         or ('flow' in key and 'hz' not in key)):
-        #             continue
-
-        #     print(key)
-        
-        #     bar_height+=1
-        #     zone_color = zone_colors_hex[bar_height-1]
-
-        #     for i in range(len(channels[key]['values'])):
-        #         fig.add_trace(
-        #             go.Scatter(
-        #                 x=[channels[key]['times'][i], channels[key]['times'][i]],
-        #                 y=[bar_height-1, bar_height],
-        #                 mode=line_style,
-        #                 line=dict(color=zone_color, width=2),
-        #                 name=key,
-        #                 showlegend=False,
-        #             )
-        #         )
-        #     fig.add_trace(
-        #         go.Scatter(
-        #             x=[None], 
-        #             y=[None],
-        #             mode=line_style,
-        #             line=dict(color=zone_color, width=2),
-        #             name=key
-        #         )
-        #         )
-
-        # fig.update_layout(
-        #     title=dict(text='Heat calls', x=0.5, xanchor='center'),
-        #     plot_bgcolor=plot_background_hex,
-        #     paper_bgcolor=plot_background_hex,
-        #     margin=dict(t=30, b=30),
-        #     xaxis=dict(
-        #         range=[min_time_ms_dt, max_time_ms_dt],
-        #         mirror=True,
-        #         ticks='outside',
-        #         showline=True,
-        #         linecolor='rgb(42,63,96)',
-        #         showgrid=False
-        #         ),
-        #     yaxis=dict(
-        #         range=[-0.5, 1.2*len(channels)],
-        #         mirror=True,
-        #         ticks='outside',
-        #         showline=True,
-        #         linecolor='rgb(42,63,96)',
-        #         zeroline=False,
-        #         showgrid=True, 
-        #         gridwidth=1, 
-        #         gridcolor='LightGray', 
-        #         tickvals=list(range(len(channels)+1)),
-        #         ),
-        #     yaxis2=dict(
-        #         mirror=True,
-        #         ticks='outside',
-        #         showline=True,
-        #         linecolor='rgb(42,63,96)',
-        #         ),
-        #     legend=dict(
-        #         x=0,
-        #         y=1,
-        #         xanchor='left',
-        #         yanchor='top',
-        #         orientation='h'
-        #     )
-        # )
-
-        # html_buffer7 = io.StringIO()
-        # fig.write_html(html_buffer7)
-        # html_buffer7.seek(0) 
+    except asyncio.TimeoutError:
+        return {
+                "success": False, 
+                "message": f"The data request timed out. Please try loading a smaller amount of data at a time.", 
+                "reload": False
+                }
+    
+    except Exception as e:
+        return {
+            "success": False, 
+            "message": f"An error occurred: {str(e)}", 
+            "reload": False
+            }
 
 
     # if MATPLOTLIB_PLOT:
