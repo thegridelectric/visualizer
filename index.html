@@ -14,7 +14,7 @@
     <script>
         let house_alias, password;
 
-        async function exportCSV(event) {
+        async function exportCSV(event, continueOption) {
 
             event.preventDefault();
 
@@ -50,6 +50,7 @@
                         end_ms: endUnixMilliseconds,
                         selected_channels: selectedChannels,
                         timestep: timestep,
+                        continue_option: continueOption,
                     })
                 });
 
@@ -62,9 +63,17 @@
                 if (contentType && contentType.includes("application/json")) {
                     const data = await response.json();
                     if ('success' in data && data.success === false) {
-                        alert(data.message);
-                        if (data.reload) {
-                            location.reload();
+                        if (data.continue_option) {
+                            const userChoice = confirm(data.message);
+                            console.log(userChoice ? "User chose to Continue" : "User chose to Abort");
+                            if (userChoice) {
+                                await exportCSV(event, true); 
+                            }
+                        } else { 
+                            alert(data.message);
+                            if (data.reload) {
+                                location.reload();
+                            }
                         }
                     }
                 } else {
@@ -802,7 +811,7 @@
                 <input id='loadingText' type="button" style='position: absolute' value="Plot">
                 <input id='submit_button' type="submit" style='position: absolute' value="Plot" onclick="getData(event)">
                 <div style="margin-left: 80px; position:absolute; display:inline">
-                    <button id="csv_button" style='position:relative;' onclick='exportCSV(event)'>CSV</button>
+                    <button id="csv_button" style='position:relative;' onclick='exportCSV(event, false)'>CSV</button>
                     <button id="csvLoadingText" style='display:none;'>CSV</button><br>
                     <div style="position: absolute; height:35px; width: 100%;"></div>
                     <br>
