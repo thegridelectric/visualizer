@@ -281,7 +281,7 @@ async def get_csv(request: CsvRequest):
             print("Time to fetch data:", time.time() - start_time)
 
             if error_msg != '':
-                return {"success": False, "message": error_msg}
+                return error_msg
 
             if 'all-data' in request.selected_channels:
                 channels_to_export = channels.keys()
@@ -651,6 +651,18 @@ async def get_plots(request: DataRequest):
                         for key in [x for x in zones[zone] if 'state' in x]:
                             zone_color = zone_colors_hex[int(key[4])-1]
                             last_was_1 = False
+                            # TODO: fig.add_trace here to debug fir
+                            fig.add_trace(
+                                go.Scatter(
+                                    x=[channels[key]['times'][0], channels[key]['times'][0]],
+                                    y=[int(key[4])-1, int(key[4])],
+                                    mode='lines',
+                                    line=dict(color=zone_color, width=2),
+                                    opacity=0,
+                                    name=key.replace('-state',''),
+                                    showlegend=False,
+                                )
+                            )
                             for i in range(len(channels[key]['values'])):
                                 if channels[key]['values'][i] == 1:
                                     # if last_was_1: 
