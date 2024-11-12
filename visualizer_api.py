@@ -796,7 +796,7 @@ async def get_plots(request: DataRequest):
                                     )
                                 )
 
-                min_oat = 70    
+                min_oat, max_oat = 70, 80    
                 if 'oat' in request.selected_channels and 'oat' in channels:
                     fig.add_trace(
                         go.Scatter(
