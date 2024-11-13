@@ -829,7 +829,8 @@ async def get_plots(request: DataRequest):
                         showgrid=False
                         ),
                     yaxis=dict(
-                        range = [min_oat-7, 80] if min_oat<55 else [45,80],
+                        #range = [min_oat-7, 80] if min_oat<55 else [45,80],
+                        range = [45,80],
                         mirror=True,
                         ticks='outside',
                         showline=True,
