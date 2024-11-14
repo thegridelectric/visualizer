@@ -1138,9 +1138,9 @@ async def get_plots(request: DataRequest):
                 # PLOT 7: HomeAlone
                 # --------------------------------------
 
+                fig = go.Figure()
+
                 if modes!={}:
-                    
-                    fig = go.Figure()
 
                     fig.add_trace(
                         go.Scatter(
@@ -1165,44 +1165,44 @@ async def get_plots(request: DataRequest):
                             )
                         )
 
-                    fig.update_layout(
-                        title=dict(text='HomeAlone State', x=0.5, xanchor='center'),
-                        plot_bgcolor='white',
-                        paper_bgcolor='white',
-                        margin=dict(t=30, b=30),
-                        xaxis=dict(
-                            range=[min_time_ms_dt, max_time_ms_dt],
-                            mirror=True,
-                            ticks='outside',
-                            showline=True,
-                            linecolor='rgb(42,63,96)',
-                            showgrid=False
-                            ),
-                        yaxis=dict(
-                            range = [-0.5, len(modes)*1.3],
-                            mirror=True,
-                            ticks='outside',
-                            showline=True,
-                            linecolor='rgb(42,63,96)',
-                            zeroline=False,
-                            showgrid=True, 
-                            gridwidth=1, 
-                            gridcolor='LightGray', 
-                            tickvals=list(range(len(modes)+1)),
-                            ),
-                        legend=dict(
-                            x=0,
-                            y=1,
-                            xanchor='left',
-                            yanchor='top',
-                            orientation='h',
-                            bgcolor='rgba(0, 0, 0, 0)'
-                        )
+                fig.update_layout(
+                    title=dict(text='HomeAlone State', x=0.5, xanchor='center'),
+                    plot_bgcolor='white',
+                    paper_bgcolor='white',
+                    margin=dict(t=30, b=30),
+                    xaxis=dict(
+                        range=[min_time_ms_dt, max_time_ms_dt],
+                        mirror=True,
+                        ticks='outside',
+                        showline=True,
+                        linecolor='rgb(42,63,96)',
+                        showgrid=False
+                        ),
+                    yaxis=dict(
+                        range = [-0.5, len(modes)*1.3],
+                        mirror=True,
+                        ticks='outside',
+                        showline=True,
+                        linecolor='rgb(42,63,96)',
+                        zeroline=False,
+                        showgrid=True, 
+                        gridwidth=1, 
+                        gridcolor='LightGray', 
+                        tickvals=list(range(len(modes)+1)),
+                        ),
+                    legend=dict(
+                        x=0,
+                        y=1,
+                        xanchor='left',
+                        yanchor='top',
+                        orientation='h',
+                        bgcolor='rgba(0, 0, 0, 0)'
                     )
+                )
 
-                    html_buffer7 = io.StringIO()
-                    fig.write_html(html_buffer7)
-                    html_buffer7.seek(0)
+                html_buffer7 = io.StringIO()
+                fig.write_html(html_buffer7)
+                html_buffer7.seek(0)
                 
 
     except asyncio.TimeoutError:
