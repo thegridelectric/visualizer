@@ -1147,8 +1147,8 @@ async def get_plots(request: DataRequest):
                             x=modes['all']['times'],
                             y=modes['all']['values'],
                             mode='lines',
-                            line=dict(color='black', width=2),
-                            opacity=0.5,
+                            line=dict(color='gray', width=2),
+                            opacity=0.6,
                             showlegend=False,
                             line_shape='hv'
                         )
@@ -1190,7 +1190,7 @@ async def get_plots(request: DataRequest):
                         showgrid=True, 
                         gridwidth=1, 
                         gridcolor='LightGray', 
-                        tickvals=list(range(len(modes))),
+                        tickvals=list(range(len(modes)-1)),
                         ),
                     legend=dict(
                         x=0,
