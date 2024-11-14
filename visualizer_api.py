@@ -1153,17 +1153,18 @@ async def get_plots(request: DataRequest):
                         )
                     )
 
-                    for state in modes:
-                        fig.add_trace(
-                            go.Scatter(
-                                x=modes[state]['times'],
-                                y=modes[state]['values'],
-                                mode='markers',
-                                marker=dict(size=10),
-                                opacity=0.7,
-                                name=state,
+                    for state in modes.keys():
+                        if state != 'all':
+                            fig.add_trace(
+                                go.Scatter(
+                                    x=modes[state]['times'],
+                                    y=modes[state]['values'],
+                                    mode='markers',
+                                    marker=dict(size=10),
+                                    opacity=0.7,
+                                    name=state,
+                                )
                             )
-                        )
 
                 fig.update_layout(
                     title=dict(text='HomeAlone State', x=0.5, xanchor='center'),
