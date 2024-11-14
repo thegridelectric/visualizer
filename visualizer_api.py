@@ -277,8 +277,8 @@ def get_data(request):
                 relays[state['MachineHandle']]['times'].extend(state['UnixMsList'])
                 relays[state['MachineHandle']]['values'].extend(state['StateList'])
 
+    modes = {}
     if 'auto.h' in relays:         
-        modes = {}
         modes['all'] = {}
         modes['all']['times'] = []
         modes['all']['values'] = []
@@ -1138,69 +1138,71 @@ async def get_plots(request: DataRequest):
                 # PLOT 7: HomeAlone
                 # --------------------------------------
 
-                fig = go.Figure()
+                if modes!={}:
+                    
+                    fig = go.Figure()
 
-                fig.add_trace(
-                    go.Scatter(
-                        x=modes['all']['times'],
-                        y=modes['all']['values'],
-                        mode='lines',
-                        line=dict(color='gray', width=2),
-                        opacity=0.2,
-                        showlegend=False,
-                    )
-                )
-
-                for state in modes:
                     fig.add_trace(
                         go.Scatter(
-                            x=modes[state]['times'],
-                            y=modes[state]['values'],
-                            mode='markers',
-                            marker=dict(size=10),
-                            opacity=0.7,
-                            name=state,
+                            x=modes['all']['times'],
+                            y=modes['all']['values'],
+                            mode='lines',
+                            line=dict(color='gray', width=2),
+                            opacity=0.2,
+                            showlegend=False,
                         )
                     )
 
-                fig.update_layout(
-                    title=dict(text='HomeAlone State', x=0.5, xanchor='center'),
-                    plot_bgcolor='white',
-                    paper_bgcolor='white',
-                    margin=dict(t=30, b=30),
-                    xaxis=dict(
-                        range=[min_time_ms_dt, max_time_ms_dt],
-                        mirror=True,
-                        ticks='outside',
-                        showline=True,
-                        linecolor='rgb(42,63,96)',
-                        showgrid=False
-                        ),
-                    yaxis=dict(
-                        range = [-0.5, len(modes)*1.3],
-                        mirror=True,
-                        ticks='outside',
-                        showline=True,
-                        linecolor='rgb(42,63,96)',
-                        zeroline=False,
-                        showgrid=True, 
-                        gridwidth=1, 
-                        gridcolor='LightGray', 
-                        tickvals=list(range(len(modes)+1)),
-                        ),
-                    legend=dict(
-                        x=0,
-                        y=1,
-                        xanchor='left',
-                        yanchor='top',
-                        orientation='h',
-                        bgcolor='rgba(0, 0, 0, 0)'
-                    )
-                )
+                    for state in modes:
+                        fig.add_trace(
+                            go.Scatter(
+                                x=modes[state]['times'],
+                                y=modes[state]['values'],
+                                mode='markers',
+                                marker=dict(size=10),
+                                opacity=0.7,
+                                name=state,
+                            )
+                        )
 
-                html_buffer7 = io.StringIO()
-                fig.write_html(html_buffer7)
-                html_buffer7.seek(0)
+                    fig.update_layout(
+                        title=dict(text='HomeAlone State', x=0.5, xanchor='center'),
+                        plot_bgcolor='white',
+                        paper_bgcolor='white',
+                        margin=dict(t=30, b=30),
+                        xaxis=dict(
+                            range=[min_time_ms_dt, max_time_ms_dt],
+                            mirror=True,
+                            ticks='outside',
+                            showline=True,
+                            linecolor='rgb(42,63,96)',
+                            showgrid=False
+                            ),
+                        yaxis=dict(
+                            range = [-0.5, len(modes)*1.3],
+                            mirror=True,
+                            ticks='outside',
+                            showline=True,
+                            linecolor='rgb(42,63,96)',
+                            zeroline=False,
+                            showgrid=True, 
+                            gridwidth=1, 
+                            gridcolor='LightGray', 
+                            tickvals=list(range(len(modes)+1)),
+                            ),
+                        legend=dict(
+                            x=0,
+                            y=1,
+                            xanchor='left',
+                            yanchor='top',
+                            orientation='h',
+                            bgcolor='rgba(0, 0, 0, 0)'
+                        )
+                    )
+
+                    html_buffer7 = io.StringIO()
+                    fig.write_html(html_buffer7)
+                    html_buffer7.seek(0)
                 
 
     except asyncio.TimeoutError:
