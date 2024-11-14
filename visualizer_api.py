@@ -1181,7 +1181,7 @@ async def get_plots(request: DataRequest):
                         showgrid=False
                         ),
                     yaxis=dict(
-                        range = [-0.5, (len(modes)-1)*1.3],
+                        range = [-0.5, len(modes)-1+0.5],
                         mirror=True,
                         ticks='outside',
                         showline=True,
