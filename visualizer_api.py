@@ -1187,10 +1187,8 @@ async def get_plots(request: DataRequest):
                         showline=True,
                         linecolor='rgb(42,63,96)',
                         zeroline=False,
-                        showgrid=True, 
-                        gridwidth=1, 
-                        gridcolor='LightGray', 
-                        tickvals=list(range(len(modes)+1)),
+                        showgrid=False, 
+                        tickvals=list(range(len(modes))),
                         ),
                     legend=dict(
                         x=0,
