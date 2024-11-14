@@ -156,6 +156,7 @@
                     const plotsDiv4 = document.getElementById('Plot4');
                     const plotsDiv5 = document.getElementById('Plot5');
                     const plotsDiv6 = document.getElementById('Plot6');
+                    const plotsDiv7 = document.getElementById('Plot7');
                     const plotsDivPng = document.getElementById('PlotPng');
                     plotsDiv1.innerHTML = '';
                     plotsDiv2.innerHTML = '';
@@ -163,6 +164,7 @@
                     plotsDiv4.innerHTML = '';
                     plotsDiv5.innerHTML = '';
                     plotsDiv6.innerHTML = '';
+                    plotsDiv7.innerHTML = '';
                     plotsDivPng.innerHTML = '';
 
                     let iframeCount = 0;
@@ -192,6 +194,8 @@
                                 plotsDiv5.appendChild(iframe);
                             } else if (iframeCount === 5) {
                                 plotsDiv6.appendChild(iframe);
+                            } else if (iframeCount === 6) {
+                                plotsDiv7.appendChild(iframe);
                             }
                             iframeCount++;
                         } else if (filename.endsWith('.png')) {
@@ -368,7 +372,7 @@
             font-family: 'Montserrat';
         }
 
-        #PlotPng, #Plot1, #Plot2, #Plot3, #Plot4, #Plot5, #Plot6 {
+        #PlotPng, #Plot1, #Plot2, #Plot3, #Plot4, #Plot5, #Plot6, #Plot7 {
             display: flex;
             justify-content: center;
             padding-bottom:15px;
@@ -827,6 +831,7 @@
         <div id="Plot4"></div>
         <div id="Plot5"></div>
         <div id="Plot6"></div>
+        <div id="Plot7"></div>
         <div id="PlotPng"></div>
         </div>
     <!-- content -->

@@ -17,6 +17,7 @@ from sqlalchemy import create_engine, asc, or_
 from sqlalchemy.orm import sessionmaker
 from fake_config import Settings
 from fake_models import MessageSql
+from gjk.models import ReadingSql, DataChannelSql
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import plotly.graph_objects as go
@@ -123,14 +124,14 @@ def get_data(request):
             "success": False, 
             "message": "Wrong password.", 
             "reload":True
-            }, 0, 0, 0, 0
+            }, 0, 0, 0, 0, 0
     
     if request.house_alias == '':
         return {
             "success": False, 
             "message": "Please enter a house alias.", 
             "reload": True
-            }, 0, 0, 0, 0
+            }, 0, 0, 0, 0, 0
     
     if not request.continue_option:
         if (request.end_ms - request.start_ms)/1000/60/60/24 > MAX_DAYS_WARNING:
@@ -142,7 +143,7 @@ def get_data(request):
                 "message": warning_message, 
                 "reload":False,
                 "continue_option": True,
-                }, 0, 0, 0, 0
+                }, 0, 0, 0, 0, 0
     
     if MESSAGE_SQL:
 
@@ -163,7 +164,7 @@ def get_data(request):
                 "success": False, 
                 "message": f"No data found for house '{request.house_alias}' in the selected timeframe.", 
                 "reload":False
-                }, 0, 0, 0, 0
+                }, 0, 0, 0, 0, 0
         
         channels = {}
         for message in messages:
@@ -220,7 +221,7 @@ def get_data(request):
                 "success": False, 
                 "message": f"No readings found for house '{request.house_alias}' in the selected timeframe.", 
                 "reload": False
-                }, 0, 0, 0, 0
+                }, 0, 0, 0, 0, 0
 
     # Sort values according to time and find min/max
     min_time_ms, max_time_ms = 1e20, 0
@@ -265,7 +266,35 @@ def get_data(request):
     min_time_ms_dt = min_time_ms_dt.tz_convert('America/New_York').replace(tzinfo=None)
     max_time_ms_dt = max_time_ms_dt.tz_convert('America/New_York').replace(tzinfo=None)
 
-    return "", channels, zones, min_time_ms_dt, max_time_ms_dt
+    relays = {}
+    for message in messages:
+        if 'StateList' in message.payload:
+            for state in message.payload['StateList']:
+                if state['MachineHandle'] not in relays:
+                    relays[state['MachineHandle']] = {}
+                    relays[state['MachineHandle']]['times'] = []
+                    relays[state['MachineHandle']]['values'] = []
+                relays[state['MachineHandle']]['times'].extend(state['UnixMsList'])
+                relays[state['MachineHandle']]['values'].extend(state['StateList'])
+                
+    modes = {}
+    modes['all'] = {}
+    modes['all']['times'] = []
+    modes['all']['values'] = []
+    formatted_times = [pendulum.from_timestamp(x/1000, tz='America/New_York') for x in relays['auto.h']['times']]
+    existing_states = sorted(list(set(relays['auto.h']['values'])))
+    for state in existing_states:
+        modes[state] = {}
+        modes[state]['times'] = []
+        modes[state]['values'] = []
+
+    for time, state in zip(formatted_times, relays['auto.h']['values']):
+        modes['all']['times'].append(time)
+        modes['all']['values'].append(existing_states.index(state))
+        modes[state]['times'].append(time)
+        modes[state]['values'].append(existing_states.index(state))
+
+    return "", channels, zones, modes, min_time_ms_dt, max_time_ms_dt
 
 # ------------------------------
 # Export as CSV
@@ -277,7 +306,7 @@ async def get_csv(request: CsvRequest):
         async with async_timeout.timeout(TIMEOUT_SECONDS):
             
             start_time = time.time()
-            error_msg, channels, _, __, ___ = await asyncio.to_thread(get_data, request)
+            error_msg, channels, _, __, ___, ____ = await asyncio.to_thread(get_data, request)
             print("Time to fetch data:", time.time() - start_time)
 
             if error_msg != '':
@@ -364,7 +393,7 @@ async def get_plots(request: DataRequest):
         async with async_timeout.timeout(TIMEOUT_SECONDS):
             
             start_time = time.time()
-            error_msg, channels, zones, min_time_ms_dt, max_time_ms_dt = await asyncio.to_thread(get_data, request)
+            error_msg, channels, zones, modes, min_time_ms_dt, max_time_ms_dt = await asyncio.to_thread(get_data, request)
             print("Time to fetch data:", time.time() - start_time)
     
             if error_msg != '':
@@ -1103,7 +1132,76 @@ async def get_plots(request: DataRequest):
                 html_buffer6 = io.StringIO()
                 fig.write_html(html_buffer6)
                 html_buffer6.seek(0)
-        
+
+                # --------------------------------------
+                # PLOT 7: HomeAlone
+                # --------------------------------------
+
+                fig = go.Figure()
+
+                fig.add_trace(
+                    go.Scatter(
+                        x=modes['all']['times'],
+                        y=modes['all']['values'],
+                        mode='lines',
+                        line=dict(color='gray', width=2),
+                        opacity=0.2,
+                        showlegend=False,
+                    )
+                )
+
+                for state in modes:
+                    fig.add_trace(
+                        go.Scatter(
+                            x=modes[state]['times'],
+                            y=modes[state]['values'],
+                            mode='markers',
+                            marker=dict(size=10),
+                            opacity=0.7,
+                            name=state,
+                        )
+                    )
+
+                fig.update_layout(
+                    title=dict(text='HomeAlone State', x=0.5, xanchor='center'),
+                    plot_bgcolor='white',
+                    paper_bgcolor='white',
+                    margin=dict(t=30, b=30),
+                    xaxis=dict(
+                        range=[min_time_ms_dt, max_time_ms_dt],
+                        mirror=True,
+                        ticks='outside',
+                        showline=True,
+                        linecolor='rgb(42,63,96)',
+                        showgrid=False
+                        ),
+                    yaxis=dict(
+                        range = [-0.5, len(modes)*1.3],
+                        mirror=True,
+                        ticks='outside',
+                        showline=True,
+                        linecolor='rgb(42,63,96)',
+                        zeroline=False,
+                        showgrid=True, 
+                        gridwidth=1, 
+                        gridcolor='LightGray', 
+                        tickvals=list(range(len(modes)+1)),
+                        ),
+                    legend=dict(
+                        x=0,
+                        y=1,
+                        xanchor='left',
+                        yanchor='top',
+                        orientation='h',
+                        bgcolor='rgba(0, 0, 0, 0)'
+                    )
+                )
+
+                html_buffer7 = io.StringIO()
+                fig.write_html(html_buffer7)
+                html_buffer7.seek(0)
+                
+
     except asyncio.TimeoutError:
         return {
                 "success": False, 
@@ -1426,7 +1524,7 @@ async def get_plots(request: DataRequest):
             zip_file.writestr('plot4.html', html_buffer4.read())
             zip_file.writestr('plot5.html', html_buffer5.read())
             zip_file.writestr('plot6.html', html_buffer6.read())
-            # zip_file.writestr('plot7.html', html_buffer7.read())
+            zip_file.writestr('plot7.html', html_buffer7.read())
         # if MATPLOTLIB_PLOT:
         #     zip_file.writestr(f'plot.png', img_buf.getvalue())
     zip_buffer.seek(0)
