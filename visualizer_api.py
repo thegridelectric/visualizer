@@ -1150,6 +1150,7 @@ async def get_plots(request: DataRequest):
                             line=dict(color='gray', width=2),
                             opacity=0.2,
                             showlegend=False,
+                            step='post'
                         )
                     )
 
