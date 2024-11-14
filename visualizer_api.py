@@ -276,23 +276,24 @@ def get_data(request):
                     relays[state['MachineHandle']]['values'] = []
                 relays[state['MachineHandle']]['times'].extend(state['UnixMsList'])
                 relays[state['MachineHandle']]['values'].extend(state['StateList'])
-                
-    modes = {}
-    modes['all'] = {}
-    modes['all']['times'] = []
-    modes['all']['values'] = []
-    formatted_times = [pendulum.from_timestamp(x/1000, tz='America/New_York') for x in relays['auto.h']['times']]
-    existing_states = sorted(list(set(relays['auto.h']['values'])))
-    for state in existing_states:
-        modes[state] = {}
-        modes[state]['times'] = []
-        modes[state]['values'] = []
 
-    for time, state in zip(formatted_times, relays['auto.h']['values']):
-        modes['all']['times'].append(time)
-        modes['all']['values'].append(existing_states.index(state))
-        modes[state]['times'].append(time)
-        modes[state]['values'].append(existing_states.index(state))
+    if 'auto.h' in relays:         
+        modes = {}
+        modes['all'] = {}
+        modes['all']['times'] = []
+        modes['all']['values'] = []
+        formatted_times = [pendulum.from_timestamp(x/1000, tz='America/New_York') for x in relays['auto.h']['times']]
+        existing_states = sorted(list(set(relays['auto.h']['values'])))
+        for state in existing_states:
+            modes[state] = {}
+            modes[state]['times'] = []
+            modes[state]['values'] = []
+
+        for time, state in zip(formatted_times, relays['auto.h']['values']):
+            modes['all']['times'].append(time)
+            modes['all']['values'].append(existing_states.index(state))
+            modes[state]['times'].append(time)
+            modes[state]['values'].append(existing_states.index(state))
 
     return "", channels, zones, modes, min_time_ms_dt, max_time_ms_dt
 
