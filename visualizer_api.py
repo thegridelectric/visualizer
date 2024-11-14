@@ -17,7 +17,7 @@ from sqlalchemy import create_engine, asc, or_
 from sqlalchemy.orm import sessionmaker
 from fake_config import Settings
 from fake_models import MessageSql
-from gjk.models import ReadingSql, DataChannelSql
+# from gjk.models import ReadingSql, DataChannelSql
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import plotly.graph_objects as go
