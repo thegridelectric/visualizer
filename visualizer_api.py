@@ -1148,7 +1148,7 @@ async def get_plots(request: DataRequest):
                             y=modes['all']['values'],
                             mode='lines',
                             line=dict(color='gray', width=2),
-                            opacity=0.6,
+                            opacity=0.2,
                             showlegend=False,
                             line_shape='hv'
                         )
@@ -1162,7 +1162,7 @@ async def get_plots(request: DataRequest):
                                     y=modes[state]['values'],
                                     mode='markers',
                                     marker=dict(size=10),
-                                    opacity=1,
+                                    opacity=0.8,
                                     name=state,
                                 )
                             )
