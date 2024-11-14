@@ -1147,8 +1147,8 @@ async def get_plots(request: DataRequest):
                             x=modes['all']['times'],
                             y=modes['all']['values'],
                             mode='lines',
-                            line=dict(color='gray', width=2),
-                            opacity=0.2,
+                            line=dict(color='black', width=2),
+                            opacity=0.5,
                             showlegend=False,
                             line_shape='hv'
                         )
@@ -1162,7 +1162,7 @@ async def get_plots(request: DataRequest):
                                     y=modes[state]['values'],
                                     mode='markers',
                                     marker=dict(size=10),
-                                    opacity=0.7,
+                                    opacity=1,
                                     name=state,
                                 )
                             )
@@ -1181,13 +1181,15 @@ async def get_plots(request: DataRequest):
                         showgrid=False
                         ),
                     yaxis=dict(
-                        range = [-0.5, len(modes)*1.3],
+                        range = [-0.5, len(modes)],
                         mirror=True,
                         ticks='outside',
                         showline=True,
                         linecolor='rgb(42,63,96)',
                         zeroline=False,
-                        showgrid=False, 
+                        showgrid=True, 
+                        gridwidth=1, 
+                        gridcolor='LightGray', 
                         tickvals=list(range(len(modes))),
                         ),
                     legend=dict(
