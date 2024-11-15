@@ -360,7 +360,7 @@
         function dropDownMenu(){
             const header = document.getElementById("header");
             if (header.style.height === '75px') {
-                document.getElementById("header").style.height = "196px";
+                document.getElementById("header").style.height = "156.5px";
 
             } else {
                 document.getElementById("header").style.height = "75px";
@@ -402,9 +402,6 @@
     </script>
 
     <style>
-
-
-        /* DARK MODE */
 
         :root {
             --body-bgcolor: #ffffff;
@@ -636,6 +633,40 @@
             display: none;
         }
 
+        #darkbutton {
+            position: absolute;
+            display: flex; 
+            font-size: 20px;
+            height:75px;
+            width: 40px;
+            right:30px;
+            cursor: pointer;
+            justify-content: center;
+            align-items: center; 
+            flex-direction: column;
+        }
+
+        .toggle-circle {
+            width: 15px;
+            height: 15px;
+            background-color: var(--header-textcolor, #333); /* dark color */
+            border-radius: 50%;
+            position: absolute;
+            top: 30px;
+            left: 12.5px;
+            transition: transform 0.3s ease;
+        }
+
+        .toggle-circle::before {
+            content: '';
+            width: 10px;
+            height: 10px;
+            background-color: var(--header-bgcolor, #333);
+            border-radius: 50%;
+            position: absolute;
+            left: 7px;
+            top: 1px;
+        }
 
         @media (max-width: 600px) {
             #GWlogo {
@@ -663,6 +694,9 @@
                 justify-content: center;
                 align-items: center; 
                 flex-direction: column;
+            }
+            #darkbutton {
+                right:60px;
             }
             #checkboxDiv{
                 height:100%;
@@ -845,6 +879,9 @@
                 <div style="width: 30%; height:2px; background-color: var(--header-textcolor);margin-bottom: 6px;"></div>
                 <div style="width: 30%; height:2px; background-color: var(--header-textcolor);"></div>
             </div>
+            <div id="darkbutton" onclick="toggleDarkMode()">
+                <div class="toggle-circle"></div>
+            </div>
             <a href="">
             <div id="GWlogo">
                 <span style="font-family: 'Montserrat'">
@@ -866,11 +903,6 @@
                 </span>
             </div>
             </a>
-            <div class="menuItem" onclick="toggleDarkMode()">
-                <span style="font-size: 14px;">
-                    <span style="font-weight: normal;">Dark mode</span>
-                </span>
-            </div>
         </div> 
 
         <!-- <h1 id="pageTitle">Visualizer</h1> -->
