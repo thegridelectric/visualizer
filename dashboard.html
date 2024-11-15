@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8">
+    <title>GridWorks Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/luxon@3.0.1/build/global/luxon.min.js"></script>
+
+    <style>
+
+        :root {
+            --body-bgcolor: #222222;
+            --header-textcolor: #f5f5f7;
+            --header-bgcolor: #222222;
+            --box-bgcolor: #3a3a3a;
+            --borderbottom: #515151;
+            --box-textcolor: #f5f5f7;
+            --button-bgcolor: #6d6d6d;
+            --button-hover: #787878;
+            --button-options: #cbcbcb;
+            --options-hover: transparent;
+            --inputs-bgcolor: #e7e7e7;
+            --loading-color: rgba(206, 206, 206, 0.636);
+            --loading-bgcolor: rgba(107, 107, 107, 0.246);
+            --checkbox-textcolor: #dbdbdb;
+            --loader-bigpart: #cdcdcd;
+            --loader-smallpart: #3a3a3a;
+        }
+
+        body {
+            background-color: var(--body-bgcolor);
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            font-family: 'Montserrat';
+        }
+
+        .component {
+            display: flex;
+            border: solid 2px var(--loader-bigpart);
+            background-color: #414141;
+            color: #e7e7e7;
+            width: 100px;
+            height: 150px;
+            position:absolute;
+            text-align: center;
+            align-items: center;
+            justify-content: center;
+            border-radius: 15px;
+        }
+
+        #heatpump {
+            left: 20px;
+            top: 20px;
+        }
+        #buffer {
+            left: 900px;
+            top: 20px;
+        }
+        #tank3 {
+            left: 180px;
+            top: 220px;
+        }
+        #tank2 {
+            left: 295px;
+            top: 220px;
+        }
+        #tank1 {
+            left: 410px;
+            top: 220px;
+        }
+        #house {
+            left: 650px;
+            top: 220px;
+        }
+
+        .hpipe {
+            position: absolute;
+            border-top: solid 2px var(--loader-bigpart);
+            border-bottom: solid 2px var(--loader-bigpart);
+        }
+
+        .vpipe {
+            position: absolute;
+            border-left: solid 2px var(--loader-bigpart);
+            border-right: solid 2px var(--loader-bigpart);
+        }
+
+        #hp-to-buffer {
+            left: 122px;
+            top: 40px;
+            width: 780px;
+            height: 10px;
+            background-color: rgb(168, 39, 39);
+            z-index: 100;
+        }
+        #buffer-to-hp {
+            left: 122px;
+            top: 140px;
+            width: 780px;
+            height: 10px;
+            background-color: rgb(57, 78, 181);
+            z-index: 1;
+        }
+
+        #store-top-to-hp {
+            height:190px;
+            left: 530px;
+            width: 10px;
+            top: 52px;
+            z-index: 200;
+            background-color: rgb(168, 39, 39);
+        }
+        #store-bottom-to-hp {
+            height:190px;
+            left: 150px;
+            width: 10px;
+            top: 152px;
+            z-index: 200;
+            background-color: rgb(57, 78, 181);
+        }
+        #hpipe-hot-store {
+            left: 512px;
+            top:240px;
+            width: 31px;
+            height: 10px;
+            background-color: rgb(168, 39, 39);
+        }
+        #hpipe-hot-store2 {
+            border: none;
+            border-right: solid 2px var(--loader-bigpart);
+            border-bottom: solid 2px var(--loader-bigpart);
+            left: 512px;
+            top:242px;
+            width: 30px;
+            height: 10px;
+            background-color: rgb(168, 39, 39);
+        }
+        #hpipe-cold-store {
+            left: 150px;
+            top: 340px;
+            width: 31px;
+            height: 10px;
+            background-color: rgb(57, 78, 181);
+        }
+        #hpipe-cold-store2 {
+            border: none;
+            border-left: solid 2px var(--loader-bigpart);
+            border-bottom: solid 2px var(--loader-bigpart);
+            left: 150px;
+            top: 342px;
+            width: 30px;
+            height: 10px;
+            background-color: rgb(57, 78, 181);
+        }
+
+        #house-top-to-hp {
+            height:190px;
+            left: 770px;
+            width: 10px;
+            top: 52px;
+            z-index: 200;
+            background-color: rgb(168, 39, 39);
+        }
+        #house-bottom-to-hp {
+            height:190px;
+            left: 620px;
+            width: 10px;
+            top: 152px;
+            z-index: 200;
+            background-color: rgb(57, 78, 181);
+        }
+        #hpipe-hot-house {
+            left: 752px;
+            top:240px;
+            width: 31px;
+            height: 10px;
+            background-color: rgb(168, 39, 39);
+        }
+        #hpipe-hot-house2 {
+            border: none;
+            border-right: solid 2px var(--loader-bigpart);
+            border-bottom: solid 2px var(--loader-bigpart);
+            left: 752px;
+            top:242px;
+            width: 30px;
+            height: 10px;
+            background-color: rgb(168, 39, 39);
+        }
+        #hpipe-cold-house {
+            left: 620px;
+            top: 340px;
+            width: 31px;
+            height: 10px;
+            background-color: rgb(57, 78, 181);
+        }
+        #hpipe-cold-house2 {
+            border: none;
+            border-left: solid 2px var(--loader-bigpart);
+            border-bottom: solid 2px var(--loader-bigpart);
+            left: 620px;
+            top: 342px;
+            width: 30px;
+            height: 10px;
+            background-color: rgb(57, 78, 181);
+        }
+    </style>
+
+</head>
+
+<body> 
+
+    <div class="component" id="heatpump">
+        Heat<br>Pump
+    </div>
+    <div class="component" id="buffer">
+        Buffer
+    </div>
+    <div class="component" id="tank3">
+        Tank 3
+    </div>
+    <div class="component" id="tank2">
+        Tank 2
+    </div>
+    <div class="component" id="tank1">
+        Tank 1
+    </div>
+    <div class="component" id="house">
+        House
+    </div>
+
+    <div class="hpipe" id="hp-to-buffer"></div>
+    <div class="hpipe" id="buffer-to-hp"></div>
+
+    <div class="vpipe" id="store-top-to-hp"></div>
+    <div class="vpipe" id="store-bottom-to-hp"></div>
+    <div class="hpipe" id="hpipe-hot-store"></div>
+    <div class="hpipe" id="hpipe-hot-store2"></div>
+    <div class="hpipe" id="hpipe-cold-store"></div>
+    <div class="hpipe" id="hpipe-cold-store2"></div>
+
+    <div class="vpipe" id="house-top-to-hp"></div>
+    <div class="vpipe" id="house-bottom-to-hp"></div>
+    <div class="hpipe" id="hpipe-hot-house"></div>
+    <div class="hpipe" id="hpipe-hot-house2"></div>
+    <div class="hpipe" id="hpipe-cold-house"></div>
+    <div class="hpipe" id="hpipe-cold-house2"></div>
+
+</body>
+
+</html>
