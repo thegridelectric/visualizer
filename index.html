@@ -13,12 +13,14 @@
     
     <script>
         let house_alias, password;
+        let darkmode_tf = false;
 
         async function exportCSV(event, continueOption) {
 
             event.preventDefault();
 
             disable_csv_buttons()
+            showLoader()
 
             const startdate = document.getElementById('startDatePicker').value;
             const starttime = document.getElementById('startTimePicker').value;
@@ -96,12 +98,14 @@
                 alert(`Error downloading CSV`);
             } finally {
                 enable_csv_buttons()
+                hideLoader()
             }
         }
 
         async function fetchPlots(house_alias, password, start_ms, end_ms, channels, continueOption) {
 
             disable_plot_buttons()
+            showLoader()
 
             const ipResponse = await fetch('https://api.ipify.org?format=json');
             const ipData = await ipResponse.json();
@@ -126,6 +130,7 @@
                         user_agent: userAgent,
                         timezone: timezone,
                         continue_option: continueOption,
+                        darkmode: darkmode_tf,
                     })
                 });
 
@@ -212,6 +217,7 @@
                 alert(`Error fetching plots for house '${house_alias}'.`);
             } finally {
                 enable_plot_buttons();
+                hideLoader();
             }
         }
 
@@ -314,7 +320,7 @@
             document.getElementById('endTimePicker').value = getDefaultTime();
             document.getElementById("content").style.display = "block";
 
-            // getData(event);
+            getData(event);
         }
 
 
@@ -354,18 +360,88 @@
         function dropDownMenu(){
             const header = document.getElementById("header");
             if (header.style.height === '75px') {
-                document.getElementById("header").style.height = "156px";
+                document.getElementById("header").style.height = "196px";
 
             } else {
                 document.getElementById("header").style.height = "75px";
             }
         }
+
+        function showLoader() {
+            const loader = document.getElementById('loader');
+            loader.style.display = 'inline-block';
+        }
+
+        function hideLoader() {
+            const loader = document.getElementById('loader');
+            loader.style.display = 'none';
+        }
+
+        function toggleDarkMode() {
+            const plotsDiv1 = document.getElementById('Plot1');
+            const plotsDiv2 = document.getElementById('Plot2');
+            const plotsDiv3 = document.getElementById('Plot3');
+            const plotsDiv4 = document.getElementById('Plot4');
+            const plotsDiv5 = document.getElementById('Plot5');
+            const plotsDiv6 = document.getElementById('Plot6');
+            const plotsDiv7 = document.getElementById('Plot7');
+            const plotsDivPng = document.getElementById('PlotPng');
+            plotsDiv1.innerHTML = '';
+            plotsDiv2.innerHTML = '';
+            plotsDiv3.innerHTML = '';
+            plotsDiv4.innerHTML = '';
+            plotsDiv5.innerHTML = '';
+            plotsDiv6.innerHTML = '';
+            plotsDiv7.innerHTML = '';
+            plotsDivPng.innerHTML = '';
+            const toggleButton = document.getElementById('toggle-mode');
+            document.body.classList.toggle('dark-mode');
+            darkmode_tf = !darkmode_tf
+        }
+            
     </script>
 
     <style>
 
+
+        /* DARK MODE */
+
+        :root {
+            --body-bgcolor: #ffffff;
+            --header-textcolor: #555555;
+            --header-bgcolor: #F5F5F7;
+            --box-bgcolor: #F5F5F7;
+            --borderbottom: rgb(226,226,226);
+            --box-textcolor: rgb(55,55,55);
+            --button-bgcolor: #3f3f3f;
+            --button-hover: #3f3f3f;
+            --button-options: #3f3f3f;
+            --options-hover: #3f3f3f;
+            --inputs-bgcolor: #ffffff;
+            --loading-color: rgba(255, 255, 255, 0.636);
+            --loading-bgcolor:rgba(169, 169, 169, 0.594);
+            --checkbox-textcolor: #555;
+        }
+
+        .dark-mode {
+            --body-bgcolor: #222222;
+            --header-textcolor: #f5f5f7;
+            --header-bgcolor: #222222;
+            --box-bgcolor: #3a3a3a;
+            --borderbottom: #515151;
+            --box-textcolor: #f5f5f7;
+            --button-bgcolor: #6d6d6d;
+            --button-hover: #787878;
+            --button-options: #cbcbcb;
+            --options-hover: transparent;
+            --inputs-bgcolor: #e7e7e7;
+            --loading-color: rgba(206, 206, 206, 0.636);
+            --loading-bgcolor: rgba(107, 107, 107, 0.246);
+            --checkbox-textcolor: #dbdbdb;
+        }
+
         body {
-            background-color: #ffffff;
+            background-color: var(--body-bgcolor);
             font-family: 'Helvetica Neue', Arial, sans-serif;
             margin: 0;
             padding: 0;
@@ -387,13 +463,18 @@
 
         #header{
             height: 75px; 
-            background-color: #F5F5F7; 
-            color: #555555; 
+            color: var(--header-textcolor); 
+            background-color: var(--header-bgcolor); 
             display: flex; 
             align-items: stretch;
             margin-bottom: 0;
             /* flex-direction: column; */
             /* border-bottom: #d6d6d6 0.5px solid; */
+        }
+
+        a {
+            color: var(--header-textcolor);
+            text-decoration: none;
         }
 
         #pageTitle {
@@ -405,6 +486,7 @@
         }
 
         #houseAliasHeader {
+            color: var(--header-textcolor);
             font-family: 'Montserrat';
             font-size: 35px;
             padding-bottom: 25px;
@@ -412,6 +494,7 @@
         }
 
         #LoginHeader {
+            color: var(--header-textcolor);
             font-family: 'Montserrat';
             font-size: 35px;
             padding-bottom: 15px;
@@ -433,7 +516,7 @@
             height:40px;
             padding-left: 20px;
             padding-right: 20px;
-            background-color:rgb(63, 63, 63); 
+            background-color:var(--button-bgcolor); 
             border: none;
         }
 
@@ -442,14 +525,14 @@
             font-size:15px;
             font-family: 'Montserrat';
             margin-top:0px;
-            color:rgb(63, 63, 63);
+            color:var(--button-options);
             background-color: transparent;
             border-radius:30px;
             text-align:center;
             height:40px;
             padding-left: 15px;
             padding-right: 15px;
-            border: rgb(63, 63, 63) 2px solid;
+            border: var(--button-options) 2px solid;
         }
 
         #login-button {
@@ -457,18 +540,19 @@
         }
 
         #nowButton {
-            background-color: white;
+            color: rgb(63, 63, 63);
+            background-color: var(--inputs-bgcolor);
             margin-left:0px;
             border-radius: 5px;
             border: none
         }
 
-        #submit_button:hover, #checkboxButton:hover, #close-button:hover, #csv_button:hover, #login-button:hover, #nowButton:hover {
-            background-color:rgb(55, 55, 55);
+        #submit_button:hover, #close-button:hover, #csv_button:hover, #login-button:hover, #nowButton:hover {
+            background-color:var(--button-hover);
         }
 
         #checkboxButton:hover {
-            background-color:rgb(63, 63, 63);
+            background-color:var(--options-hover);
             color:white;
         }
 
@@ -481,11 +565,11 @@
             min-height: 110px;
             margin-left: 5%;
             margin-right: 5%;
-            margin-bottom: 30px;
-            margin-top:30px;
+            margin-bottom: 50px;
+            margin-top:40px;
             padding: 30px;
             /* padding-bottom: 75px; */
-            background-color: #f5f5f5;
+            background-color: var(--box-bgcolor);
             border-radius: 10px;
             /* border: #d6d6d6 0.5px solid; */
         }
@@ -501,9 +585,9 @@
             max-height: 90%;
             overflow:scroll ;
             transform: translate(-50%, -0%);
-            background-color: #F5F5F7;
+            background-color: var(--box-bgcolor);
             /* border: #d6d6d6 0.5px solid; */
-            color: rgb(53, 53, 53);
+            color: var(--box-textcolor);
             position: absolute;
             width: 100%;
             max-width: 800px;
@@ -550,13 +634,13 @@
 
         @media (max-width: 600px) {
             #GWlogo {
-                border-bottom: rgb(226, 226, 226) 0.5px solid;
+                border-bottom: var(--borderbottom) 0.5px solid;
             }
             .menuItem {
                 width: 100%;
                 max-width: 100%;
                 height:40px;
-                border-bottom: rgb(226, 226, 226) 0.5px solid;
+                border-bottom: var(--borderbottom) 0.5px solid;
             }
             #header {
                 flex-direction: column;
@@ -583,17 +667,12 @@
             }
         }
 
-        a {
-            color: #555555;
-            text-decoration: none;
-        }
-
         #housealias, #passwd, #startDatePicker, #startTimePicker, #endDatePicker, #endTimePicker, #csv_inputs {
             margin-top: 10px;
             height: 40px;
             border-radius: 5px;
             border: none;
-            background-color: white;
+            background-color: var(--inputs-bgcolor);
             color: rgb(53, 53, 53);
             padding-left: 15px;
             padding-right: 10px;
@@ -612,7 +691,7 @@
 
         #PlotContainer {
             padding-top: 10px;
-            background-color: #ffffff;
+            /* background-color: #ffffff; */
             width: 100%;
             margin-bottom: 20px;
         }
@@ -635,7 +714,7 @@
             height: 22px;
             border: 2px solid #d1d1d6;
             border-radius: 4px;
-            background-color: #fff;
+            background-color: var(--box-bgcolor);
             position: relative;
             cursor: pointer;
             margin-right: 10px;
@@ -651,9 +730,9 @@
             display: inline-flex;
             align-items: center;
             font-size: 16px;
-            color: #555;
-            cursor: pointer; /* Indicate interactivity */
-            user-select: none; /* Prevent text selection */
+            color: var(--checbox-textcolor);
+            cursor: pointer;
+            user-select: none;
         }
 
         #checkboxDiv h2, #checkboxDiv h4 {
@@ -679,23 +758,23 @@
         }
 
         #loadingText, #csvLoadingText {
-            cursor:progress;
+            /* cursor:progress; */
             font-size:15px;
             font-family: 'Montserrat';
             margin-top:0px;
-            color:rgba(255, 255, 255, 0.636);
+            color:var(--loading-color);
             border-radius:30px;
             text-align:center;
             height:40px;
             padding-left: 20px;
             padding-right: 20px;
-            background-color:rgba(169, 169, 169, 0.594); 
+            background-color:var(--loading-bgcolor); 
             border: none;
         } 
 
         #loader {
-            border: 10px solid rgb(55, 55, 55);
-            border-top: 10px solid transparent;
+            border: 10px solid #cdcdcd;
+            border-top: 10px solid #373737;
             border-radius: 50%;
             width: 20px;
             height: 20px;
@@ -711,8 +790,7 @@
 
 </head>
 
-<body>
-
+<body> <!-- class="dark-mode" -->
     
     <div id="checkboxDiv" style="display: none;">
         <button id="close-button" style="float: right; margin-top: 15px;" onclick="toggleCheckbox()">X</button>
@@ -746,7 +824,7 @@
         <label><input type="checkbox" name="channels" value="show-points">Show points</label><br>
         <h2>Export to CSV</h2>
         <label><input type="checkbox" name="channels" value="all-data" checked>Export all data channels</label><br><br>
-        <span style="color: #555;">Time step (seconds):</span><br><label><input type="number" style="width: 50px;" name="csv_inputs" id="csv_inputs" value="5"></label><br>
+        <span style="color: var(--checkbox-textcolor);">Time step (seconds):</span><br><label><input type="number" style="width: 50px;" name="csv_inputs" id="csv_inputs" value="5"></label><br>
         <br>
         <!-- <div style="position:absolute">
         <button id="csv_button" style='position:relative;' onclick='exportCSV()'>Export to CSV</button>
@@ -759,8 +837,8 @@
     <div>
         <div id="header">
             <div id="menubutton" onclick="dropDownMenu()">
-                <div style="width: 30%; height:2px; background-color: #535353;margin-bottom: 6px;"></div>
-                <div style="width: 30%; height:2px; background-color: #535353;"></div>
+                <div style="width: 30%; height:2px; background-color: var(--header-textcolor);margin-bottom: 6px;"></div>
+                <div style="width: 30%; height:2px; background-color: var(--header-textcolor);"></div>
             </div>
             <a href="">
             <div id="GWlogo">
@@ -783,6 +861,11 @@
                 </span>
             </div>
             </a>
+            <div class="menuItem" onclick="toggleDarkMode()">
+                <span style="font-size: 14px;">
+                    <span style="font-weight: normal;">Dark mode</span>
+                </span>
+            </div>
         </div> 
 
         <!-- <h1 id="pageTitle">Visualizer</h1> -->
@@ -790,7 +873,7 @@
         <!-- Login -->
         <div id="login" style="display: block;">               
             <div id="LoginBox">
-                <h2 id="LoginHeader" style="color: rgb(55, 55, 55);">Log in</h2>
+                <h2 id="LoginHeader">Log in</h2>
                 <form id="form1" onsubmit="LogInFunction(event)">
                     <input type="text" id="housealias" name="housealiaspicker" placeholder="House alias"><br>
                     <input type="password" id="passwd" name="passwordpicker" placeholder="Password"><br>
@@ -802,25 +885,25 @@
 
         <div id="content" style="display: none;">               
         <div id="Inputs">
-            <h2 id="houseAliasHeader" style="color: rgb(55, 55, 55);"></h2>
+            <h2 id="houseAliasHeader"></h2>
             <form  id="form2">
-                <label style="color: rgb(55, 55, 55); font-size: 16px;" for="startDatePicker">Start<br></label>
+                <label style="color: var(--box-textcolor); font-size: 16px;" for="startDatePicker">Start<br></label>
                 <input type="date" id="startDatePicker" name="startDatePicker">
                 <input type="time" id="startTimePicker" name="startTimePicker"><br><br>
-                <label style="color: rgb(55, 55, 55); font-size: 16px;" for="endDatePicker">End<br></label>
+                <label style="color: var(--box-textcolor); font-size: 16px;" for="endDatePicker">End<br></label>
                 <input type="date" id="endDatePicker" name="endDatePicker">
                 <input type="time" id="endTimePicker" name="endTimePicker">
                 <button type="button" id="nowButton" onclick=setNow()>Now</button><br><br>
                 <button type="button" id="checkboxButton" onclick=toggleCheckbox()>Options</button>
                 <input id='loadingText' type="button" style='position: absolute' value="Plot">
                 <input id='submit_button' type="submit" style='position: absolute' value="Plot" onclick="getData(event)">
-                <div style="margin-left: 80px; position:absolute; display:inline">
+                <div style="margin-left: 82px; position:absolute; display:inline">
                     <button id="csv_button" style='position:relative;' onclick='exportCSV(event, false)'>CSV</button>
                     <button id="csvLoadingText" style='display:none;'>CSV</button><br>
                     <div style="position: absolute; height:35px; width: 100%;"></div>
                     <br>
                 </div>
-                <div id="loader" style="margin-left: 175px; position:absolute; display:none"></div>
+                <div id="loader" style="margin-left: 172px; position:absolute; display:none"></div>
                 <!-- <span id="loadingText" style="font-weight: bold; color: rgb(55, 55, 55); display: none; position: absolute; margin-top:11px;">Loading data...</span> -->
             </form>
         </div>

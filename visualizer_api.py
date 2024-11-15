@@ -62,6 +62,7 @@ class DataRequest(BaseModel):
     user_agent: str
     timezone: str
     continue_option: Optional[bool] = False
+    darkmode: Optional[bool] = False
 
 class CsvRequest(BaseModel):
     house_alias: str
@@ -107,7 +108,6 @@ storage_colors = {
 storage_colors_hex = {key: to_hex(value) for key, value in storage_colors.items()}
 
 zone_colors_hex = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
-plot_background_hex = 'white'
 
 # ------------------------------
 # Pull data from journaldb
@@ -402,6 +402,15 @@ async def get_plots(request: DataRequest):
             
             zone_colors_hex = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']*200
 
+            if request.darkmode:
+                plot_background_hex = '#222222'
+                gridcolor_hex = '#424242'
+                fontcolor_hex = '#b5b5b5'
+            else:
+                plot_background_hex = 'white'
+                gridcolor_hex = 'LightGray'
+                fontcolor_hex = 'rgb(42,63,96)'
+
             if PYPLOT_PLOT:
 
                 line_style = 'lines+markers' if 'show-points'in request.selected_channels else 'lines'
@@ -510,30 +519,32 @@ async def get_plots(request: DataRequest):
                     margin=dict(t=30, b=30),
                     plot_bgcolor=plot_background_hex,
                     paper_bgcolor=plot_background_hex,
+                    font_color=fontcolor_hex,
+                    title_font_color=fontcolor_hex,
                     xaxis=dict(
                         range=[min_time_ms_dt, max_time_ms_dt],
                         mirror=True,
                         ticks='outside',
                         showline=True,
-                        linecolor='rgb(42,63,96)',
+                        linecolor=fontcolor_hex,
                         showgrid=False
                         ),
                     yaxis=dict(
                         mirror=True,
                         ticks='outside',
                         showline=True,
-                        linecolor='rgb(42,63,96)',
+                        linecolor=fontcolor_hex,
                         zeroline=False,
                         showgrid=True, 
                         gridwidth=1, 
-                        gridcolor='LightGray'
+                        gridcolor=gridcolor_hex
                         ),
                     yaxis2=dict(
                         mirror=True,
                         ticks='outside',
                         zeroline=False,
                         showline=True,
-                        linecolor='rgb(42,63,96)',
+                        linecolor=fontcolor_hex,
                         showgrid=False,
                         overlaying='y', 
                         side='right'
@@ -628,30 +639,32 @@ async def get_plots(request: DataRequest):
                     title=dict(text='Distribution', x=0.5, xanchor='center'),
                     plot_bgcolor=plot_background_hex,
                     paper_bgcolor=plot_background_hex,
+                    font_color=fontcolor_hex,
+                    title_font_color=fontcolor_hex,
                     margin=dict(t=30, b=30),
                     xaxis=dict(
                         range=[min_time_ms_dt, max_time_ms_dt],
                         mirror=True,
                         ticks='outside',
                         showline=True,
-                        linecolor='rgb(42,63,96)',
+                        linecolor=fontcolor_hex,
                         showgrid=False
                         ),
                     yaxis=dict(
                         mirror=True,
                         ticks='outside',
                         showline=True,
-                        linecolor='rgb(42,63,96)',
+                        linecolor=fontcolor_hex,
                         zeroline=False,
                         showgrid=True, 
                         gridwidth=1, 
-                        gridcolor='LightGray'
+                        gridcolor=gridcolor_hex
                         ),
                     yaxis2=dict(
                         mirror=True,
                         ticks='outside',
                         showline=True,
-                        linecolor='rgb(42,63,96)',
+                        linecolor=fontcolor_hex,
                         zeroline=False,
                         overlaying='y', 
                         side='right', 
@@ -753,13 +766,15 @@ async def get_plots(request: DataRequest):
                     title=dict(text='Heat calls', x=0.5, xanchor='center'),
                     plot_bgcolor=plot_background_hex,
                     paper_bgcolor=plot_background_hex,
+                    font_color=fontcolor_hex,
+                    title_font_color=fontcolor_hex,
                     margin=dict(t=30, b=30),
                     xaxis=dict(
                         range=[min_time_ms_dt, max_time_ms_dt],
                         mirror=True,
                         ticks='outside',
                         showline=True,
-                        linecolor='rgb(42,63,96)',
+                        linecolor=fontcolor_hex,
                         showgrid=False
                         ),
                     yaxis=dict(
@@ -767,18 +782,18 @@ async def get_plots(request: DataRequest):
                         mirror=True,
                         ticks='outside',
                         showline=True,
-                        linecolor='rgb(42,63,96)',
+                        linecolor=fontcolor_hex,
                         zeroline=False,
                         showgrid=True, 
                         gridwidth=1, 
-                        gridcolor='LightGray', 
+                        gridcolor=gridcolor_hex, 
                         tickvals=list(range(len(zones.keys())+1)),
                         ),
                     yaxis2=dict(
                         mirror=True,
                         ticks='outside',
                         showline=True,
-                        linecolor='rgb(42,63,96)',
+                        linecolor=fontcolor_hex,
                         ),
                     legend=dict(
                         x=0,
@@ -849,13 +864,15 @@ async def get_plots(request: DataRequest):
                     title=dict(text='Zones', x=0.5, xanchor='center'),
                     plot_bgcolor=plot_background_hex,
                     paper_bgcolor=plot_background_hex,
+                    font_color=fontcolor_hex,
+                    title_font_color=fontcolor_hex,
                     margin=dict(t=30, b=30),
                     xaxis=dict(
                         range=[min_time_ms_dt, max_time_ms_dt],
                         mirror=True,
                         ticks='outside',
                         showline=True,
-                        linecolor='rgb(42,63,96)',
+                        linecolor=fontcolor_hex,
                         showgrid=False
                         ),
                     yaxis=dict(
@@ -864,18 +881,18 @@ async def get_plots(request: DataRequest):
                         mirror=True,
                         ticks='outside',
                         showline=True,
-                        linecolor='rgb(42,63,96)',
+                        linecolor=fontcolor_hex,
                         zeroline=False,
                         showgrid=True, 
                         gridwidth=1, 
-                        gridcolor='LightGray'
+                        gridcolor=gridcolor_hex
                         ),
                     yaxis2=dict(
                         range = [min_oat-2, max_oat+20],
                         mirror=True,
                         ticks='outside',
                         showline=True,
-                        linecolor='rgb(42,63,96)',
+                        linecolor=fontcolor_hex,
                         overlaying='y', 
                         side='right', 
                         zeroline=False,
@@ -956,13 +973,15 @@ async def get_plots(request: DataRequest):
                     title=dict(text='Buffer', x=0.5, xanchor='center'),
                     plot_bgcolor=plot_background_hex,
                     paper_bgcolor=plot_background_hex,
+                    font_color=fontcolor_hex,
+                    title_font_color=fontcolor_hex,
                     margin=dict(t=30, b=30),
                     xaxis=dict(
                         range=[min_time_ms_dt, max_time_ms_dt],
                         mirror=True,
                         ticks='outside',
                         showline=True,
-                        linecolor='rgb(42,63,96)',
+                        linecolor=fontcolor_hex,
                         showgrid=False,
                         ),
                     yaxis=dict(
@@ -970,12 +989,12 @@ async def get_plots(request: DataRequest):
                         mirror=True,
                         ticks='outside',
                         showline=True,
-                        linecolor='rgb(42,63,96)',
+                        linecolor=fontcolor_hex,
                         title='Temperature [F]', 
                         zeroline=False,
                         showgrid=True, 
                         gridwidth=1, 
-                        gridcolor='LightGray',
+                        gridcolor=gridcolor_hex,
                         ),
                     legend=dict(
                         x=0,
@@ -1091,30 +1110,32 @@ async def get_plots(request: DataRequest):
                     title=dict(text='Storage', x=0.5, xanchor='center'),
                     plot_bgcolor=plot_background_hex,
                     paper_bgcolor=plot_background_hex,
+                    font_color=fontcolor_hex,
+                    title_font_color=fontcolor_hex,
                     margin=dict(t=30, b=30),
                     xaxis=dict(
                         range=[min_time_ms_dt, max_time_ms_dt],
                         mirror=True,
                         ticks='outside',
                         showline=True,
-                        linecolor='rgb(42,63,96)',
+                        linecolor=fontcolor_hex,
                         showgrid=False,
                         ),
                     yaxis=dict(
                         mirror=True,
                         ticks='outside',
                         showline=True,
-                        linecolor='rgb(42,63,96)',
+                        linecolor=fontcolor_hex,
                         zeroline=False,
                         showgrid=True, 
                         gridwidth=1, 
-                        gridcolor='LightGray'
+                        gridcolor=gridcolor_hex
                         ),
                     yaxis2=dict(
                         mirror=True,
                         ticks='outside',
                         showline=True,
-                        linecolor='rgb(42,63,96)',
+                        linecolor=fontcolor_hex,
                         overlaying='y', 
                         side='right', 
                         zeroline=False,
@@ -1169,15 +1190,17 @@ async def get_plots(request: DataRequest):
 
                 fig.update_layout(
                     title=dict(text='HomeAlone State', x=0.5, xanchor='center'),
-                    plot_bgcolor='white',
-                    paper_bgcolor='white',
+                    plot_bgcolor=plot_background_hex,
+                    paper_bgcolor=plot_background_hex,
+                    font_color=fontcolor_hex,
+                    title_font_color=fontcolor_hex,
                     margin=dict(t=30, b=30),
                     xaxis=dict(
                         range=[min_time_ms_dt, max_time_ms_dt],
                         mirror=True,
                         ticks='outside',
                         showline=True,
-                        linecolor='rgb(42,63,96)',
+                        linecolor=fontcolor_hex,
                         showgrid=False
                         ),
                     yaxis=dict(
@@ -1185,11 +1208,11 @@ async def get_plots(request: DataRequest):
                         mirror=True,
                         ticks='outside',
                         showline=True,
-                        linecolor='rgb(42,63,96)',
+                        linecolor=fontcolor_hex,
                         zeroline=False,
                         showgrid=True, 
                         gridwidth=1, 
-                        gridcolor='LightGray', 
+                        gridcolor=gridcolor_hex, 
                         tickvals=list(range(len(modes)-1)),
                         ),
                     legend=dict(
