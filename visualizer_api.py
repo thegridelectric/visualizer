@@ -479,19 +479,6 @@ async def get_plots(request: DataRequest):
                             yaxis=y_axis_power
                             )
                         )
-                if 'primary-pump-pwr' in request.selected_channels and 'primary-pump-pwr' in channels:
-                    power_plot = True
-                    fig.add_trace(
-                        go.Scatter(
-                            x=channels['primary-pump-pwr']['times'], 
-                            y=[x/1000*100 for x in channels['primary-pump-pwr']['values']], 
-                            mode=line_style, 
-                            opacity=0.7,
-                            line=dict(color='pink', dash='solid'),
-                            name='Primary pump power x100',
-                            yaxis=y_axis_power
-                            )
-                        )
                 if 'primary-flow' in request.selected_channels and 'primary-flow' in channels:
                     power_plot = True
                     fig.add_trace(
@@ -503,6 +490,20 @@ async def get_plots(request: DataRequest):
                             line=dict(color='purple', dash='solid'),
                             name='Primary pump flow',
                             yaxis=y_axis_power
+                            )
+                        )
+                if 'primary-pump-pwr' in request.selected_channels and 'primary-pump-pwr' in channels:
+                    power_plot = True
+                    fig.add_trace(
+                        go.Scatter(
+                            x=channels['primary-pump-pwr']['times'], 
+                            y=[x/1000*100 for x in channels['primary-pump-pwr']['values']], 
+                            mode=line_style, 
+                            opacity=0.7,
+                            line=dict(color='pink', dash='solid'),
+                            name='Primary pump power x100',
+                            yaxis=y_axis_power,
+                            visible='legendonly',
                             )
                         )
 
@@ -600,19 +601,6 @@ async def get_plots(request: DataRequest):
 
                 # Power and flow
                 power_plot = False   
-                if 'dist-pump-pwr' in request.selected_channels and 'dist-pump-pwr' in channels:
-                    power_plot = True
-                    fig.add_trace(
-                        go.Scatter(
-                            x=channels['dist-pump-pwr']['times'], 
-                            y=[x/10 for x in channels['dist-pump-pwr']['values']], 
-                            mode=line_style, 
-                            opacity=0.7,
-                            line=dict(color='pink', dash='solid'),
-                            name='Distribution pump power /10',
-                            yaxis = y_axis_power
-                            )
-                        )
                 if 'dist-flow' in request.selected_channels and 'dist-flow' in channels:
                     power_plot = True
                     fig.add_trace(
@@ -624,6 +612,20 @@ async def get_plots(request: DataRequest):
                             line=dict(color='purple', dash='solid'),
                             name='Distribution flow',
                             yaxis = y_axis_power
+                            )
+                        )
+                if 'dist-pump-pwr' in request.selected_channels and 'dist-pump-pwr' in channels:
+                    power_plot = True
+                    fig.add_trace(
+                        go.Scatter(
+                            x=channels['dist-pump-pwr']['times'], 
+                            y=[x/10 for x in channels['dist-pump-pwr']['values']], 
+                            mode=line_style, 
+                            opacity=0.7,
+                            line=dict(color='pink', dash='solid'),
+                            name='Distribution pump power /10',
+                            yaxis = y_axis_power,
+                            visible='legendonly', 
                             )
                         )
                     
@@ -1097,12 +1099,13 @@ async def get_plots(request: DataRequest):
                             yaxis=y_axis_power
                             )
                         )
-
+                    
                 if temp_plot and power_plot:
-                    fig.update_layout(yaxis=dict(title='Temperature [F]', range=[min_store_temp-40, max_store_temp+20]))
+                    fig.update_layout(yaxis=dict(title='Temperature [F]', range=[min_store_temp-40, max_store_temp+60]))
                     fig.update_layout(yaxis2=dict(title='Flow [GPM] or Power [kW]', range=[-1, 40]))
                 elif temp_plot and not power_plot:
-                    fig.update_layout(yaxis=dict(title='Temperature [F]', range=[min_store_temp-20, max_store_temp+20]))
+                    min_store_temp = 20 if min_store_temp<0 else min_store_temp
+                    fig.update_layout(yaxis=dict(title='Temperature [F]', range=[min_store_temp-20, max_store_temp+60]))
                 elif power_plot and not temp_plot:
                     fig.update_layout(yaxis=dict(title='Flow [GPM] or Power [kW]'))
 

@@ -421,6 +421,8 @@
             --loading-color: rgba(255, 255, 255, 0.636);
             --loading-bgcolor:rgba(169, 169, 169, 0.594);
             --checkbox-textcolor: #555;
+            --loader-bigpart: #cdcdcd;
+            --loader-smallpart: #3f3f3f;
         }
 
         .dark-mode {
@@ -438,6 +440,8 @@
             --loading-color: rgba(206, 206, 206, 0.636);
             --loading-bgcolor: rgba(107, 107, 107, 0.246);
             --checkbox-textcolor: #dbdbdb;
+            --loader-bigpart: #cdcdcd;
+            --loader-smallpart: #3a3a3a;
         }
 
         body {
@@ -566,7 +570,7 @@
             margin-left: 5%;
             margin-right: 5%;
             margin-bottom: 50px;
-            margin-top:40px;
+            margin-top:30px;
             padding: 30px;
             /* padding-bottom: 75px; */
             background-color: var(--box-bgcolor);
@@ -774,8 +778,8 @@
         } 
 
         #loader {
-            border: 10px solid #cdcdcd;
-            border-top: 10px solid #373737;
+            border: 10px solid var(--loader-bigpart);
+            border-top: 10px solid var(--loader-smallpart);
             border-radius: 50%;
             width: 20px;
             height: 20px;
@@ -825,7 +829,7 @@
         <label><input type="checkbox" name="channels" value="show-points">Show points</label><br>
         <h2>Export to CSV</h2>
         <label><input type="checkbox" name="channels" value="all-data" checked>Export all data channels</label><br><br>
-        <span style="color: var(--checkbox-textcolor);">Time step (seconds):</span><br><label><input type="number" style="width: 50px;" name="csv_inputs" id="csv_inputs" value="5"></label><br>
+        <span style="color: var(--checkbox-textcolor);">Time step (seconds):</span><br><label><input type="number" style="width: 50px;" name="csv_inputs" id="csv_inputs" value="1"></label><br>
         <br>
         <!-- <div style="position:absolute">
         <button id="csv_button" style='position:relative;' onclick='exportCSV()'>Export to CSV</button>
@@ -898,7 +902,7 @@
                 <button type="button" id="checkboxButton" onclick=toggleCheckbox()>Options</button>
                 <input id='loadingText' type="button" style='position: absolute' value="Plot">
                 <input id='submit_button' type="submit" style='position: absolute' value="Plot" onclick="getData(event)">
-                <div style="margin-left: 82px; position:absolute; display:inline">
+                <div style="margin-left: 80px; position:absolute; display:inline">
                     <button id="csv_button" style='position:relative;' onclick='exportCSV(event, false)'>CSV</button>
                     <button id="csvLoadingText" style='display:none;'>CSV</button><br>
                     <div style="position: absolute; height:35px; width: 100%;"></div>
