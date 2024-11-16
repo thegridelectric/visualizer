@@ -109,6 +109,19 @@ storage_colors_hex = {key: to_hex(value) for key, value in storage_colors.items(
 
 zone_colors_hex = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
 
+modes_colors_hex = {
+    'HpOffStoreDischarge': '#EF553B',
+    'HpOffStoreOff': '#00CC96',
+    'HpOnStoreOff': '#636EFA',
+    'HpOnStoreCharge': '#feca52',
+    'WaitingForTemperaturesOnPeak': '#a3a3a3',
+    'WaitingForTemperaturesOffPeak': '#4f4f4f',
+
+}
+modes_order = [
+    'HpOffStoreDischarge', 'HpOffStoreOff', 'HpOnStoreOff', 'HpOnStoreCharge', 
+    'WaitingForTemperaturesOffPeak', 'WaitingForTemperaturesOnPeak']
+
 # ------------------------------
 # Pull data from journaldb
 # ------------------------------
@@ -283,17 +296,16 @@ def get_data(request):
         modes['all']['times'] = []
         modes['all']['values'] = []
         formatted_times = [pendulum.from_timestamp(x/1000, tz='America/New_York') for x in relays['auto.h']['times']]
-        existing_states = sorted(list(set(relays['auto.h']['values'])))
-        for state in existing_states:
+        for state in modes_order:
             modes[state] = {}
             modes[state]['times'] = []
             modes[state]['values'] = []
 
         for time, state in zip(formatted_times, relays['auto.h']['values']):
             modes['all']['times'].append(time)
-            modes['all']['values'].append(existing_states.index(state))
+            modes['all']['values'].append(4 if 'Waiting' in state else modes_order.index(state))
             modes[state]['times'].append(time)
-            modes[state]['values'].append(existing_states.index(state))
+            modes[state]['values'].append(4 if 'Waiting' in state else modes_order.index(state))
 
     return "", channels, zones, modes, min_time_ms_dt, max_time_ms_dt
 
@@ -406,10 +418,12 @@ async def get_plots(request: DataRequest):
                 plot_background_hex = '#222222'
                 gridcolor_hex = '#424242'
                 fontcolor_hex = '#b5b5b5'
+                home_alone_line = '#f0f0f0'
             else:
                 plot_background_hex = 'white'
                 gridcolor_hex = 'LightGray'
                 fontcolor_hex = 'rgb(42,63,96)'
+                home_alone_line = '#5e5e5e'
 
             if PYPLOT_PLOT:
 
@@ -1171,8 +1185,8 @@ async def get_plots(request: DataRequest):
                             x=modes['all']['times'],
                             y=modes['all']['values'],
                             mode='lines',
-                            line=dict(color='gray', width=2),
-                            opacity=0.2,
+                            line=dict(color=home_alone_line, width=2),
+                            opacity=0.3,
                             showlegend=False,
                             line_shape='hv'
                         )
@@ -1185,7 +1199,7 @@ async def get_plots(request: DataRequest):
                                     x=modes[state]['times'],
                                     y=modes[state]['values'],
                                     mode='markers',
-                                    marker=dict(size=10),
+                                    marker=dict(color=modes_colors_hex[state], size=10),
                                     opacity=0.8,
                                     name=state,
                                 )
@@ -1207,7 +1221,7 @@ async def get_plots(request: DataRequest):
                         showgrid=False
                         ),
                     yaxis=dict(
-                        range = [-0.5, len(modes)-1+0.5],
+                        range = [-0.6, len(modes)-2+0.2],
                         mirror=True,
                         ticks='outside',
                         showline=True,
@@ -1216,7 +1230,7 @@ async def get_plots(request: DataRequest):
                         showgrid=True, 
                         gridwidth=1, 
                         gridcolor=gridcolor_hex, 
-                        tickvals=list(range(len(modes)-1)),
+                        tickvals=list(range(len(modes)-2)),
                         ),
                     legend=dict(
                         x=0,
