@@ -10,7 +10,6 @@
     <script src="https://cdn.jsdelivr.net/npm/luxon@3.0.1/build/global/luxon.min.js"></script>
 
     <style>
-
         :root {
             --body-bgcolor: #222222;
             --header-textcolor: #f5f5f7;
@@ -36,6 +35,20 @@
             margin: 0;
             padding: 0;
             font-family: 'Montserrat';
+            /* height: 100vh; */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .content-wrapper {
+            width: 80%;
+            margin-left: 10%;
+            /* margin-right: 10%; */
+            max-width: 1200px;
+            position: relative;
+            /* background-color: red; */
+            /* height: 1000px;; */
         }
 
         .component {
@@ -45,7 +58,7 @@
             color: #e7e7e7;
             width: 100px;
             height: 150px;
-            position:absolute;
+            position: absolute;
             text-align: center;
             align-items: center;
             justify-content: center;
@@ -53,27 +66,27 @@
         }
 
         #heatpump {
-            left: 20px;
+            left: 0px;
             top: 20px;
         }
         #buffer {
-            left: 900px;
+            left: 880px;
             top: 20px;
         }
         #tank3 {
-            left: 220px;
+            left: 200px;
             top: 220px;
         }
         #tank2 {
-            left: 335px;
+            left: 315px;
             top: 220px;
         }
         #tank1 {
-            left: 450px;
+            left: 430px;
             top: 220px;
         }
         #house {
-            left: 690px;
+            left: 670px;
             top: 220px;
         }
 
@@ -90,165 +103,196 @@
         }
 
         #hp-to-buffer {
-            left: 122px;
+            left: 102px;
             top: 40px;
             width: 780px;
             height: 10px;
-            background-color: rgb(168, 39, 39);
+            background-color: #414141;
             z-index: 100;
+            background: linear-gradient(90deg, rgb(255, 119, 0) 0%, rgb(144, 12, 0) 50%, rgb(255, 119, 0) 100%);
+            background-size: 200% 100%;
+            animation: flow-right 4s infinite linear;
         }
+
         #buffer-to-hp {
-            left: 122px;
+            left: 102px;
             top: 140px;
             width: 780px;
             height: 10px;
-            background-color: rgb(57, 78, 181);
+            background-color: #414141;
             z-index: 1;
+            background: linear-gradient(90deg, rgb(0, 85, 189) 0%, rgb(0, 31, 109) 50%, rgb(0, 85, 189) 100%);
+            background-size: 200% 100%;
+            animation: flow-left 4s infinite linear;
+        }
+
+        @keyframes flow-right {
+            0% {background-position: 200% 0%;}
+            100% {background-position: -200% 0%;}
+        }
+        @keyframes flow-left {
+            0% {background-position: -200% 0%;}
+            100% {background-position: 200% 0%;}
+        }
+        @keyframes flow-down {
+            0% {background-position: 0% 200%;}
+            100% {background-position: 0% -200%;}
+        }
+        @keyframes flow-up {
+            0% {background-position: 0% -200%;}
+            100% {background-position: 0% 200%;}
         }
 
         #store-top-to-hp {
-            height:190px;
-            left: 580px;
+            height: 190px;
+            left: 560px;
             width: 10px;
             top: 52px;
             z-index: 200;
-            background-color: rgb(168, 39, 39);
+            background-color: #414141;
         }
         #store-bottom-to-hp {
             height:190px;
-            left: 190px;
+            left: 170px;
             width: 10px;
             top: 152px;
             z-index: 200;
-            background-color: rgb(57, 78, 181);
+            background-color: #414141;
         }
         #hpipe-hot-store {
-            left: 552px;
-            top:240px;
+            left: 532px;
+            top: 240px;
             width: 31px;
             height: 10px;
-            background-color: rgb(168, 39, 39);
+            background-color: #414141;
         }
         #hpipe-hot-store2 {
             border: none;
             border-right: solid 2px var(--loader-bigpart);
             border-bottom: solid 2px var(--loader-bigpart);
-            left: 562px;
-            top:242px;
+            left: 542px;
+            top: 242px;
             width: 30px;
             height: 10px;
-            background-color: rgb(168, 39, 39);
+            background-color: #414141;
         }
         #hpipe-cold-store {
-            left: 190px;
+            left: 170px;
             top: 340px;
             width: 31px;
             height: 10px;
-            background-color: rgb(57, 78, 181);
+            background-color: #414141;
         }
         #hpipe-cold-store2 {
             border: none;
             border-left: solid 2px var(--loader-bigpart);
             border-bottom: solid 2px var(--loader-bigpart);
-            left: 190px;
+            left: 170px;
             top: 342px;
             width: 30px;
             height: 10px;
-            background-color: rgb(57, 78, 181);
+            background-color: #414141;
         }
 
         #house-top-to-hp {
-            height:190px;
-            left: 810px;
+            height:240px;
+            left: 790px;
             width: 10px;
             top: 52px;
             z-index: 200;
-            background-color: rgb(168, 39, 39);
+            background-color: #414141;
+            background: linear-gradient(180deg, rgb(255, 119, 0) 0%, rgb(144, 12, 0) 50%, rgb(255, 119, 0) 100%);
+            background-size: 100% 200%;
+            animation: flow-down 6s infinite linear;
         }
         #house-bottom-to-hp {
-            height:190px;
-            left: 660px;
+            height:140px;
+            left: 640px;
             width: 10px;
             top: 152px;
             z-index: 200;
-            background-color: rgb(57, 78, 181);
+            background-color: #414141;
+            background: linear-gradient(180deg, rgb(0, 85, 189) 0%, rgb(0, 31, 109) 50%, rgb(0, 85, 189) 100%);
+            background-size: 100% 200%;
+            animation: flow-up 6s infinite linear;
         }
         #hpipe-hot-house {
-            left: 792px;
-            top:240px;
+            left: 772px;
+            top: 290px;
             width: 31px;
             height: 10px;
-            background-color: rgb(168, 39, 39);
+            background-color: #414141;
+            background: linear-gradient(90deg, rgb(255, 119, 0) 0%, rgb(144, 12, 0) 50%, rgb(255, 119, 0) 100%);
+            background-size: 200% 100%;
+            animation: flow-left 4s infinite linear;
         }
         #hpipe-hot-house2 {
             border: none;
             border-right: solid 2px var(--loader-bigpart);
             border-bottom: solid 2px var(--loader-bigpart);
-            left: 792px;
-            top:242px;
+            left: 772px;
+            top: 292px;
             width: 30px;
             height: 10px;
-            background-color: rgb(168, 39, 39);
+            background-color: #414141;
+            background: linear-gradient(90deg, rgb(255, 119, 0) 0%, rgb(144, 12, 0) 50%, rgb(255, 119, 0) 100%);
+            background-size: 200% 100%;
+            animation: flow-left 4s infinite linear;
         }
         #hpipe-cold-house {
-            left: 660px;
-            top: 340px;
+            left: 640px;
+            top: 290px;
             width: 31px;
             height: 10px;
-            background-color: rgb(57, 78, 181);
+            background-color: #414141;
+            background: linear-gradient(90deg, rgb(0, 85, 189) 0%, rgb(0, 31, 109) 50%, rgb(0, 85, 189) 100%);
+            background-size: 200% 100%;
+            animation: flow-right 4s infinite linear;
         }
         #hpipe-cold-house2 {
             border: none;
             border-left: solid 2px var(--loader-bigpart);
             border-bottom: solid 2px var(--loader-bigpart);
-            left: 660px;
-            top: 342px;
+            left: 640px;
+            top: 292px;
             width: 30px;
             height: 10px;
-            background-color: rgb(57, 78, 181);
+            background-color: #414141;
+            background: linear-gradient(90deg, rgb(0, 85, 189) 0%, rgb(0, 31, 109) 50%, rgb(0, 85, 189) 100%);
+            background-size: 200% 100%;
+            animation: flow-right 4s infinite linear;
         }
     </style>
-
 </head>
 
-<body> 
+<body>
+    <div class="content-wrapper">
+        <div id="heatpump" class="component">Heatpump</div>
+        <div id="buffer" class="component">Buffer</div>
+        <div id="tank3" class="component">Tank 3</div>
+        <div id="tank2" class="component">Tank 2</div>
+        <div id="tank1" class="component">Tank 1</div>
+        <div id="house" class="component">House</div>
 
-    <div class="component" id="heatpump">
-        Heat<br>Pump
-    </div>
-    <div class="component" id="buffer">
-        Buffer
-    </div>
-    <div class="component" id="tank3">
-        Tank 3
-    </div>
-    <div class="component" id="tank2">
-        Tank 2
-    </div>
-    <div class="component" id="tank1">
-        Tank 1
-    </div>
-    <div class="component" id="house">
-        House
-    </div>
+        <div id="hp-to-buffer" class="hpipe"></div>
+        <div id="buffer-to-hp" class="hpipe"></div>
 
-    <div class="hpipe" id="hp-to-buffer"></div>
-    <div class="hpipe" id="buffer-to-hp"></div>
+        <div id="store-top-to-hp" class="vpipe"></div>
+        <div id="store-bottom-to-hp" class="vpipe"></div>
 
-    <div class="vpipe" id="store-top-to-hp"></div>
-    <div class="vpipe" id="store-bottom-to-hp"></div>
-    <div class="hpipe" id="hpipe-hot-store"></div>
-    <div class="hpipe" id="hpipe-hot-store2"></div>
-    <div class="hpipe" id="hpipe-cold-store"></div>
-    <div class="hpipe" id="hpipe-cold-store2"></div>
+        <div id="hpipe-hot-store" class="hpipe"></div>
+        <div id="hpipe-hot-store2" class="hpipe"></div>
+        <div id="hpipe-cold-store" class="hpipe"></div>
+        <div id="hpipe-cold-store2" class="hpipe"></div>
 
-    <div class="vpipe" id="house-top-to-hp"></div>
-    <div class="vpipe" id="house-bottom-to-hp"></div>
-    <div class="hpipe" id="hpipe-hot-house"></div>
-    <div class="hpipe" id="hpipe-hot-house2"></div>
-    <div class="hpipe" id="hpipe-cold-house"></div>
-    <div class="hpipe" id="hpipe-cold-house2"></div>
+        <div id="house-top-to-hp" class="vpipe"></div>
+        <div id="house-bottom-to-hp" class="vpipe"></div>
 
+        <div id="hpipe-hot-house" class="hpipe"></div>
+        <div id="hpipe-hot-house2" class="hpipe"></div>
+        <div id="hpipe-cold-house" class="hpipe"></div>
+        <div id="hpipe-cold-house2" class="hpipe"></div>
+    </div>
 </body>
 
 </html>
