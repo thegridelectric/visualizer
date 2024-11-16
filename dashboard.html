@@ -9,6 +9,18 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/luxon@3.0.1/build/global/luxon.min.js"></script>
 
+    <script>
+        function updateActive(state) {
+            const heatpump = document.getElementById('heatpump');
+            
+            if (state.includes("HpOn")) {
+                heatpump.style.background = 'linear-gradient(0deg, rgb(0, 39, 137) 0%, rgb(170, 14, 0) 80%, rgb(170, 14, 0) 100%)';
+            } else {
+                heatpump.style.background = 'none';
+            }
+        }
+    </script>
+
     <style>
         :root {
             --body-bgcolor: #222222;
@@ -25,7 +37,7 @@
             --loading-color: rgba(206, 206, 206, 0.636);
             --loading-bgcolor: rgba(107, 107, 107, 0.246);
             --checkbox-textcolor: #dbdbdb;
-            --loader-bigpart: #cdcdcd;
+            --loader-bigpart: #555;
             --loader-smallpart: #3a3a3a;
         }
 
@@ -53,8 +65,8 @@
 
         .component {
             display: flex;
-            border: solid 2px var(--loader-bigpart);
-            background-color: #414141;
+            border: solid 2px #555; /* Slightly lighter border */
+            background: linear-gradient(135deg, #666, #333); /* Metallic gradient */
             color: #e7e7e7;
             width: 100px;
             height: 150px;
@@ -63,6 +75,9 @@
             align-items: center;
             justify-content: center;
             border-radius: 15px;
+            border: solid 2px #4a4a4a;
+            background: linear-gradient(135deg, #707070, #4a4a4a, #2a2a2a);
+            box-shadow: inset 0 4px 6px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.4);
         }
 
         #heatpump {
@@ -109,7 +124,7 @@
             height: 10px;
             background-color: #414141;
             z-index: 100;
-            background: linear-gradient(90deg, rgb(255, 119, 0) 0%, rgb(144, 12, 0) 50%, rgb(255, 119, 0) 100%);
+            background: linear-gradient(90deg, rgb(255, 25, 0) 0%, rgb(144, 12, 0) 50%, rgb(255, 25, 0) 100%);
             background-size: 200% 100%;
             animation: flow-right 4s infinite linear;
         }
@@ -201,7 +216,7 @@
             top: 52px;
             z-index: 200;
             background-color: #414141;
-            background: linear-gradient(180deg, rgb(255, 119, 0) 0%, rgb(144, 12, 0) 50%, rgb(255, 119, 0) 100%);
+            background: linear-gradient(180deg, rgb(255, 25, 0) 0%, rgb(144, 12, 0) 50%, rgb(255, 25, 0) 100%);
             background-size: 100% 200%;
             animation: flow-down 6s infinite linear;
         }
@@ -222,7 +237,7 @@
             width: 31px;
             height: 10px;
             background-color: #414141;
-            background: linear-gradient(90deg, rgb(255, 119, 0) 0%, rgb(144, 12, 0) 50%, rgb(255, 119, 0) 100%);
+            background: linear-gradient(90deg, rgb(255, 25, 0) 0%, rgb(144, 12, 0) 50%, rgb(255, 25, 0) 100%);
             background-size: 200% 100%;
             animation: flow-left 4s infinite linear;
         }
@@ -235,7 +250,7 @@
             width: 30px;
             height: 10px;
             background-color: #414141;
-            background: linear-gradient(90deg, rgb(255, 119, 0) 0%, rgb(144, 12, 0) 50%, rgb(255, 119, 0) 100%);
+            background: linear-gradient(90deg, rgb(255, 25, 0) 0%, rgb(144, 12, 0) 50%, rgb(255, 25, 0) 100%);
             background-size: 200% 100%;
             animation: flow-left 4s infinite linear;
         }
@@ -267,7 +282,7 @@
 
 <body>
     <div class="content-wrapper">
-        <div id="heatpump" class="component">Heatpump</div>
+        <div id="heatpump" class="component">Heat<br>pump</div>
         <div id="buffer" class="component">Buffer</div>
         <div id="tank3" class="component">Tank 3</div>
         <div id="tank2" class="component">Tank 2</div>
@@ -293,6 +308,10 @@
         <div id="hpipe-cold-house" class="hpipe"></div>
         <div id="hpipe-cold-house2" class="hpipe"></div>
     </div>
+
+    <!-- <div>
+        <button onclick="updateActive('HpOnStoreOff')">HpOnStoreOff</button>
+    </div> -->
 </body>
 
 </html>
