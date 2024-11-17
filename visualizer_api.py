@@ -45,8 +45,64 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ------------------------------
+# Useful conversions
+# ------------------------------
+
+tank_temperatures = [
+        'tank1-depth1', 'tank1-depth2', 'tank1-depth3', 'tank1-depth4', 
+        'tank2-depth1', 'tank2-depth2', 'tank2-depth3', 'tank2-depth4', 
+        'tank3-depth1', 'tank3-depth2', 'tank3-depth3', 'tank3-depth4'
+        ]
+
 def to_fahrenheit(t):
     return t*9/5+32
+
+def rwt(swt):
+    swt_coldest_hour = 120
+    if swt < swt_coldest_hour - 10:
+        return swt
+    elif swt < swt_coldest_hour:
+        temp_drop_required_swt = (swt_coldest_hour-70)*0.2
+        return swt - temp_drop_required_swt/10 * (swt-(swt_coldest_hour-10))
+    else:
+        temp_drop = (swt-70)*0.2
+        return swt - temp_drop  
+    
+def fill_missing_store_temps(latest_temperatures):
+        for layer in tank_temperatures:
+            if layer not in latest_temperatures:
+                latest_temperatures[layer] = None
+        value_below = 0
+        # TODO: VALUE BELOW IS INITIALIZED DIFFERENTLY in the scada code
+        for layer in sorted(tank_temperatures, reverse=True):
+            if latest_temperatures[layer] is None:
+                latest_temperatures[layer] = value_below
+            value_below = latest_temperatures[layer]  
+        latest_temperatures = {k:latest_temperatures[k] for k in sorted(latest_temperatures)}
+        return latest_temperatures
+    
+def get_available_kwh(row):
+    latest_temperatures = row.to_dict()
+    latest_temperatures = fill_missing_store_temps(latest_temperatures)
+    storage_temperatures = {k:v for k,v in latest_temperatures.items() if 'tank' in k}
+    simulated_layers = [to_fahrenheit(v/1000) for k,v in storage_temperatures.items()]        
+    total_usable_kwh = 0
+    while True:
+        if rwt(simulated_layers[0]) == simulated_layers[0]:
+            break
+        total_usable_kwh += 360/12*3.78541 * 4.187/3600 * (simulated_layers[0]-rwt(simulated_layers[0]))*5/9
+        simulated_layers = simulated_layers[1:] + [rwt(simulated_layers[0])]        
+    return total_usable_kwh
+
+def get_required_kwh(time_now):
+    average_power_coldest_hour_kw = 2
+    if time_now.hour in [20,21,22,23,0,1,2,3,4,5,6] or (time_now.hour==19 and time_now.minute>57):
+        return 7.5*average_power_coldest_hour_kw
+    elif time_now.hour in [12,13,14,15]:
+        return 4*average_power_coldest_hour_kw
+    else:
+        return 0
 
 # ------------------------------
 # Request types
@@ -271,14 +327,7 @@ def get_data(request):
             else:
                 zones[zone_name].append(channel_name)
 
-    # Start and end times on plots
-    min_time_ms += -(max_time_ms-min_time_ms)*0.05
-    max_time_ms += (max_time_ms-min_time_ms)*0.05
-    min_time_ms_dt = pd.to_datetime(min_time_ms, unit='ms', utc=True)
-    max_time_ms_dt = pd.to_datetime(max_time_ms, unit='ms', utc=True)
-    min_time_ms_dt = min_time_ms_dt.tz_convert('America/New_York').replace(tzinfo=None)
-    max_time_ms_dt = max_time_ms_dt.tz_convert('America/New_York').replace(tzinfo=None)
-
+    # HomeAlone state
     relays = {}
     for message in messages:
         if 'StateList' in message.payload:
@@ -289,7 +338,6 @@ def get_data(request):
                     relays[state['MachineHandle']]['values'] = []
                 relays[state['MachineHandle']]['times'].extend(state['UnixMsList'])
                 relays[state['MachineHandle']]['values'].extend(state['StateList'])
-
     modes = {}
     if 'auto.h' in relays:         
         modes['all'] = {}
@@ -306,6 +354,43 @@ def get_data(request):
             modes['all']['values'].append(4 if 'Waiting' in state else modes_order.index(state))
             modes[state]['times'].append(time)
             modes[state]['values'].append(4 if 'Waiting' in state else modes_order.index(state))
+
+    # Storage energy available
+    num_points = int((max_time_ms - min_time_ms) / (10 * 1000) + 1)
+    soc_times = np.linspace(min_time_ms, max_time_ms, num_points)
+    soc_times_dt = pd.to_datetime(soc_times, unit='ms', utc=True)
+    soc_times_dt = [x.tz_convert('America/New_York').replace(tzinfo=None) for x in soc_times_dt]
+    soc_values = {}
+    for channel in tank_temperatures:
+        if channel in channels:
+            merged = pd.merge_asof(
+                pd.DataFrame({'times': soc_times_dt}),
+                pd.DataFrame(channels[channel]),
+                on='times',
+                direction='backward')
+            soc_values[channel] = list(merged['values'])
+    if soc_values != {}:
+        df = pd.DataFrame(soc_values)
+        df['timestamps'] = soc_times_dt
+        df = df[['timestamps'] + [col for col in df.columns if col != 'timestamps']]
+        df = df.dropna()
+        df['available_kwh'] = df.apply(get_available_kwh, axis=1) 
+        df['required_kwh'] = [get_required_kwh(x) for x in list(df.timestamps)]
+        channels['available_kwh'] = {}
+        channels['available_kwh']['times'] = list(df['timestamps'])
+        channels['available_kwh']['values'] = list(df['available_kwh'])
+        channels['required_kwh'] = {}
+        channels['required_kwh']['times'] = list(df['timestamps'])
+        channels['required_kwh']['values'] = list(df['required_kwh'])
+    
+    # Start and end times on plots
+    min_time_ms += -(max_time_ms-min_time_ms)*0.05
+    max_time_ms += (max_time_ms-min_time_ms)*0.05
+    min_time_ms_dt = pd.to_datetime(min_time_ms, unit='ms', utc=True)
+    max_time_ms_dt = pd.to_datetime(max_time_ms, unit='ms', utc=True)
+    min_time_ms_dt = min_time_ms_dt.tz_convert('America/New_York').replace(tzinfo=None)
+    max_time_ms_dt = max_time_ms_dt.tz_convert('America/New_York').replace(tzinfo=None)
+    
 
     return "", channels, zones, modes, min_time_ms_dt, max_time_ms_dt
 
@@ -955,35 +1040,34 @@ async def get_plots(request: DataRequest):
                                 )
                             )
                 
-                if not buffer_channels:
-                    if 'buffer-hot-pipe' in request.selected_channels and 'buffer-hot-pipe' in channels:
-                        yf = [to_fahrenheit(x/1000) for x in channels['buffer-hot-pipe']['values']]
-                        min_buffer_temp = min(min_buffer_temp, min(yf))
-                        max_buffer_temp = max(max_buffer_temp, max(yf))
-                        fig.add_trace(
-                            go.Scatter(
-                                x=channels['buffer-hot-pipe']['times'], 
-                                y=yf, 
-                                mode=line_style, 
-                                opacity=0.7,
-                                name='Hot pipe',
-                                line=dict(color='#d62728', dash='solid')
-                                )
+                if 'buffer-hot-pipe' in request.selected_channels and 'buffer-hot-pipe' in channels:
+                    yf = [to_fahrenheit(x/1000) for x in channels['buffer-hot-pipe']['values']]
+                    min_buffer_temp = min(min_buffer_temp, min(yf))
+                    max_buffer_temp = max(max_buffer_temp, max(yf))
+                    fig.add_trace(
+                        go.Scatter(
+                            x=channels['buffer-hot-pipe']['times'], 
+                            y=yf, 
+                            mode=line_style, 
+                            opacity=0.7,
+                            name='Hot pipe',
+                            line=dict(color='#d62728', dash='solid')
                             )
-                    if 'buffer-cold-pipe' in request.selected_channels and 'buffer-cold-pipe' in channels:
-                        yf = [to_fahrenheit(x/1000) for x in channels['buffer-cold-pipe']['values']]
-                        min_buffer_temp = min(min_buffer_temp, min(yf))
-                        max_buffer_temp = max(max_buffer_temp, max(yf))
-                        fig.add_trace(
-                            go.Scatter(
-                                x=channels['buffer-cold-pipe']['times'], 
-                                y=yf, 
-                                mode=line_style, 
-                                opacity=0.7,
-                                name='Cold pipe',
-                                line=dict(color='#1f77b4', dash='solid')
-                                )
+                        )
+                if 'buffer-cold-pipe' in request.selected_channels and 'buffer-cold-pipe' in channels:
+                    yf = [to_fahrenheit(x/1000) for x in channels['buffer-cold-pipe']['values']]
+                    min_buffer_temp = min(min_buffer_temp, min(yf))
+                    max_buffer_temp = max(max_buffer_temp, max(yf))
+                    fig.add_trace(
+                        go.Scatter(
+                            x=channels['buffer-cold-pipe']['times'], 
+                            y=yf, 
+                            mode=line_style, 
+                            opacity=0.7,
+                            name='Cold pipe',
+                            line=dict(color='#1f77b4', dash='solid')
                             )
+                        )
                         
                 fig.update_layout(
                     title=dict(text='Buffer', x=0.5, xanchor='center'),
@@ -1052,35 +1136,34 @@ async def get_plots(request: DataRequest):
                             line=dict(color=storage_colors_hex[tank_channel], dash='solid'))
                             )
                 
-                if not tank_channels:
-                    if 'store-hot-pipe' in request.selected_channels and 'store-hot-pipe' in channels:
-                        temp_plot = True
-                        yf = [to_fahrenheit(x/1000) for x in channels['store-hot-pipe']['values']]
-                        min_store_temp = min(min_store_temp, min(yf))
-                        max_store_temp = max(max_store_temp, max(yf))
-                        fig.add_trace(
-                            go.Scatter(
-                                x=channels['store-hot-pipe']['times'], 
-                                y=yf, 
-                                mode=line_style, 
-                                opacity=0.7,
-                                name='Hot pipe',
-                                line=dict(color='#d62728', dash='solid'))
-                            )
-                    if 'store-cold-pipe' in request.selected_channels and 'store-cold-pipe' in channels:
-                        temp_plot = True
-                        yf = [to_fahrenheit(x/1000) for x in channels['store-cold-pipe']['values']]
-                        min_store_temp = min(min_store_temp, min(yf))
-                        max_store_temp = max(max_store_temp, max(yf))
-                        fig.add_trace(
-                            go.Scatter(
-                                x=channels['store-cold-pipe']['times'], 
-                                y=yf, 
-                                mode=line_style, 
-                                opacity=0.7,
-                                name='Cold pipe',
-                                line=dict(color='#1f77b4', dash='solid'))
-                            )
+                if 'store-hot-pipe' in request.selected_channels and 'store-hot-pipe' in channels:
+                    temp_plot = True
+                    yf = [to_fahrenheit(x/1000) for x in channels['store-hot-pipe']['values']]
+                    min_store_temp = min(min_store_temp, min(yf))
+                    max_store_temp = max(max_store_temp, max(yf))
+                    fig.add_trace(
+                        go.Scatter(
+                            x=channels['store-hot-pipe']['times'], 
+                            y=yf, 
+                            mode=line_style, 
+                            opacity=0.7,
+                            name='Hot pipe',
+                            line=dict(color='#d62728', dash='solid'))
+                        )
+                if 'store-cold-pipe' in request.selected_channels and 'store-cold-pipe' in channels:
+                    temp_plot = True
+                    yf = [to_fahrenheit(x/1000) for x in channels['store-cold-pipe']['values']]
+                    min_store_temp = min(min_store_temp, min(yf))
+                    max_store_temp = max(max_store_temp, max(yf))
+                    fig.add_trace(
+                        go.Scatter(
+                            x=channels['store-cold-pipe']['times'], 
+                            y=yf, 
+                            mode=line_style, 
+                            opacity=0.7,
+                            name='Cold pipe',
+                            line=dict(color='#1f77b4', dash='solid'))
+                        )
 
                 # Secondary yaxis
                 y_axis_power = 'y2' if temp_plot else 'y'
@@ -1113,10 +1196,34 @@ async def get_plots(request: DataRequest):
                             yaxis=y_axis_power
                             )
                         )
+                if 'store-energy' in request.selected_channels and 'available_kwh' in channels:
+                    power_plot = True
+                    fig.add_trace(
+                        go.Scatter(
+                            x=channels['available_kwh']['times'], 
+                            y=channels['available_kwh']['values'], 
+                            mode=line_style, 
+                            opacity=0.4,
+                            line=dict(color='#2ca02c', dash='solid'),
+                            name='Available',
+                            yaxis=y_axis_power
+                            )
+                        )
+                    fig.add_trace(
+                        go.Scatter(
+                            x=channels['required_kwh']['times'], 
+                            y=channels['required_kwh']['values'], 
+                            mode=line_style, 
+                            opacity=0.4,
+                            line=dict(color='#2ca02c', dash='dash'),
+                            name='Required',
+                            yaxis=y_axis_power
+                            )
+                        )
                     
                 if temp_plot and power_plot:
-                    fig.update_layout(yaxis=dict(title='Temperature [F]', range=[min_store_temp-40, max_store_temp+60]))
-                    fig.update_layout(yaxis2=dict(title='Flow [GPM] or Power [kW]', range=[-1, 40]))
+                    fig.update_layout(yaxis=dict(title='Temperature [F]', range=[min_store_temp-80, max_store_temp+60]))
+                    fig.update_layout(yaxis2=dict(title='Flow [GPM] or Power [kW]', range=[-1, 60]))
                 elif temp_plot and not power_plot:
                     min_store_temp = 20 if min_store_temp<0 else min_store_temp
                     fig.update_layout(yaxis=dict(title='Temperature [F]', range=[min_store_temp-20, max_store_temp+60]))
