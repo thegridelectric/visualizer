@@ -456,6 +456,12 @@ async def get_csv(request: CsvRequest):
             df = df[['timestamps'] + [col for col in df.columns if col != 'timestamps']]
 
             csv_buffer = io.StringIO()
+            start_date = pendulum.from_timestamp(request.start_ms / 1000) 
+            end_date = pendulum.from_timestamp(request.end_ms / 1000) 
+            formatted_start_date = start_date.to_iso8601_string()[:16].replace('T', '-')
+            formatted_end_date = end_date.to_iso8601_string()[:16].replace('T', '-')
+            filename = f'{request.house_alias}_{request.timestep}s_{formatted_start_date}-{formatted_end_date}.csv'.replace(':','_')
+            csv_buffer.write(filename+'\n')
             df.to_csv(csv_buffer, index=False)
             csv_buffer.seek(0)
 
