@@ -90,6 +90,8 @@ def get_available_kwh(row):
     total_usable_kwh = 0
     while True:
         if rwt(simulated_layers[0]) == simulated_layers[0]:
+            simulated_layers = [sum(simulated_layers)/len(simulated_layers) for x in simulated_layers]
+        if rwt(simulated_layers[0]) == simulated_layers[0]:
             break
         total_usable_kwh += 360/12*3.78541 * 4.187/3600 * (simulated_layers[0]-rwt(simulated_layers[0]))*5/9
         simulated_layers = simulated_layers[1:] + [rwt(simulated_layers[0])]        
