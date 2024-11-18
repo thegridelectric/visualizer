@@ -70,17 +70,19 @@ def rwt(swt):
         return swt - temp_drop  
     
 def fill_missing_store_temps(latest_temperatures):
-        for layer in tank_temperatures:
-            if layer not in latest_temperatures:
+    for layer in tank_temperatures:
+        if (layer not in latest_temperatures 
+            or to_fahrenheit(latest_temperatures[layer]/1000) < 70
+            or to_fahrenheit(latest_temperatures[layer]/1000) > 200):
                 latest_temperatures[layer] = None
-        value_below = 0
-        # TODO: VALUE BELOW IS INITIALIZED DIFFERENTLY in the scada code
-        for layer in sorted(tank_temperatures, reverse=True):
-            if latest_temperatures[layer] is None:
-                latest_temperatures[layer] = value_below
-            value_below = latest_temperatures[layer]  
-        latest_temperatures = {k:latest_temperatures[k] for k in sorted(latest_temperatures)}
-        return latest_temperatures
+    value_below = 0
+    # TODO: VALUE BELOW IS INITIALIZED DIFFERENTLY in the scada code
+    for layer in sorted(tank_temperatures, reverse=True):
+        if latest_temperatures[layer] is None:
+            latest_temperatures[layer] = value_below
+        value_below = latest_temperatures[layer]  
+    latest_temperatures = {k:latest_temperatures[k] for k in sorted(latest_temperatures)}
+    return latest_temperatures
     
 def get_available_kwh(row):
     latest_temperatures = row.to_dict()
