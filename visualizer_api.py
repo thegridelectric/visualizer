@@ -1206,30 +1206,30 @@ async def get_plots(request: DataRequest):
                             yaxis=y_axis_power
                             )
                         )
-                if 'store-energy' in request.selected_channels and 'available_kwh' in channels:
-                    power_plot = True
-                    fig.add_trace(
-                        go.Scatter(
-                            x=channels['available_kwh']['times'], 
-                            y=channels['available_kwh']['values'], 
-                            mode=line_style, 
-                            opacity=0.4,
-                            line=dict(color='#2ca02c', dash='solid'),
-                            name='Available',
-                            yaxis=y_axis_power
-                            )
-                        )
-                    fig.add_trace(
-                        go.Scatter(
-                            x=channels['required_kwh']['times'], 
-                            y=channels['required_kwh']['values'], 
-                            mode=line_style, 
-                            opacity=0.4,
-                            line=dict(color='#2ca02c', dash='dash'),
-                            name='Required',
-                            yaxis=y_axis_power
-                            )
-                        )
+                # if 'store-energy' in request.selected_channels and 'available_kwh' in channels:
+                #     power_plot = True
+                #     fig.add_trace(
+                #         go.Scatter(
+                #             x=channels['available_kwh']['times'], 
+                #             y=channels['available_kwh']['values'], 
+                #             mode=line_style, 
+                #             opacity=0.4,
+                #             line=dict(color='#2ca02c', dash='solid'),
+                #             name='Available',
+                #             yaxis=y_axis_power
+                #             )
+                #         )
+                #     fig.add_trace(
+                #         go.Scatter(
+                #             x=channels['required_kwh']['times'], 
+                #             y=channels['required_kwh']['values'], 
+                #             mode=line_style, 
+                #             opacity=0.4,
+                #             line=dict(color='#2ca02c', dash='dash'),
+                #             name='Required',
+                #             yaxis=y_axis_power
+                #             )
+                #         )
                     
                 if temp_plot and power_plot:
                     fig.update_layout(yaxis=dict(title='Temperature [F]', range=[min_store_temp-80, max_store_temp+60]))
