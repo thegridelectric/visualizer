@@ -250,14 +250,15 @@ def get_data(request):
                         if dc['Id'] == channel['ChannelId']:
                             channel_name = dc['Name']
                 # Store the values and times for the channel
-                if channel_name not in channels:
-                    channels[channel_name] = {
-                        'values': channel['ValueList'],
-                        'times': channel['ScadaReadTimeUnixMsList']
-                    }
-                else:
-                    channels[channel_name]['values'].extend(channel['ValueList'])
-                    channels[channel_name]['times'].extend(channel['ScadaReadTimeUnixMsList'])
+                if not (channel_name=='oat' and 'oak' in request.house_alias):
+                    if channel_name not in channels:
+                        channels[channel_name] = {
+                            'values': channel['ValueList'],
+                            'times': channel['ScadaReadTimeUnixMsList']
+                        }
+                    else:
+                        channels[channel_name]['values'].extend(channel['ValueList'])
+                        channels[channel_name]['times'].extend(channel['ScadaReadTimeUnixMsList'])
 
     else:
         session = Session()
