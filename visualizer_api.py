@@ -927,6 +927,7 @@ async def get_plots(request: DataRequest):
 
                 fig = go.Figure()
 
+                min_zones, max_zones = 45, 80
                 for zone in zones:
                     for key in zones[zone]:
                         if 'temp' in key:
@@ -940,6 +941,12 @@ async def get_plots(request: DataRequest):
                                     name=key.replace('-temp','')
                                     )
                                 )
+                            min_temp = min(channels[key]['values'])
+                            max_temp = max(channels[key]['values'])
+                            if min_temp < min_zones:
+                                min_zones = min_temp
+                            if max_temp > max_zones:
+                                max_zones = max_temp
                         elif 'set' in key:
                             fig.add_trace(
                                 go.Scatter(
@@ -952,6 +959,12 @@ async def get_plots(request: DataRequest):
                                     showlegend=False
                                     )
                                 )
+                            min_temp = min(channels[key]['values'])
+                            max_temp = max(channels[key]['values'])
+                            if min_temp < min_zones:
+                                min_zones = min_temp
+                            if max_temp > max_zones:
+                                max_zones = max_temp
 
                 min_oat, max_oat = 70, 80    
                 if 'oat' in request.selected_channels and 'oat' in channels:
@@ -988,8 +1001,7 @@ async def get_plots(request: DataRequest):
                         showgrid=False
                         ),
                     yaxis=dict(
-                        #range = [min_oat-7, 80] if min_oat<55 else [45,80],
-                        range = [45,80],
+                        range = [min_zones-30,max_zones+20],
                         mirror=True,
                         ticks='outside',
                         showline=True,
