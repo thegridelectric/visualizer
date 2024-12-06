@@ -1120,12 +1120,13 @@ async def get_plots(request: DataRequest):
                     fig.add_trace(
                         go.Scatter(
                             x=channels['store-pump-pwr']['times'], 
-                            y=[x/10 for x in channels['store-pump-pwr']['values']], 
+                            y=[x for x in channels['store-pump-pwr']['values']], 
                             mode=line_style, 
                             opacity=0.7,
                             line=dict(color='pink', dash='solid'),
-                            name='Storage pump power x100',
-                            yaxis=y_axis_power
+                            name='Storage pump power x1000',
+                            yaxis=y_axis_power,
+                            visible='legendonly'
                             )
                         )
                 if 'store-flow' in request.selected_channels and 'store-flow' in channels:
