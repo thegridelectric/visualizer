@@ -1115,7 +1115,7 @@ async def get_plots(request: DataRequest):
                 # Power
                 power_plot = False
                 max_power = 60
-                if 'store-pump-pwr' in request.selected_channels and 'store_pump_pwr' in channels:
+                if 'store-pump-pwr' in request.selected_channels and 'store-pump-pwr' in channels:
                     power_plot = True
                     fig.add_trace(
                         go.Scatter(
