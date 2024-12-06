@@ -1133,11 +1133,11 @@ async def get_plots(request: DataRequest):
                     fig.add_trace(
                         go.Scatter(
                             x=channels['store-flow']['times'], 
-                            y=[x/100 for x in channels['store-flow']['values']], 
+                            y=[x/100*10 for x in channels['store-flow']['values']], 
                             mode=line_style, 
                             opacity=0.4,
                             line=dict(color='purple', dash='solid'),
-                            name='Storage pump flow',
+                            name='Storage pump flow x10',
                             yaxis=y_axis_power
                             )
                         )
