@@ -1169,12 +1169,12 @@ async def get_plots(request: DataRequest):
                     
                 if temp_plot and power_plot:
                     fig.update_layout(yaxis=dict(title='Temperature [F]', range=[min_store_temp-80, max_store_temp+60]))
-                    fig.update_layout(yaxis2=dict(title='Flow [GPM], Power [kW], or Energy [kWh]', range=[-1, max_power]))
+                    fig.update_layout(yaxis2=dict(title='GPM, kW, or kWh', range=[-1, max_power]))
                 elif temp_plot and not power_plot:
                     min_store_temp = 20 if min_store_temp<0 else min_store_temp
                     fig.update_layout(yaxis=dict(title='Temperature [F]', range=[min_store_temp-20, max_store_temp+60]))
                 elif power_plot and not temp_plot:
-                    fig.update_layout(yaxis=dict(title='Flow [GPM], Power [kW], or Energy [kWh]'))
+                    fig.update_layout(yaxis=dict(title='GPM, kW, or kWh'))
 
                 fig.update_layout(
                     title=dict(text='Storage', x=0.5, xanchor='center'),
