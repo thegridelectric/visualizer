@@ -233,42 +233,42 @@ def get_data(request):
                         channels[channel_name]['values'].extend(channel['ValueList'])
                         channels[channel_name]['times'].extend(channel['ScadaReadTimeUnixMsList'])
 
-    else:
-        session = Session()
+    # else:
+    #     session = Session()
 
-        data_channels = session.query(DataChannelSql).filter(
-            DataChannelSql.terminal_asset_alias.like(f'%{request.house_alias}%')
-            ).all()
+    #     data_channels = session.query(DataChannelSql).filter(
+    #         DataChannelSql.terminal_asset_alias.like(f'%{request.house_alias}%')
+    #         ).all()
 
-        # data_channels_ids = [x.id for x in data_channels]
-        # all_readings = session.query(ReadingSql).filter(
-        #                 ReadingSql.data_channel_id.in_(data_channels_ids),
-        #                 ReadingSql.time_ms >= request.start_ms,
-        #                 ReadingSql.time_ms <= request.end_ms,
-        #             ).order_by(asc(ReadingSql.time_ms)).all()
+    #     # data_channels_ids = [x.id for x in data_channels]
+    #     # all_readings = session.query(ReadingSql).filter(
+    #     #                 ReadingSql.data_channel_id.in_(data_channels_ids),
+    #     #                 ReadingSql.time_ms >= request.start_ms,
+    #     #                 ReadingSql.time_ms <= request.end_ms,
+    #     #             ).order_by(asc(ReadingSql.time_ms)).all()
 
-        channels = {}
-        for channel in data_channels:
-            # readings = [x for x in all_readings if x.data_channel_id==channel.id]
-            readings = session.query(ReadingSql).filter(
-                ReadingSql.data_channel_id.like(channel.id),
-                ReadingSql.time_ms >= request.start_ms,
-                ReadingSql.time_ms <= request.end_ms,
-            ).order_by(asc(ReadingSql.time_ms)).all()
-            if channel.name not in channels:
-                channels[channel.name] = {
-                    'values': [x.value for x in readings],
-                    'times': [x.time_ms for x in readings]
-                }
-            else:
-                channels[channel.name]['values'].extend([x.value for x in readings])
-                channels[channel.name]['times'].extend([x.time_ms for x in readings])
-        if channels == {}:
-            return {
-                "success": False, 
-                "message": f"No readings found for house '{request.house_alias}' in the selected timeframe.", 
-                "reload": False
-                }, 0, 0, 0, 0, 0
+    #     channels = {}
+    #     for channel in data_channels:
+    #         # readings = [x for x in all_readings if x.data_channel_id==channel.id]
+    #         readings = session.query(ReadingSql).filter(
+    #             ReadingSql.data_channel_id.like(channel.id),
+    #             ReadingSql.time_ms >= request.start_ms,
+    #             ReadingSql.time_ms <= request.end_ms,
+    #         ).order_by(asc(ReadingSql.time_ms)).all()
+    #         if channel.name not in channels:
+    #             channels[channel.name] = {
+    #                 'values': [x.value for x in readings],
+    #                 'times': [x.time_ms for x in readings]
+    #             }
+    #         else:
+    #             channels[channel.name]['values'].extend([x.value for x in readings])
+    #             channels[channel.name]['times'].extend([x.time_ms for x in readings])
+    #     if channels == {}:
+    #         return {
+    #             "success": False, 
+    #             "message": f"No readings found for house '{request.house_alias}' in the selected timeframe.", 
+    #             "reload": False
+    #             }, 0, 0, 0, 0, 0
 
     # Sort values according to time and find min/max
     min_time_ms, max_time_ms = 1e20, 0
@@ -287,11 +287,37 @@ def get_data(request):
         if list(sorted_times)[-1] > max_time_ms:
             max_time_ms = list(sorted_times)[-1]
         channels[key]['values'] = list(sorted_values)
+        channels[key]['times'] = list(sorted_times)
+        # channels[key]['times'] = pd.to_datetime(list(sorted_times), unit='ms', utc=True)
+        # channels[key]['times'] = channels[key]['times'].tz_convert('America/New_York')
+        # channels[key]['times'] = [x.replace(tzinfo=None) for x in channels[key]['times']]
+    for key in keys_to_delete:
+        del channels[key]
+
+    # Add snapshots
+    snapshots = session.query(MessageSql).filter(
+        MessageSql.from_alias.like(f'%{request.house_alias}%'),
+        MessageSql.message_type_name == "snapshot.spaceheat",
+        MessageSql.message_persisted_ms >= max_time_ms,
+        MessageSql.message_persisted_ms <= request.end_ms,
+    ).order_by(asc(MessageSql.message_persisted_ms)).all()
+    for snapshot in snapshots:
+        for snap in snapshot.payload['LatestReadingList']:
+            if snap['ChannelName'] in channels:
+                channels[snap['ChannelName']]['times'].append(snap['ScadaReadTimeUnixMs'])
+                channels[snap['ChannelName']]['values'].append(snap['Value'])
+
+    # Sort values according to time and find new max
+    max_time_ms = 0
+    for key in channels:
+        sorted_times_values = sorted(zip(channels[key]['times'], channels[key]['values']))
+        sorted_times, sorted_values = zip(*sorted_times_values)
+        if list(sorted_times)[-1] > max_time_ms:
+            max_time_ms = list(sorted_times)[-1]
+        channels[key]['values'] = list(sorted_values)
         channels[key]['times'] = pd.to_datetime(list(sorted_times), unit='ms', utc=True)
         channels[key]['times'] = channels[key]['times'].tz_convert('America/New_York')
         channels[key]['times'] = [x.replace(tzinfo=None) for x in channels[key]['times']]
-    for key in keys_to_delete:
-        del channels[key]
 
     # Find all zone channels
     zones = {}
