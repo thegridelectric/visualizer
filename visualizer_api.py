@@ -6,7 +6,7 @@ from typing import List, Optional
 import time
 import asyncio
 import async_timeout
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 import dotenv
@@ -325,13 +325,18 @@ def get_data(request):
 # ------------------------------
 
 @app.post('/csv')
-async def get_csv(request: CsvRequest):
+async def get_csv(request: CsvRequest, apirequest: Request):
+    request_start = time.time()
     try:
         async with async_timeout.timeout(TIMEOUT_SECONDS):
             
-            start_time = time.time()
             error_msg, channels, _, __, ___, ____ = await asyncio.to_thread(get_data, request)
-            print("Time to fetch data:", time.time() - start_time)
+            print(f"Time to fetch data: {round(time.time() - request_start,2)} sec")
+
+            if time.time() - request_start > TIMEOUT_SECONDS:
+                raise asyncio.TimeoutError('Timed out')
+            if await apirequest.is_disconnected():
+                raise asyncio.CancelledError("Client disconnected.")
 
             if error_msg != '':
                 return error_msg
@@ -358,7 +363,7 @@ async def get_csv(request: CsvRequest):
 
             num_points = int((request.end_ms - request.start_ms) / (request.timestep * 1000) + 1)
             
-            if num_points * len(channels_to_export) > 3600 * 24 * 7 * len(channels):
+            if num_points * len(channels_to_export) > 3600 * 24 * 10 * len(channels):
                 error_message = f"This request would generate {num_points} data points, which is too much data in one go."
                 error_message += "\n\nSuggestions:\n- Increase the time step\n- Reduce the number of channels"
                 error_message += "\n- Change the start and end times"
@@ -370,6 +375,10 @@ async def get_csv(request: CsvRequest):
             
             csv_values = {}
             for channel in channels_to_export:
+                if time.time() - request_start > TIMEOUT_SECONDS:
+                    raise asyncio.TimeoutError('Timed out')
+                if await apirequest.is_disconnected():
+                    raise asyncio.CancelledError("Client disconnected.")
                 merged = await asyncio.to_thread(pd.merge_asof, 
                                                   pd.DataFrame({'times': csv_times_dt}),
                                                   pd.DataFrame(channels[channel]),
@@ -394,37 +403,43 @@ async def get_csv(request: CsvRequest):
             response = StreamingResponse(
                 iter([csv_buffer.getvalue()]),
                 media_type="text/csv",
-                headers={"Content-Disposition": "attachment; filename=output.csv"}
+                headers={"Content-Disposition": f"attachment; filename={filename}"}
             )
             return response
 
     except asyncio.TimeoutError:
+        print("Request timed out.")
         return {
-                "success": False, 
-                "message": f"The data request timed out. Please try loading a smaller amount of data at a time.", 
-                "reload": False
-                }
-    
+            "success": False, 
+            "message": "The data request timed out. Please try loading a smaller amount of data at a time.", 
+            "reload": False
+        }
+    except asyncio.CancelledError:
+        print("Request cancelled or client disconnected.")
+        return {
+            "success": False, 
+            "message": "The request was cancelled because the client disconnected.", 
+            "reload": False
+        }
     except Exception as e:
         return {
             "success": False, 
             "message": f"An error occurred: {str(e)}", 
             "reload": False
-            }
+        }
 
 # ------------------------------
 # Generate interactive plots
 # ------------------------------
 
 @app.post('/plots')
-async def get_plots(request: DataRequest):
-
+async def get_plots(request: DataRequest, apirequest: Request):
+    request_start = time.time()
     try:
         async with async_timeout.timeout(TIMEOUT_SECONDS):
             
-            start_time = time.time()
             error_msg, channels, zones, modes, min_time_ms_dt, max_time_ms_dt = await asyncio.to_thread(get_data, request)
-            print("Time to fetch data:", time.time() - start_time)
+            print(f"Time to fetch data: {round(time.time() - request_start,2)} sec")
     
             if error_msg != '':
                 return error_msg
@@ -449,6 +464,11 @@ async def get_plots(request: DataRequest):
                 # --------------------------------------
                 # PLOT 1: Heat pump
                 # --------------------------------------
+
+                if time.time() - request_start > TIMEOUT_SECONDS:
+                    raise asyncio.TimeoutError('Timed out')
+                if await apirequest.is_disconnected():
+                    raise asyncio.CancelledError("Client disconnected.")
 
                 fig = go.Figure()
 
@@ -598,6 +618,11 @@ async def get_plots(request: DataRequest):
                 # PLOT 2: Distribution
                 # --------------------------------------
 
+                if time.time() - request_start > TIMEOUT_SECONDS:
+                    raise asyncio.TimeoutError('Timed out')
+                if await apirequest.is_disconnected():
+                    raise asyncio.CancelledError("Client disconnected.")
+
                 fig = go.Figure()
 
                 # Temperature
@@ -719,6 +744,11 @@ async def get_plots(request: DataRequest):
                 # --------------------------------------
                 # PLOT 3: Heat calls
                 # --------------------------------------
+
+                if time.time() - request_start > TIMEOUT_SECONDS:
+                    raise asyncio.TimeoutError('Timed out')
+                if await apirequest.is_disconnected():
+                    raise asyncio.CancelledError("Client disconnected.")
 
                 fig = go.Figure()
 
@@ -846,6 +876,11 @@ async def get_plots(request: DataRequest):
                 # PLOT 4: Zones
                 # --------------------------------------
 
+                if time.time() - request_start > TIMEOUT_SECONDS:
+                    raise asyncio.TimeoutError('Timed out')
+                if await apirequest.is_disconnected():
+                    raise asyncio.CancelledError("Client disconnected.")
+
                 fig = go.Figure()
 
                 min_zones, max_zones = 45, 80
@@ -961,6 +996,11 @@ async def get_plots(request: DataRequest):
                 # PLOT 5: Buffer
                 # --------------------------------------
 
+                if time.time() - request_start > TIMEOUT_SECONDS:
+                    raise asyncio.TimeoutError('Timed out')
+                if await apirequest.is_disconnected():
+                    raise asyncio.CancelledError("Client disconnected.")
+
                 fig = go.Figure()
 
                 min_buffer_temp = 1e5
@@ -1057,6 +1097,11 @@ async def get_plots(request: DataRequest):
                 # --------------------------------------
                 # PLOT 6: Storage
                 # --------------------------------------
+
+                if time.time() - request_start > TIMEOUT_SECONDS:
+                    raise asyncio.TimeoutError('Timed out')
+                if await apirequest.is_disconnected():
+                    raise asyncio.CancelledError("Client disconnected.")
 
                 fig = go.Figure()
                 
@@ -1230,6 +1275,11 @@ async def get_plots(request: DataRequest):
                 # PLOT 7: HomeAlone
                 # --------------------------------------
 
+                if time.time() - request_start > TIMEOUT_SECONDS:
+                    raise asyncio.TimeoutError('Timed out')
+                if await apirequest.is_disconnected():
+                    raise asyncio.CancelledError("Client disconnected.")
+
                 fig = go.Figure()
 
                 if modes!={}:
@@ -1302,12 +1352,19 @@ async def get_plots(request: DataRequest):
                 
 
     except asyncio.TimeoutError:
+        print("Request timed out.")
         return {
                 "success": False, 
                 "message": f"The data request timed out. Please try loading a smaller amount of data at a time.", 
                 "reload": False
                 }
-    
+    except asyncio.CancelledError:
+        print("Request cancelled or client disconnected.")
+        return {
+            "success": False, 
+            "message": "The request was cancelled because the client disconnected.", 
+            "reload": False
+        }
     except Exception as e:
         return {
             "success": False, 
