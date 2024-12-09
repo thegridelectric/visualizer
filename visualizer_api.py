@@ -138,6 +138,8 @@ modes_order = [
 
 def get_data(request):
 
+    request_start = time.time()
+
     if request.password != valid_password:
         with open('failed_logins.log', 'a') as log_file:
             log_entry = f"{pendulum.now()} - Failed login from {request.ip_address} with password: {request.password}\n"
@@ -168,6 +170,14 @@ def get_data(request):
                 "continue_option": True,
                 }, 0, 0, 0, 0, 0
     
+    if (request.end_ms - request.start_ms)/1000/60/60/24 > 31:
+        warning_message = f"That's too many days of data!"
+        return {
+            "success": False,
+            "message": warning_message, 
+            "reload": False,
+            }, 0, 0, 0, 0, 0
+    
     if MESSAGE_SQL:
 
         session = Session()
@@ -191,6 +201,12 @@ def get_data(request):
         
         channels = {}
         for message in messages:
+            if time.time() - request_start > TIMEOUT_SECONDS:
+                return {
+                    "success": False, 
+                    "message": f"Timeout: getting the data took too much time.", 
+                    "reload":False
+                    }, 0, 0, 0, 0, 0
             for channel in message.payload['ChannelReadingList']:
                 # Find the channel name
                 if message.message_type_name == 'report':
