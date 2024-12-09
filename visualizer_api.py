@@ -498,6 +498,11 @@ async def get_plots(request: DataRequest, apirequest: Request):
                             name='HP EWT'
                             )
                         )
+                    
+                if time.time() - request_start > TIMEOUT_SECONDS:
+                    raise asyncio.TimeoutError('Timed out')
+                if await apirequest.is_disconnected():
+                    raise asyncio.CancelledError("Client disconnected.")
 
                 # Secondary yaxis
                 y_axis_power = 'y2' if temp_plot else 'y'
@@ -529,7 +534,11 @@ async def get_plots(request: DataRequest, apirequest: Request):
                             name='HP indoor power',
                             yaxis=y_axis_power
                             )
-                        )
+                        ) 
+                if time.time() - request_start > TIMEOUT_SECONDS:
+                    raise asyncio.TimeoutError('Timed out')
+                if await apirequest.is_disconnected():
+                    raise asyncio.CancelledError("Client disconnected.")
                 if 'primary-flow' in request.selected_channels and 'primary-flow' in channels:
                     power_plot = True
                     fig.add_trace(
