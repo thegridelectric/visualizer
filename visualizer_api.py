@@ -178,7 +178,7 @@ def get_data(request):
             "reload": False,
             }, 0, 0, 0, 0, 0
     
-    if (request.end_ms - request.start_ms)/1000/60/60/24 > 31 and isinstance(request, CsvRequest):
+    if (request.end_ms - request.start_ms)/1000/60/60/24 > 21 and isinstance(request, CsvRequest):
         return {
             "success": False,
             "message": "That's too many days of data to download.", 
