@@ -138,6 +138,7 @@ modes_order = [
 
 def get_data(request):
 
+    import time
     request_start = time.time()
 
     if request.password != valid_password:
