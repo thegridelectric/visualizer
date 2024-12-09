@@ -170,12 +170,18 @@ def get_data(request):
                 "reload":False,
                 "continue_option": True,
                 }, 0, 0, 0, 0, 0
-    
-    if (request.end_ms - request.start_ms)/1000/60/60/24 > 31:
-        warning_message = f"That's too many days of data!"
+        
+    if (request.end_ms - request.start_ms)/1000/60/60/24 > 5 and isinstance(request, DataRequest):
         return {
             "success": False,
-            "message": warning_message, 
+            "message": "That's too many days to plot.", 
+            "reload": False,
+            }, 0, 0, 0, 0, 0
+    
+    if (request.end_ms - request.start_ms)/1000/60/60/24 > 31 and isinstance(request, CsvRequest):
+        return {
+            "success": False,
+            "message": "That's too many days of data to download.", 
             "reload": False,
             }, 0, 0, 0, 0, 0
     
