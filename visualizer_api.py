@@ -1245,8 +1245,7 @@ async def get_plots(request: DataRequest, apirequest: Request):
                             tank_temps[key] = processed_temps[i]
                             i+=1
                         if iter_count == 20:
-                            print("Sorted")
-                            processed_temps = sorted(processed_temps)
+                            processed_temps = sorted(processed_temps, reverse=True)
                     # Plot
                     data = processed_temps.copy()
                     labels = kmeans(data, k=2)
