@@ -58,6 +58,17 @@ tank_temperatures = [
 def to_fahrenheit(t):
     return t*9/5+32
 
+def kmeans(data, k=2, max_iters=100, tol=1e-4):
+    data = np.array(data).reshape(-1, 1)
+    centroids = data[np.random.choice(len(data), k, replace=False)]
+    for _ in range(max_iters):
+        labels = np.argmin(np.abs(data - centroids.T), axis=1)
+        new_centroids = np.array([data[labels == i].mean() for i in range(k)])
+        if np.all(np.abs(new_centroids - centroids) < tol):
+            break
+        centroids = new_centroids
+    return labels
+
 # ------------------------------
 # Request types
 # ------------------------------
@@ -1182,6 +1193,44 @@ async def get_plots(request: DataRequest, apirequest: Request):
                             name=tank_channel.replace('storage-',''),
                             line=dict(color=storage_colors_hex[tank_channel], dash='solid'))
                             )
+
+                # Re-sample all layers at hourly timestep
+                data_by_sl = {}
+                num_points = int((request.end_ms - request.start_ms) / (1800 * 1000) + 1)
+                csv_times = np.linspace(request.start_ms, request.end_ms, num_points)
+                csv_times_dt = pd.to_datetime(csv_times, unit='ms', utc=True)
+                csv_times_dt = [x.tz_convert('America/New_York').replace(tzinfo=None) for x in csv_times_dt]
+                for tank_channel in tank_channels:
+                    yt = channels[tank_channel]['times']
+                    yf = [to_fahrenheit(x/1000) for x in channels[tank_channel]['values']]
+                    merged = await asyncio.to_thread(pd.merge_asof, 
+                                                    pd.DataFrame({'times': csv_times_dt}),
+                                                    pd.DataFrame({'times': yt, 'values': yf}),
+                                                    on='times',
+                                                    direction='backward')
+                    data_by_sl[tank_channel] = list(merged['values'])
+                # Show thermocline and centroids at every timestep
+                for hour in range(len(csv_times_dt)):
+                    data = [data_by_sl[x][hour] for x in tank_channels]
+                    labels = kmeans(data, k=2)
+                    cluster_top = sorted([data[i] for i in range(len(data)) if labels[i] == 0])
+                    cluster_bottom = sorted([data[i] for i in range(len(data)) if labels[i] == 1])
+                    fig.add_trace(
+                        go.Scatter(x=[csv_times_dt[hour], csv_times_dt[hour]],
+                                y=[np.mean(cluster_top), np.mean(cluster_bottom)], 
+                        mode='markers', opacity=0.7,
+                        name='centroids',
+                        line=dict(color='yellow', dash='solid'),
+                        showlegend=False),
+                        )
+                    fig.add_trace(
+                        go.Scatter(x=[csv_times_dt[hour]],
+                                y=[max(cluster_top[0], cluster_bottom[0])], 
+                        mode='markers', opacity=0.7,
+                        name='thermocline',
+                        line=dict(color='green', dash='solid'),
+                        showlegend=False),
+                        )
                 
                 if 'store-hot-pipe' in request.selected_channels and 'store-hot-pipe' in channels:
                     temp_plot = True
