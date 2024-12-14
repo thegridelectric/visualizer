@@ -146,11 +146,11 @@ modes_colors_hex = {
     'HpOnStoreCharge': '#feca52',
     'WaitingForTemperaturesOnPeak': '#a3a3a3',
     'WaitingForTemperaturesOffPeak': '#4f4f4f',
-
+    'Dormant': '#4f4f4f'
 }
 modes_order = [
     'HpOffStoreDischarge', 'HpOffStoreOff', 'HpOnStoreOff', 'HpOnStoreCharge', 
-    'WaitingForTemperaturesOffPeak', 'WaitingForTemperaturesOnPeak']
+    'WaitingForTemperaturesOffPeak', 'WaitingForTemperaturesOnPeak', 'Dormant']
 
 # ------------------------------
 # Pull data from journaldb
@@ -1463,7 +1463,7 @@ async def get_plots(request: DataRequest, apirequest: Request):
                     )
 
                     for state in modes.keys():
-                        if state != 'all':
+                        if state != 'all' and state in modes_colors_hex:
                             fig.add_trace(
                                 go.Scatter(
                                     x=modes[state]['times'],
