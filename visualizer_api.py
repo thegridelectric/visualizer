@@ -1274,7 +1274,7 @@ async def get_plots(request: DataRequest, apirequest: Request):
                                 x=[csv_times_dt[hour]],
                                 y=[cluster_top[0]], 
                                 mode='markers', opacity=0.7,
-                                name=f'thermocline-layer{len(cluster_top)}',
+                                name=f'thermocline{len(cluster_top)}',
                                 line=dict(color='green', dash='solid'),
                                 showlegend=False),
                             )
@@ -1291,7 +1291,7 @@ async def get_plots(request: DataRequest, apirequest: Request):
                             go.Scatter(x=[csv_times_dt[hour]],
                                     y=[max(cluster_top[0], cluster_bottom[0])], 
                             mode='markers', opacity=0.7,
-                            name=f'thermocline-layer{len(cluster_top)}',
+                            name=f'thermocline{len(cluster_top)}',
                             line=dict(color='green', dash='solid'),
                             showlegend=False),
                             )
