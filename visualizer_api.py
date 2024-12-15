@@ -1254,6 +1254,11 @@ async def get_plots(request: DataRequest, apirequest: Request):
                     if not cluster_top:
                         cluster_top = cluster_bottom.copy()
                         cluster_bottom = []
+                    if cluster_bottom:
+                        if max(cluster_bottom) > max(cluster_top):
+                            cluster_top_copy = cluster_top.copy()
+                            cluster_top = cluster_bottom.copy()
+                            cluster_bottom = cluster_top_copy
                     if not cluster_bottom:
                         fig.add_trace(
                             go.Scatter(
@@ -1269,7 +1274,7 @@ async def get_plots(request: DataRequest, apirequest: Request):
                                 x=[csv_times_dt[hour]],
                                 y=[cluster_top[0]], 
                                 mode='markers', opacity=0.7,
-                                name='thermocline',
+                                name=f'thermocline-layer{len(cluster_top)}',
                                 line=dict(color='green', dash='solid'),
                                 showlegend=False),
                             )
@@ -1286,7 +1291,7 @@ async def get_plots(request: DataRequest, apirequest: Request):
                             go.Scatter(x=[csv_times_dt[hour]],
                                     y=[max(cluster_top[0], cluster_bottom[0])], 
                             mode='markers', opacity=0.7,
-                            name='thermocline',
+                            name=f'thermocline-layer{len(cluster_top)}',
                             line=dict(color='green', dash='solid'),
                             showlegend=False),
                             )
