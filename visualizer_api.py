@@ -1209,7 +1209,7 @@ async def get_plots(request: DataRequest, apirequest: Request):
                     for i in range(len(channels['thermocline-position']['times'])):
                         x = channels['thermocline-position']['values'][i]
                         thermoc_time = channels['thermocline-position']['times'][i]
-                        times = channels[tank_temperatures[x]]['times']
+                        times = channels[tank_temperatures[x-1]]['times']
                         values = [to_fahrenheit(x/1000) for x in channels[tank_temperatures[x]]['values']]
                         idx = min(range(len(times)), key=lambda i: abs(times[i] - thermoc_time))
                         thermocline_temps.append(values[idx])
