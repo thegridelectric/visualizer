@@ -58,26 +58,6 @@ tank_temperatures = [
 def to_fahrenheit(t):
     return t*9/5+32
 
-def kmeans(data, k=2, max_iters=100, tol=1e-4):
-    data = np.array(data).reshape(-1, 1)
-    # Initialize centroids randomly
-    centroids = data[np.random.choice(len(data), k, replace=False)]
-    for _ in range(max_iters):
-        # Assign labels by finding the closest centroid for each data point
-        labels = np.argmin(np.abs(data - centroids.T), axis=1)
-        new_centroids = np.zeros_like(centroids)
-        for i in range(k):
-            cluster_points = data[labels == i]
-            if len(cluster_points) > 0:
-                new_centroids[i] = cluster_points.mean()
-            else:
-                # Reinitialize the centroid randomly if no points are assigned to it
-                new_centroids[i] = data[np.random.choice(len(data))]
-        if np.all(np.abs(new_centroids - centroids) < tol):
-            break
-        centroids = new_centroids
-    return labels
-
 # ------------------------------
 # Request types
 # ------------------------------
@@ -1203,99 +1183,45 @@ async def get_plots(request: DataRequest, apirequest: Request):
                             line=dict(color=storage_colors_hex[tank_channel], dash='solid'))
                             )
 
-                # CLUSTERING
-                # Re-sample all layers at hourly timestep
-                if 'thermocline' in request.selected_channels:
-                    data_by_sl = {}
-                    num_points = int((request.end_ms - request.start_ms) / (1800 * 1000) + 1)
-                    csv_times = np.linspace(request.start_ms, request.end_ms, num_points)
-                    csv_times_dt = pd.to_datetime(csv_times, unit='ms', utc=True)
-                    csv_times_dt = [x.tz_convert('America/New_York').replace(tzinfo=None) for x in csv_times_dt]
-                    for tank_channel in tank_channels:
-                        yt = channels[tank_channel]['times']
-                        yf = [to_fahrenheit(x/1000) for x in channels[tank_channel]['values']]
-                        merged = await asyncio.to_thread(pd.merge_asof, 
-                                                        pd.DataFrame({'times': csv_times_dt}),
-                                                        pd.DataFrame({'times': yt, 'values': yf}),
-                                                        on='times',
-                                                        direction='backward')
-                        data_by_sl[tank_channel] = list(merged['values'])
-                    # Show thermocline and centroids at every timestep
-                    for hour in range(len(csv_times_dt)):
-                        tank_temps = {key: values[hour] for key,values in data_by_sl.items()}
-                        # Process the temperatures before clustering
-                        processed_temps = []
-                        for key in tank_temps:
-                            processed_temps.append(tank_temps[key])
-                        iter_count = 0
-                        while sorted(processed_temps, reverse=True) != processed_temps and iter_count<20:
-                            iter_count+=1
-                            processed_temps = []
-                            for key in tank_temps:
-                                if processed_temps:
-                                    if tank_temps[key] > processed_temps[-1]:
-                                        mean = round((processed_temps[-1] + tank_temps[key])/2)
-                                        processed_temps[-1] = mean
-                                        processed_temps.append(mean)
-                                    else:
-                                        processed_temps.append(tank_temps[key])
-                                else:
-                                    processed_temps.append(tank_temps[key])
-                            i = 0
-                            for key in tank_temps:
-                                tank_temps[key] = processed_temps[i]
-                                i+=1
-                            if iter_count == 20:
-                                processed_temps = sorted(processed_temps, reverse=True)
-                        # Plot
-                        data = processed_temps.copy()
-                        labels = kmeans(data, k=2)
-                        cluster_top = sorted([data[i] for i in range(len(data)) if labels[i] == 0])
-                        cluster_bottom = sorted([data[i] for i in range(len(data)) if labels[i] == 1])
-                        if not cluster_top:
-                            cluster_top = cluster_bottom.copy()
-                            cluster_bottom = []
-                        if cluster_bottom:
-                            if max(cluster_bottom) > max(cluster_top):
-                                cluster_top_copy = cluster_top.copy()
-                                cluster_top = cluster_bottom.copy()
-                                cluster_bottom = cluster_top_copy
-                        if not cluster_bottom:
-                            fig.add_trace(
-                                go.Scatter(
-                                    x=[csv_times_dt[hour]],
-                                    y=[sum(cluster_top)/len(cluster_top)], 
-                                    mode='markers', opacity=0.7,
-                                    name='centroids',
-                                    line=dict(color='yellow', dash='solid'),
-                                    showlegend=False),
-                                )
-                            fig.add_trace(
-                                go.Scatter(
-                                    x=[csv_times_dt[hour]],
-                                    y=[cluster_top[0]], 
-                                    mode='markers', opacity=0.7,
-                                    name=f'thermocline{len(cluster_top)}',
-                                    line=dict(color='green', dash='solid'),
-                                    showlegend=False),
-                                )
-                        if cluster_top and cluster_bottom:
-                            fig.add_trace(
-                                go.Scatter(x=[csv_times_dt[hour], csv_times_dt[hour]],
-                                        y=[sum(cluster_top)/len(cluster_top), sum(cluster_bottom)/len(cluster_bottom)], 
-                                mode='markers', opacity=0.7,
-                                name='centroids',
-                                line=dict(color='yellow', dash='solid'),
-                                showlegend=False),
-                                )
-                            fig.add_trace(
-                                go.Scatter(x=[csv_times_dt[hour]],
-                                        y=[max(cluster_top[0], cluster_bottom[0])], 
-                                mode='markers', opacity=0.7,
-                                name=f'thermocline{len(cluster_top)}',
-                                line=dict(color='green', dash='solid'),
-                                showlegend=False),
-                                )
+                if ('thermocline' in request.selected_channels 
+                    and 'thermocline-position' in channels
+                    and 'top-centroid' in channels
+                    and 'bottom-centroid' in channels):
+                    fig.add_trace(
+                        go.Scatter(
+                            x=channels['top-centroid']['times'],
+                            y=[x/1000 for x in channels['top-centroid']['values']], 
+                            mode='markers', opacity=0.7,
+                            name='centroids',
+                            line=dict(color='yellow', dash='solid'),
+                            showlegend=False),
+                        )
+                    fig.add_trace(
+                        go.Scatter(
+                            x=channels['bottom-centroid']['times'],
+                            y=[x/1000 for x in channels['bottom-centroid']['values']], 
+                            mode='markers', opacity=0.7,
+                            name='centroids',
+                            line=dict(color='yellow', dash='solid'),
+                            showlegend=False),
+                        ) 
+                    thermocline_temps = []
+                    for i in range(len(channels['thermocline-position']['times'])):
+                        x = channels['thermocline-position']['values'][i]
+                        thermoc_time = channels['thermocline-position']['times'][i]
+                        times = channels[tank_temperatures[x]]['times']
+                        values = [to_fahrenheit(x/1000) for x in channels[tank_temperatures[x]]['values']]
+                        idx = min(range(len(times)), key=lambda i: abs(times[i] - thermoc_time))
+                        thermocline_temps.append(values[idx])
+                    fig.add_trace(
+                        go.Scatter(
+                            x=channels['thermocline-position']['times'],
+                            y=thermocline_temps,
+                            mode='markers', opacity=0.7,
+                            name=f'thermocline',
+                            line=dict(color='green', dash='solid'),
+                            showlegend=False),
+                        )
                 
                 if 'store-hot-pipe' in request.selected_channels and 'store-hot-pipe' in channels:
                     temp_plot = True
