@@ -500,11 +500,13 @@ async def get_plots(request: DataRequest, apirequest: Request):
                 gridcolor_hex = '#424242'
                 fontcolor_hex = '#b5b5b5'
                 home_alone_line = '#f0f0f0'
+                oat_color = 'gray'
             else:
                 plot_background_hex = 'white'
                 gridcolor_hex = 'LightGray'
                 fontcolor_hex = 'rgb(42,63,96)'
                 home_alone_line = '#5e5e5e'
+                oat_color = '#d6d6d6'
 
             if PYPLOT_PLOT:
 
@@ -987,8 +989,8 @@ async def get_plots(request: DataRequest, apirequest: Request):
                             x=channels['oat']['times'], 
                             y=[to_fahrenheit(x/1000) for x in channels['oat']['values']], 
                             mode=line_style, 
-                            opacity=0.2,
-                            line=dict(color='gray', dash='solid'),
+                            opacity=0.8,
+                            line=dict(color=oat_color, dash='solid'),
                             name='Outside air',
                             yaxis='y2',
                             )
