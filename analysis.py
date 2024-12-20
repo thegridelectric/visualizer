@@ -23,7 +23,8 @@ def download_excel(house_alias, start_ms):
 
     if not flo_params_msg:
         print("No FLO params")
-        os.remove('result.xlsx')
+        if os.path.exists('result.xlsx'):
+            os.remove('result.xlsx')
         return
 
     flo_params = FloParamsHouse0(**flo_params_msg.payload)
