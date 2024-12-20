@@ -25,6 +25,9 @@
             const endUnixMilliseconds = endtime_luxon.toUTC().toMillis();
 
             console.log('ok')
+            console.log(house_alias)
+            console.log(password)
+            console.log(endUnixMilliseconds)
 
             try {
                 const response = await fetch(`https://visualizer.electricity.works/plots`, {
