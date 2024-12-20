@@ -21,6 +21,9 @@ from fake_models import MessageSql
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import plotly.graph_objects as go
+from analysis import download_excel
+import os
+from fastapi.responses import FileResponse
 
 PYPLOT_PLOT = True
 MATPLOTLIB_PLOT = False
@@ -491,10 +494,6 @@ async def get_excel(request: DijkstraRequest):
 
     print("made it here")
 
-    from analysis import download_excel
-    import os
-    from fastapi.responses import FileResponse
-
     download_excel(request.house_alias, request.time_ms)
     
     if os.path.exists('result.xlsx'):
@@ -516,10 +515,6 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
 
     if isinstance(request, DijkstraRequest):
         print("made it here")
-
-        from analysis import download_excel
-        import os
-        from fastapi.responses import FileResponse
 
         download_excel(request.house_alias, request.time_ms)
         
