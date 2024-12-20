@@ -6,6 +6,7 @@ from sqlalchemy import create_engine, desc
 from sqlalchemy.orm import sessionmaker
 from fake_config import Settings
 from fake_models import MessageSql
+import os
 
 def download_excel(house_alias, start_ms):
     settings = Settings(_env_file=dotenv.find_dotenv())
@@ -31,6 +32,8 @@ def download_excel(house_alias, start_ms):
     flo_params = FloParamsHouse0(**flo_params_msg.payload)
     # for key, value in flo_params_msg.payload.items():
     #     print(f'{key}: {value}')
+
+    os.remove('result.xlsx')
 
     print("Running Dijkstra and saving analysis to excel...")
     g = DGraph(flo_params)
