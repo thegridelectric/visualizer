@@ -23,13 +23,12 @@ def download_excel(house_alias, start_ms):
 
     if not flo_params_msg:
         print("No FLO params")
+        os.remove('result.xlsx')
         return
 
     flo_params = FloParamsHouse0(**flo_params_msg.payload)
     # for key, value in flo_params_msg.payload.items():
     #     print(f'{key}: {value}')
-
-    os.remove('result.xlsx')
 
     print("Running Dijkstra and saving analysis to excel...")
     g = DGraph(flo_params)
