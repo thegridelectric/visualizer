@@ -519,6 +519,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
         download_excel(request.house_alias, request.time_ms)
         
         if os.path.exists('result.xlsx'):
+            print("PATH EXISTS")
             return FileResponse(
                 'result.xlsx',
                 media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
