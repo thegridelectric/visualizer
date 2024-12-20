@@ -487,7 +487,7 @@ async def get_csv(request: CsvRequest, apirequest: Request):
 # ------------------------------
 
 @app.post('/download_excel')
-async def download_excel(request: DijkstraRequest):
+async def get_excel(request: DijkstraRequest):
 
     print("made it here")
 

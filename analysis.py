@@ -14,10 +14,6 @@ def download_excel(house_alias, start_ms):
     Session = sessionmaker(bind=engine)
     session = Session()
 
-    house_alias = 'beech'
-    start_ms = int(pendulum.datetime(2024, 12, 19, 0, 0, tz="America/New_York").timestamp() * 1000)
-    end_ms = int(pendulum.datetime(2024, 12, 21, 0, 0, tz="America/New_York").timestamp() * 1000)
-
     flo_params_msg = session.query(MessageSql).filter(
         MessageSql.message_type_name == "flo.params.house0",
         MessageSql.from_alias.like(f'%{house_alias}%'),
