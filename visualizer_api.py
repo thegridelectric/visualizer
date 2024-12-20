@@ -83,6 +83,11 @@ class CsvRequest(BaseModel):
     timestep: int
     continue_option: Optional[bool] = False
 
+class DijkstraRequest(BaseModel):
+    house_alias: str
+    password: str
+    time_ms: int
+
 # ------------------------------
 # Plot colors
 # ------------------------------
@@ -476,6 +481,28 @@ async def get_csv(request: CsvRequest, apirequest: Request):
             "message": f"An error occurred: {str(e)}", 
             "reload": False
         }
+    
+# ------------------------------
+# Download Dijkstra Excel
+# ------------------------------
+
+@app.post('/download_excel')
+async def download_excel(request: DijkstraRequest):
+
+    from analysis import download_excel
+    import os
+    from fastapi.responses import FileResponse
+
+    download_excel(request.house_alias, request.time_ms)
+    
+    if os.path.exists('result.xlsx'):
+        return FileResponse(
+            'result.xlsx',
+            media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            headers={"Content-Disposition": "attachment; filename=file.xlsx"}
+        )
+    else:
+        return {"error": "File not found"}
 
 # ------------------------------
 # Generate interactive plots
