@@ -509,9 +509,30 @@ async def get_excel(request: DijkstraRequest):
 # ------------------------------
 # Generate interactive plots
 # ------------------------------
+from typing import Union
 
 @app.post('/plots')
-async def get_plots(request: DataRequest, apirequest: Request):
+async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Request):
+
+    if isinstance(request, DijkstraRequest):
+        print("made it here")
+
+        from analysis import download_excel
+        import os
+        from fastapi.responses import FileResponse
+
+        download_excel(request.house_alias, request.time_ms)
+        
+        if os.path.exists('result.xlsx'):
+            return FileResponse(
+                'result.xlsx',
+                media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                headers={"Content-Disposition": "attachment; filename=file.xlsx"}
+            )
+        else:
+            return {"error": "File not found"}
+
+
     request_start = time.time()
     try:
         async with async_timeout.timeout(TIMEOUT_SECONDS):
