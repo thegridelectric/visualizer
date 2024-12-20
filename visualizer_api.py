@@ -489,6 +489,8 @@ async def get_csv(request: CsvRequest, apirequest: Request):
 @app.post('/download_excel')
 async def download_excel(request: DijkstraRequest):
 
+    print("made it here")
+
     from analysis import download_excel
     import os
     from fastapi.responses import FileResponse
