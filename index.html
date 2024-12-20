@@ -17,17 +17,10 @@
 
         async function downloadExcel() {
 
-            console.log('ok')
-
             const enddate = document.getElementById('endDatePicker').value;
             const endtime = document.getElementById('endTimePicker').value;
             const endtime_luxon = luxon.DateTime.fromFormat(`${enddate} ${endtime}`, 'yyyy-MM-dd HH:mm', { zone: 'America/New_York' });
             const endUnixMilliseconds = endtime_luxon.toUTC().toMillis();
-
-            console.log('ok')
-            console.log(house_alias)
-            console.log(password)
-            console.log(endUnixMilliseconds)
 
             try {
                 const response = await fetch(`https://visualizer.electricity.works/plots`, {
