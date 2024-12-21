@@ -350,6 +350,7 @@ class DGraph():
         plt.savefig('plot.png', dpi=130)
         if show:
             plt.show()
+        plt.close()
 
     def export_to_excel(self):        
         # Sort nodes by energy and assign an index
@@ -443,6 +444,7 @@ class DGraph():
         plt.xlabel("Quantity [kWh]")
         plt.grid()
         plt.savefig('plot_pq.png', dpi=130)
+        plt.close()
 
         # Write to Excel
         os.makedirs('results', exist_ok=True)
