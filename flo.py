@@ -503,5 +503,5 @@ class DGraph():
                 pathcost_sheet.cell(row=row+1, column=col+1).fill = highlight_fill
                 nextnode_sheet.cell(row=row+1, column=col+1).fill = highlight_fill
 
-        # os.remove('plot.png')        
-        # os.remove('plot_pq.png')
+        os.remove('plot.png')        
+        os.remove('plot_pq.png')
