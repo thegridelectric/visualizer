@@ -88,16 +88,18 @@ class DParams():
         d = 0 if swt<self.no_power_rswt else d
         return d if d>0 else 0
     
-    def delta_T_inverse(self, rwt):
+    def delta_T_inverse(self, rwt: float) -> float:
+        """Raise exception with quad coeffs and rwt if imaginary"""
         a, b, c = self.quadratic_coefficients
         aa = -self.dd_delta_t/self.dd_power * a
         bb = 1-self.dd_delta_t/self.dd_power * b
         cc = -self.dd_delta_t/self.dd_power * c    
         sqrt_argument = ((rwt-bb**2/(4*aa)+bb**2/(2*aa)-cc)/aa)
         if sqrt_argument < 0:
-            return 100000
-            # raise Exception(f"Imaginary value in delta_T_inverse!. quad coeffs a, b, c = {a, b, c}"
-            #                 f" and rwt {rwt} result in sqrt of {sqrt_argument}")
+            print(f"Imaginary value in delta_T_inverse!. quad coeffs a, b, c = {a, b, c}"
+                            f" and rwt {rwt} result in sqrt of {sqrt_argument}\n"
+                            "Return 20")
+            return 20.0
         return -bb/(2*aa) - ((rwt-bb**2/(4*aa)+bb**2/(2*aa)-cc)/aa)**0.5 - rwt
     
     def get_quadratic_coeffs(self):
