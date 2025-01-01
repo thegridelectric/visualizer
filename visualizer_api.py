@@ -25,6 +25,8 @@ from analysis import download_excel
 import os
 from fastapi.responses import FileResponse
 
+RUNNING_LOCALLY = False
+
 PYPLOT_PLOT = True
 MATPLOTLIB_PLOT = False
 MESSAGE_SQL = True
@@ -178,20 +180,21 @@ def get_data(request):
                 "reload":False,
                 "continue_option": True,
                 }, 0, 0, 0, 0, 0
+
+    if not RUNNING_LOCALLY: 
+        if (request.end_ms - request.start_ms)/1000/60/60/24 > 5 and isinstance(request, DataRequest):
+            return {
+                "success": False,
+                "message": "That's too many days to plot.", 
+                "reload": False,
+                }, 0, 0, 0, 0, 0
         
-    if (request.end_ms - request.start_ms)/1000/60/60/24 > 5 and isinstance(request, DataRequest):
-        return {
-            "success": False,
-            "message": "That's too many days to plot.", 
-            "reload": False,
-            }, 0, 0, 0, 0, 0
-    
-    if (request.end_ms - request.start_ms)/1000/60/60/24 > 21 and isinstance(request, CsvRequest):
-        return {
-            "success": False,
-            "message": "That's too many days of data to download.", 
-            "reload": False,
-            }, 0, 0, 0, 0, 0
+        if (request.end_ms - request.start_ms)/1000/60/60/24 > 21 and isinstance(request, CsvRequest):
+            return {
+                "success": False,
+                "message": "That's too many days of data to download.", 
+                "reload": False,
+                }, 0, 0, 0, 0, 0
     
     if MESSAGE_SQL:
 
@@ -416,6 +419,18 @@ async def get_csv(request: CsvRequest, apirequest: Request):
                     elif channel == 'storage-depths':
                         for c in channels.keys():
                             if 'depth' in c and 'tank' in c and 'micro' not in c:
+                                channels_to_export.append(c)
+                    elif channel == 'relays':
+                        for c in channels.keys():
+                            if 'relay' in c:
+                                channels_to_export.append(c)
+                    elif channel == 'zone-heat-calls':
+                        for c in channels.keys():
+                            if 'zone' in c:
+                                channels_to_export.append(c)
+                    elif channel == 'store-energy':
+                        for c in channels.keys():
+                            if 'required-energy' in c or 'available-energy':
                                 channels_to_export.append(c)
 
             num_points = int((request.end_ms - request.start_ms) / (request.timestep * 1000) + 1)
