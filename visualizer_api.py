@@ -1616,7 +1616,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                         showgrid=True, 
                         gridwidth=1, 
                         gridcolor=gridcolor_hex, 
-                        tickvals=list(range(len(top_modes)-2)),
+                        tickvals=list(range(len(top_modes)-1)),
                         ),
                     legend=dict(
                         x=0,
