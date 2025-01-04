@@ -142,6 +142,13 @@ modes_order = [
     'HpOffStoreDischarge', 'HpOffStoreOff', 'HpOnStoreOff', 'HpOnStoreCharge', 
     'WaitingForTemperaturesOffPeak', 'WaitingForTemperaturesOnPeak', 'Dormant']
 
+top_modes_colors_hex = {
+    'HomeAlone': '#EF553B',
+    'Atn': '#00CC96',
+    'Admin': '#636EFA'
+}
+top_modes_order = ['HomeAlone', 'Atn', 'Dormant']
+
 # ------------------------------
 # Pull data from journaldb
 # ------------------------------
@@ -160,14 +167,14 @@ def get_data(request):
             "success": False, 
             "message": "Wrong password.", 
             "reload":True
-            }, 0, 0, 0, 0, 0
+            }, 0, 0, 0, 0, 0, 0
     
     if request.house_alias == '':
         return {
             "success": False, 
             "message": "Please enter a house alias.", 
             "reload": True
-            }, 0, 0, 0, 0, 0
+            }, 0, 0, 0, 0, 0, 0
     
     if not request.continue_option:
         if (request.end_ms - request.start_ms)/1000/60/60/24 > MAX_DAYS_WARNING:
@@ -179,7 +186,7 @@ def get_data(request):
                 "message": warning_message, 
                 "reload":False,
                 "continue_option": True,
-                }, 0, 0, 0, 0, 0
+                }, 0, 0, 0, 0, 0, 0
 
     if not RUNNING_LOCALLY: 
         if (request.end_ms - request.start_ms)/1000/60/60/24 > 5 and isinstance(request, DataRequest):
@@ -187,14 +194,14 @@ def get_data(request):
                 "success": False,
                 "message": "That's too many days to plot.", 
                 "reload": False,
-                }, 0, 0, 0, 0, 0
+                }, 0, 0, 0, 0, 0, 0
         
         if (request.end_ms - request.start_ms)/1000/60/60/24 > 21 and isinstance(request, CsvRequest):
             return {
                 "success": False,
                 "message": "That's too many days of data to download.", 
                 "reload": False,
-                }, 0, 0, 0, 0, 0
+                }, 0, 0, 0, 0, 0, 0
     
     if MESSAGE_SQL:
 
@@ -359,7 +366,7 @@ def get_data(request):
         modes['all']['times'] = []
         modes['all']['values'] = []
         formatted_times = [pendulum.from_timestamp(x/1000, tz='America/New_York') for x in relays['auto.h']['times']]
-        print(set(relays['auto.h']['values']))
+        # print(set(relays['auto.h']['values']))
         for state in list(set(relays['auto.h']['values'])):
             modes[state] = {}
             modes[state]['times'] = []
@@ -383,6 +390,27 @@ def get_data(request):
                 modes['all']['values'].append(idx)
                 modes[state]['times'].append(time)
                 modes[state]['values'].append(idx)
+    top_modes = {}
+    if 'auto' in relays:         
+        top_modes['all'] = {}
+        top_modes['all']['times'] = []
+        top_modes['all']['values'] = []
+        formatted_times = [pendulum.from_timestamp(x/1000, tz='America/New_York') for x in relays['auto']['times']]
+        for state in list(set(relays['auto']['values'])):
+            top_modes[state] = {}
+            top_modes[state]['times'] = []
+            top_modes[state]['values'] = []
+
+        for time, state in zip(formatted_times, relays['auto']['values']):
+            if state in top_modes_order:
+                top_modes['all']['times'].append(time)
+                top_modes['all']['values'].append(top_modes_order.index(state))
+                top_modes[state]['times'].append(time)
+                top_modes[state]['values'].append(top_modes_order.index(state))
+    
+    if "Dormant" in top_modes:
+        top_modes['Admin'] = top_modes['Dormant']
+        del top_modes['Dormant']
     
     # Start and end times on plots
     min_time_ms += -(max_time_ms-min_time_ms)*0.05
@@ -392,7 +420,7 @@ def get_data(request):
     min_time_ms_dt = min_time_ms_dt.tz_convert('America/New_York').replace(tzinfo=None)
     max_time_ms_dt = max_time_ms_dt.tz_convert('America/New_York').replace(tzinfo=None)
 
-    return "", channels, zones, modes, min_time_ms_dt, max_time_ms_dt
+    return "", channels, zones, modes, top_modes, min_time_ms_dt, max_time_ms_dt
 
 # ------------------------------
 # Export as CSV
@@ -404,7 +432,7 @@ async def get_csv(request: CsvRequest, apirequest: Request):
     try:
         async with async_timeout.timeout(TIMEOUT_SECONDS):
             
-            error_msg, channels, _, __, ___, ____ = await asyncio.to_thread(get_data, request)
+            error_msg, channels, _, __, ___, ____, _____ = await asyncio.to_thread(get_data, request)
             print(f"Time to fetch data: {round(time.time() - request_start,2)} sec")
 
             if time.time() - request_start > TIMEOUT_SECONDS:
@@ -562,7 +590,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
     try:
         async with async_timeout.timeout(TIMEOUT_SECONDS):
             
-            error_msg, channels, zones, modes, min_time_ms_dt, max_time_ms_dt = await asyncio.to_thread(get_data, request)
+            error_msg, channels, zones, modes, top_modes, min_time_ms_dt, max_time_ms_dt = await asyncio.to_thread(get_data, request)
             print(f"Time to fetch data: {round(time.time() - request_start,2)} sec")
     
             if error_msg != '':
@@ -1524,6 +1552,85 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                 html_buffer7 = io.StringIO()
                 fig.write_html(html_buffer7)
                 html_buffer7.seek(0)
+
+                # --------------------------------------
+                # PLOT 8: Top State
+                # --------------------------------------
+
+                if time.time() - request_start > TIMEOUT_SECONDS:
+                    raise asyncio.TimeoutError('Timed out')
+                if await apirequest.is_disconnected():
+                    raise asyncio.CancelledError("Client disconnected.")
+
+                fig = go.Figure()
+
+                if top_modes!={}:
+
+                    fig.add_trace(
+                        go.Scatter(
+                            x=top_modes['all']['times'],
+                            y=top_modes['all']['values'],
+                            mode='lines',
+                            line=dict(color=home_alone_line, width=2),
+                            opacity=0.3,
+                            showlegend=False,
+                            line_shape='hv'
+                        )
+                    )
+
+                    for state in top_modes.keys():
+                        if state != 'all' and state in top_modes_colors_hex:
+                            fig.add_trace(
+                                go.Scatter(
+                                    x=top_modes[state]['times'],
+                                    y=top_modes[state]['values'],
+                                    mode='markers',
+                                    marker=dict(color=top_modes_colors_hex[state], size=10),
+                                    opacity=0.8,
+                                    name=state,
+                                )
+                            )
+
+                fig.update_layout(
+                    title=dict(text='Top State', x=0.5, xanchor='center'),
+                    plot_bgcolor=plot_background_hex,
+                    paper_bgcolor=plot_background_hex,
+                    font_color=fontcolor_hex,
+                    title_font_color=fontcolor_hex,
+                    margin=dict(t=30, b=30),
+                    xaxis=dict(
+                        range=[min_time_ms_dt, max_time_ms_dt],
+                        mirror=True,
+                        ticks='outside',
+                        showline=True,
+                        linecolor=fontcolor_hex,
+                        showgrid=False
+                        ),
+                    yaxis=dict(
+                        range = [-0.6, len(top_modes)-1+0.2],
+                        mirror=True,
+                        ticks='outside',
+                        showline=True,
+                        linecolor=fontcolor_hex,
+                        zeroline=False,
+                        showgrid=True, 
+                        gridwidth=1, 
+                        gridcolor=gridcolor_hex, 
+                        tickvals=list(range(len(top_modes)-2)),
+                        ),
+                    legend=dict(
+                        x=0,
+                        y=1,
+                        xanchor='left',
+                        yanchor='top',
+                        orientation='h',
+                        bgcolor='rgba(0, 0, 0, 0)'
+                    )
+                )
+
+                html_buffer8 = io.StringIO()
+                fig.write_html(html_buffer8)
+                html_buffer8.seek(0)
                 
 
     except asyncio.TimeoutError:
@@ -1856,6 +1963,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
             zip_file.writestr('plot5.html', html_buffer5.read())
             zip_file.writestr('plot6.html', html_buffer6.read())
             zip_file.writestr('plot7.html', html_buffer7.read())
+            zip_file.writestr('plot8.html', html_buffer8.read())
         # if MATPLOTLIB_PLOT:
         #     zip_file.writestr(f'plot.png', img_buf.getvalue())
     zip_buffer.seek(0)
