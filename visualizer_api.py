@@ -359,16 +359,30 @@ def get_data(request):
         modes['all']['times'] = []
         modes['all']['values'] = []
         formatted_times = [pendulum.from_timestamp(x/1000, tz='America/New_York') for x in relays['auto.h']['times']]
-        for state in modes_order:
+        print(set(relays['auto.h']['values']))
+        for state in list(set(relays['auto.h']['values'])):
             modes[state] = {}
             modes[state]['times'] = []
             modes[state]['values'] = []
 
+        final_states = []
         for time, state in zip(formatted_times, relays['auto.h']['values']):
-            modes['all']['times'].append(time)
-            modes['all']['values'].append(4 if 'Waiting' in state else modes_order.index(state))
-            modes[state]['times'].append(time)
-            modes[state]['values'].append(4 if 'Waiting' in state else modes_order.index(state))
+            if state not in modes_order:
+                final_states.append(state)
+            else:
+                modes['all']['times'].append(time)
+                modes['all']['values'].append(4 if 'Waiting' in state else modes_order.index(state))
+                modes[state]['times'].append(time)
+                modes[state]['values'].append(4 if 'Waiting' in state else modes_order.index(state))
+        idx = len(modes_order)+1
+        final_states = list(set(final_states))
+        for time, state in zip(formatted_times, relays['auto.h']['values']):
+            if state in final_states:
+                print(state)
+                modes['all']['times'].append(time)
+                modes['all']['values'].append(idx)
+                modes[state]['times'].append(time)
+                modes[state]['values'].append(idx)
     
     # Start and end times on plots
     min_time_ms += -(max_time_ms-min_time_ms)*0.05
