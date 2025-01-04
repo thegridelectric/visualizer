@@ -1486,7 +1486,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                         showgrid=False
                         ),
                     yaxis=dict(
-                        range = [-0.6, len(modes)-2+0.2],
+                        range = [-0.6, len(modes)-1+0.2],
                         mirror=True,
                         ticks='outside',
                         showline=True,
