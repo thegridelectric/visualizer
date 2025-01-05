@@ -134,13 +134,13 @@ modes_colors_hex = {
     'HpOffStoreOff': '#00CC96',
     'HpOnStoreOff': '#636EFA',
     'HpOnStoreCharge': '#feca52',
+    'Initializing': '#a3a3a3',
     'WaitingForTemperaturesOnPeak': '#a3a3a3',
     'WaitingForTemperaturesOffPeak': '#4f4f4f',
     'Dormant': '#4f4f4f'
 }
 modes_order = [
-    'HpOffStoreDischarge', 'HpOffStoreOff', 'HpOnStoreOff', 'HpOnStoreCharge', 
-    'WaitingForTemperaturesOffPeak', 'WaitingForTemperaturesOnPeak', 'Dormant']
+    'HpOffStoreDischarge', 'HpOffStoreOff', 'HpOnStoreOff', 'HpOnStoreCharge', 'Initializing', 'Dormant']
 
 top_modes_colors_hex = {
     'HomeAlone': '#EF553B',
@@ -361,19 +361,19 @@ def get_data(request):
                 relays[state['MachineHandle']]['times'].extend(state['UnixMsList'])
                 relays[state['MachineHandle']]['values'].extend(state['StateList'])
     modes = {}
-    if 'auto.h' in relays:         
+    if 'auto.h.n' in relays:   
         modes['all'] = {}
         modes['all']['times'] = []
         modes['all']['values'] = []
-        formatted_times = [pendulum.from_timestamp(x/1000, tz='America/New_York') for x in relays['auto.h']['times']]
-        # print(set(relays['auto.h']['values']))
-        for state in list(set(relays['auto.h']['values'])):
+        formatted_times = [pendulum.from_timestamp(x/1000, tz='America/New_York') for x in relays['auto.h.n']['times']]
+        # print(set(relays['auto.h.n']['values']))
+        for state in [x for x in modes_order if x in list(set(relays['auto.h.n']['values']))]:
             modes[state] = {}
             modes[state]['times'] = []
             modes[state]['values'] = []
 
         final_states = []
-        for time, state in zip(formatted_times, relays['auto.h']['values']):
+        for time, state in zip(formatted_times, relays['auto.h.n']['values']):
             if state not in modes_order:
                 final_states.append(state)
             else:
@@ -383,19 +383,49 @@ def get_data(request):
                 modes[state]['values'].append(4 if 'Waiting' in state else modes_order.index(state))
         idx = len(modes_order)+1
         final_states = list(set(final_states))
-        for time, state in zip(formatted_times, relays['auto.h']['values']):
+        for time, state in zip(formatted_times, relays['auto.h.n']['values']):
             if state in final_states:
-                print(state)
                 modes['all']['times'].append(time)
                 modes['all']['values'].append(idx)
                 modes[state]['times'].append(time)
                 modes[state]['values'].append(idx)
+    if not modes:
+        modes = {}
+        if 'auto.h' in relays:   
+            modes['all'] = {}
+            modes['all']['times'] = []
+            modes['all']['values'] = []
+            formatted_times = [pendulum.from_timestamp(x/1000, tz='America/New_York') for x in relays['auto.h']['times']]
+            # print(set(relays['auto.h']['values']))
+            for state in [x for x in modes_order if x in list(set(relays['auto.h']['values']))]:
+                modes[state] = {}
+                modes[state]['times'] = []
+                modes[state]['values'] = []
+
+            final_states = []
+            for time, state in zip(formatted_times, relays['auto.h']['values']):
+                if state not in modes_order:
+                    final_states.append(state)
+                else:
+                    modes['all']['times'].append(time)
+                    modes['all']['values'].append(4 if 'Waiting' in state else modes_order.index(state))
+                    modes[state]['times'].append(time)
+                    modes[state]['values'].append(4 if 'Waiting' in state else modes_order.index(state))
+            idx = len(modes_order)+1
+            final_states = list(set(final_states))
+            for time, state in zip(formatted_times, relays['auto.h']['values']):
+                if state in final_states:
+                    modes['all']['times'].append(time)
+                    modes['all']['values'].append(idx)
+                    modes[state]['times'].append(time)
+                    modes[state]['values'].append(idx)
     top_modes = {}
     if 'auto' in relays:         
         top_modes['all'] = {}
         top_modes['all']['times'] = []
         top_modes['all']['values'] = []
         formatted_times = [pendulum.from_timestamp(x/1000, tz='America/New_York') for x in relays['auto']['times']]
+        # print(set(relays['auto']['values']))
         for state in list(set(relays['auto']['values'])):
             top_modes[state] = {}
             top_modes[state]['times'] = []
@@ -1528,7 +1558,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                         showgrid=False
                         ),
                     yaxis=dict(
-                        range = [-0.6, len(modes)-1+0.2],
+                        range = [-0.6, 7-0.8],
                         mirror=True,
                         ticks='outside',
                         showline=True,
@@ -1537,7 +1567,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                         showgrid=True, 
                         gridwidth=1, 
                         gridcolor=gridcolor_hex, 
-                        tickvals=list(range(len(modes)-2)),
+                        tickvals=list(range(6)),
                         ),
                     legend=dict(
                         x=0,
