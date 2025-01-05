@@ -25,7 +25,7 @@ from analysis import download_excel
 import os
 from fastapi.responses import FileResponse
 
-RUNNING_LOCALLY = False
+RUNNING_LOCALLY = True
 
 PYPLOT_PLOT = True
 MATPLOTLIB_PLOT = False
@@ -602,26 +602,6 @@ async def get_csv(request: CsvRequest, apirequest: Request):
             "message": f"An error occurred: {str(e)}", 
             "reload": False
         }
-    
-# ------------------------------
-# Download Dijkstra Excel
-# ------------------------------
-
-@app.post('/download_excel')
-async def get_excel(request: DijkstraRequest):
-
-    print("made it here")
-
-    download_excel(request.house_alias, request.time_ms)
-    
-    if os.path.exists('result.xlsx'):
-        return FileResponse(
-            'result.xlsx',
-            media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            headers={"Content-Disposition": "attachment; filename=file.xlsx"}
-        )
-    else:
-        return {"error": "File not found"}
 
 # ------------------------------
 # Generate interactive plots
@@ -632,7 +612,6 @@ from typing import Union
 async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Request):
 
     if isinstance(request, DijkstraRequest):
-        print("made it here")
 
         download_excel(request.house_alias, request.time_ms)
         
