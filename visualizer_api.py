@@ -467,7 +467,6 @@ def get_data(request):
                 aa_modes['all']['values'].append(aa_modes_order.index(state))
                 aa_modes[state]['times'].append(time)
                 aa_modes[state]['values'].append(aa_modes_order.index(state))
-    print(aa_modes.keys())
     
     if "Dormant" in top_modes:
         top_modes['Admin'] = top_modes['Dormant']
@@ -603,6 +602,7 @@ async def get_csv(request: CsvRequest, apirequest: Request):
             "reload": False
         }
     
+    
 # ------------------------------
 # Download Dijkstra Excel
 # ------------------------------
@@ -632,7 +632,6 @@ from typing import Union
 async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Request):
 
     if isinstance(request, DijkstraRequest):
-        print("made it here")
 
         download_excel(request.house_alias, request.time_ms)
         
@@ -747,6 +746,19 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                             opacity=0.7,
                             line=dict(color='#ff7f0e', dash='solid'),
                             name='HP indoor power',
+                            yaxis=y_axis_power
+                            )
+                        ) 
+                if 'oil-boiler-pwr' in request.selected_channels and 'oil-boiler-pwr' in channels:
+                    power_plot = True
+                    fig.add_trace(
+                        go.Scatter(
+                            x=channels['oil-boiler-pwr']['times'], 
+                            y=[x/100 for x in channels['oil-boiler-pwr']['values']], 
+                            mode=line_style, 
+                            opacity=0.7,
+                            line=dict(color=home_alone_line, dash='solid'),
+                            name='Oil boiler power x10',
                             yaxis=y_axis_power
                             )
                         ) 
