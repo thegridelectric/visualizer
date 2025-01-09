@@ -410,28 +410,18 @@ def get_data(request):
             modes['all']['values'] = []
             formatted_times = [pendulum.from_timestamp(x/1000, tz='America/New_York') for x in relays['auto.h']['times']]
             # print(set(relays['auto.h']['values']))
-            for state in [x for x in modes_order if x in list(set(relays['auto.h']['values']))]:
+            for state in list(set(relays['auto.h']['values'])):
                 modes[state] = {}
                 modes[state]['times'] = []
                 modes[state]['values'] = []
-
-            final_states = []
             for time, state in zip(formatted_times, relays['auto.h']['values']):
-                if state not in modes_order:
-                    final_states.append(state)
-                else:
-                    modes['all']['times'].append(time)
-                    modes['all']['values'].append(4 if 'Waiting' in state else modes_order.index(state))
-                    modes[state]['times'].append(time)
-                    modes[state]['values'].append(4 if 'Waiting' in state else modes_order.index(state))
+                position = len(modes_order) if state not in modes_order else modes_order.index(state)
+                modes['all']['times'].append(time)
+                modes['all']['values'].append(position)
+                modes[state]['times'].append(time)
+                modes[state]['values'].append(position)
             idx = len(modes_order)+1
-            final_states = list(set(final_states))
-            for time, state in zip(formatted_times, relays['auto.h']['values']):
-                if state in final_states:
-                    modes['all']['times'].append(time)
-                    modes['all']['values'].append(idx)
-                    modes[state]['times'].append(time)
-                    modes[state]['values'].append(idx)
+    
     top_modes = {}
     if 'auto' in relays:         
         top_modes['all'] = {}
