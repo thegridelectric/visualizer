@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import pytz
 import numpy as np
 from typing import Dict, List, Tuple
 import os
@@ -71,7 +72,7 @@ class DParams():
         return self.config.CopIntercept + self.config.CopOatCoeff*oat + self.config.CopLwtCoeff*lwt      
 
     def required_heating_power(self, oat, ws):
-        r = self.alpha + self.beta*oat + self.gamma*ws
+        r = self.alpha + self.beta*oat + self.gamma*((55-oat)*ws)
         return r if r>0 else 0
 
     def delivered_heating_power(self, swt):
@@ -301,8 +302,9 @@ class DGraph():
         
         # Plot the shortest path
         fig, ax = plt.subplots(2,1, sharex=True, figsize=(10,6))
-        start = datetime.fromtimestamp(self.params.start_time).strftime('%Y-%m-%d %H:%M')
-        end = (datetime.fromtimestamp(self.params.start_time) + timedelta(hours=self.params.horizon)).strftime('%Y-%m-%d %H:%M')
+        ny_tz = pytz.timezone('America/New_York')
+        start = datetime.fromtimestamp(self.params.start_time, tz=ny_tz).strftime('%Y-%m-%d %H:%M')
+        end = (datetime.fromtimestamp(self.params.start_time, tz=ny_tz) + timedelta(hours=self.params.horizon)).strftime('%Y-%m-%d %H:%M')
         fig.suptitle(f'From {start} to {end}\nCost: {round(self.initial_node.pathcost,2)} $', fontsize=10)
         
         # Top plot
