@@ -27,12 +27,33 @@ def download_excel(house_alias, start_ms):
             os.remove('result.xlsx')
         return
 
-    flo_params = FloParamsHouse0(**flo_params_msg.payload)
     # for key, value in flo_params_msg.payload.items():
     #     print(f'{key}: {value}')
+    #     if key=='AlphaTimes10': 
+    #         flo_params_msg.payload[key] = 103
+    #     elif key=='BetaTimes100': 
+    #         flo_params_msg.payload[key] = -19
+    #     elif key=='GammaEx6':
+    #         flo_params_msg.payload[key] = 1500
+    #     elif key=='DdPowerKw':
+    #         flo_params_msg.payload[key] = 10.3
+
+    flo_params = FloParamsHouse0(**flo_params_msg.payload)
 
     print("Running Dijkstra and saving analysis to excel...")
     g = DGraph(flo_params)
     g.solve_dijkstra()
     g.export_to_excel()
     print("Done.")
+
+
+# def generate_excel(params:FloParamsHouse0):
+#     print("Running Dijkstra and saving analysis to excel...")
+#     g = DGraph(params)
+#     g.solve_dijkstra()
+#     g.export_to_excel()
+#     print("Done.")
+
+# flo_parameters = FloParamsHouse0(
+
+# )
