@@ -527,8 +527,13 @@ def get_requested_messages(request: MessagesRequest, running_locally:bool=False)
     return table_data_columns
 
 @app.post('/messages')
-async def get_messages(request: MessagesRequest, apirequest: Request):
-    print(request)
+async def get_messages(request: MessagesRequest):
+    if request.password != valid_password:
+        return {
+            "success": False, 
+            "message": "Wrong password.", 
+            "reload":True
+            }
     try:
         async with async_timeout.timeout(TIMEOUT_SECONDS):
             response = await asyncio.to_thread(get_requested_messages, request, RUNNING_LOCALLY)
