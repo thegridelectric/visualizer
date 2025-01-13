@@ -93,6 +93,14 @@ class DijkstraRequest(BaseModel):
     password: str
     time_ms: int
 
+class MessagesRequest(BaseModel):
+    password: str
+    selected_message_types: List[str]
+    house_alias: str = ""
+    start_ms: int 
+    end_ms: int
+    darkmode: Optional[bool] = False
+
 # ------------------------------
 # Plot colors
 # ------------------------------
@@ -264,43 +272,6 @@ def get_data(request):
                         channels[channel_name]['values'].extend(channel['ValueList'])
                         channels[channel_name]['times'].extend(channel['ScadaReadTimeUnixMsList'])
 
-    # else:
-    #     session = Session()
-
-    #     data_channels = session.query(DataChannelSql).filter(
-    #         DataChannelSql.terminal_asset_alias.like(f'%{request.house_alias}%')
-    #         ).all()
-
-    #     # data_channels_ids = [x.id for x in data_channels]
-    #     # all_readings = session.query(ReadingSql).filter(
-    #     #                 ReadingSql.data_channel_id.in_(data_channels_ids),
-    #     #                 ReadingSql.time_ms >= request.start_ms,
-    #     #                 ReadingSql.time_ms <= request.end_ms,
-    #     #             ).order_by(asc(ReadingSql.time_ms)).all()
-
-    #     channels = {}
-    #     for channel in data_channels:
-    #         # readings = [x for x in all_readings if x.data_channel_id==channel.id]
-    #         readings = session.query(ReadingSql).filter(
-    #             ReadingSql.data_channel_id.like(channel.id),
-    #             ReadingSql.time_ms >= request.start_ms,
-    #             ReadingSql.time_ms <= request.end_ms,
-    #         ).order_by(asc(ReadingSql.time_ms)).all()
-    #         if channel.name not in channels:
-    #             channels[channel.name] = {
-    #                 'values': [x.value for x in readings],
-    #                 'times': [x.time_ms for x in readings]
-    #             }
-    #         else:
-    #             channels[channel.name]['values'].extend([x.value for x in readings])
-    #             channels[channel.name]['times'].extend([x.time_ms for x in readings])
-    #     if channels == {}:
-    #         return {
-    #             "success": False, 
-    #             "message": f"No readings found for house '{request.house_alias}' in the selected timeframe.", 
-    #             "reload": False
-    #             }, 0, 0, 0, 0, 0
-
     # Sort values according to time and find min/max
     min_time_ms, max_time_ms = 1e20, 0
     keys_to_delete = []
@@ -471,6 +442,117 @@ def get_data(request):
     max_time_ms_dt = max_time_ms_dt.tz_convert('America/New_York').replace(tzinfo=None)
 
     return "", channels, zones, modes, top_modes, aa_modes, min_time_ms_dt, max_time_ms_dt
+
+# ------------------------------
+# Get messages for message tracker
+# ------------------------------
+
+def get_requested_messages(request: MessagesRequest, running_locally:bool=False):
+
+    total_errors, total_warnings = 0, 0
+
+    if not running_locally and (request.end_ms - request.start_ms)/1000/60/60/24 > 5:
+        return {
+            "success": False,
+            "message": "That's too many days of messages to load.", 
+            "reload": False,
+            }
+    
+    session = Session()
+
+    messages: List[MessageSql] = session.query(MessageSql).filter(
+        MessageSql.from_alias.like(f'%{request.house_alias}%'),
+        MessageSql.message_type_name.in_(request.selected_message_types),
+        MessageSql.message_persisted_ms >= request.start_ms,
+        MessageSql.message_persisted_ms <=request.end_ms,
+    ).order_by(asc(MessageSql.message_persisted_ms)).all()
+
+    if not messages:
+        return {
+            "success": False, 
+            "message": f"No data found.", 
+            "reload":False
+            }
+    
+    levels = {
+        'critical': 1,
+        'error': 2,
+        'warning': 3,
+        'info': 4,
+        'debug': 5,
+        'trace': 6
+    }
+    
+    sources = []
+    pb_types = []
+    summaries = []
+    details = []
+    times_created = []
+    sorted_problem_types = sorted(
+        [m for m in messages if m.message_type_name == 'gridworks.event.problem'],
+        key=lambda x: (levels[x.payload['ProblemType']], x.payload['TimeCreatedMs'])
+    )
+
+    for message in sorted_problem_types:
+        source = message.payload['Src']
+        if ".scada" in source:
+            source = source.split('.scada')[0].split('.')[-1]
+        sources.append(source)
+        pb_types.append(message.payload['ProblemType'])
+        summaries.append(message.payload['Summary'])
+        details.append(message.payload['Details'].replace('\n','<br>'))
+        times_created.append(str(pendulum.from_timestamp(message.payload['TimeCreatedMs']/1000, tz='America/New_York').replace(microsecond=0)))
+
+    summary_table = {
+        'critical': str(len([x for x in pb_types if x=='critical'])),
+        'error': str(len([x for x in pb_types if x=='error'])),
+        'warning': str(len([x for x in pb_types if x=='warning'])),
+        'info': str(len([x for x in pb_types if x=='info'])),
+        'debug': str(len([x for x in pb_types if x=='debug'])),
+        'trace': str(len([x for x in pb_types if x=='trace'])),
+    }
+
+    for key in summary_table.keys():
+        if summary_table[key]=='0':
+            summary_table[key]=''
+
+    table_data_columns = {
+        "Log level": pb_types,
+        "From node": sources,
+        "Summary": summaries,
+        "Details": details,
+        "Time created": times_created,
+        "SummaryTable": summary_table
+    }
+    return table_data_columns
+
+@app.post('/messages')
+async def get_messages(request: MessagesRequest, apirequest: Request):
+    print(request)
+    try:
+        async with async_timeout.timeout(TIMEOUT_SECONDS):
+            response = await asyncio.to_thread(get_requested_messages, request, RUNNING_LOCALLY)
+            return response
+    except asyncio.TimeoutError:
+        print("Request timed out.")
+        return {
+            "success": False, 
+            "message": "The data request timed out. Please try loading a smaller amount of data at a time.", 
+            "reload": False
+        }
+    except asyncio.CancelledError:
+        print("Request cancelled or client disconnected.")
+        return {
+            "success": False, 
+            "message": "The request was cancelled because the client disconnected.", 
+            "reload": False
+        }
+    except Exception as e:
+        return {
+            "success": False, 
+            "message": f"An error occurred: {str(e)}", 
+            "reload": False
+        }
 
 # ------------------------------
 # Export as CSV
