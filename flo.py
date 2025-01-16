@@ -1,5 +1,4 @@
 from datetime import datetime, timedelta
-import pytz
 import numpy as np
 from typing import Dict, List, Tuple
 import os
@@ -55,6 +54,9 @@ class DParams():
         self.min_cop = 1
         self.max_cop = 3
         self.soft_constraint: bool = True
+        self.rswt_plus = {}
+        for rswt in self.rswt_forecast:
+            self.rswt_plus[rswt] = self.first_top_temp_above_rswt(rswt)
         
     def check_hp_sizing(self):
         max_load_elec = max(self.load_forecast) / self.COP(min(self.oat_forecast), max(self.rswt_forecast))
@@ -130,7 +132,11 @@ class DParams():
             temp_drop_f = available_temps[i] - available_temps[i-1]
             energy_between_nodes[available_temps[i]] = round(m_layer * 4.187/3600 * temp_drop_f*5/9,3)
         return available_temps, energy_between_nodes
-    
+
+    def first_top_temp_above_rswt(self, rswt):
+        for x in sorted(self.available_top_temps):
+            if x > rswt:
+                return x
 
 class DNode():
     def __init__(self, time_slice:int, top_temp:float, thermocline:float, parameters:DParams):
@@ -198,13 +204,19 @@ class DGraph():
             
             for node_now in self.nodes[h]:
                 self.edges[node_now] = []
+
+                # The losses might be lower than energy between two nodes
+                losses = self.params.storage_losses_percent/100 * (node_now.energy-self.bottom_node.energy)
+                if self.params.load_forecast[h]==0 and losses>0 and losses<self.params.energy_between_nodes[node_now.top_temp]:
+                    losses = self.params.energy_between_nodes[node_now.top_temp] + 1/1e9
+
+                # If the current top temperature is the first one available above RSWT
+                # If it exists, add an edge from the current node that drains the storage further than RSWT
+                RSWT_plus = self.params.rswt_plus[self.params.rswt_forecast[h]]
+                if node_now.top_temp == RSWT_plus and h < self.params.horizon-1:
+                    self.add_rswt_minus_edge(node_now, h, losses)
                 
                 for node_next in self.nodes[h+1]:
-
-                    # The losses might be lower than energy between two nodes
-                    losses = self.params.storage_losses_percent/100 * (node_now.energy-self.bottom_node.energy)
-                    if self.params.load_forecast[h]==0 and losses>0 and losses<self.params.energy_between_nodes[node_now.top_temp]:
-                        losses = self.params.energy_between_nodes[node_now.top_temp] + 1/1e9
 
                     store_heat_in = node_next.energy - node_now.energy
                     hp_heat_out = store_heat_in + self.params.load_forecast[h] + losses
@@ -228,13 +240,43 @@ class DGraph():
                                      and
                                     (node_now.top_temp < self.params.rswt_forecast[h] or 
                                      node_next.top_temp < self.params.rswt_forecast[h])):
-                                    if self.params.soft_constraint:
-                                        # TODO: make cost punishment proportional to constraint violation
+                                    if self.params.soft_constraint and not [x for x in self.edges[node_now] if x.head==node_next]:
                                         cost += 1e5
                                     else:
                                         continue
                             
                             self.edges[node_now].append(DEdge(node_now, node_next, cost, hp_heat_out))
+
+    def add_rswt_minus_edge(self, node: DNode, time_slice, Q_losses):
+        # In these calculations the load is both the heating requirement and the losses
+        Q_load = self.params.load_forecast[time_slice] + Q_losses
+        # Find the heat stored in the water that is hotter than RSWT
+        Q_plus = 0
+        RSWT_minus = node.top_temp
+        if node.top_temp > self.params.rswt_forecast[time_slice]:
+            m_layer_kg = self.params.storage_volume*3.785 / self.params.num_layers
+            m_plus = (node.thermocline-0.5) * m_layer_kg
+            Q_plus = m_plus * 4.187/3600 * (to_kelvin(node.top_temp)-to_kelvin(node.bottom_temp))
+            RSWT_minus = node.bottom_temp
+        # The hot part of the storage alone can not provide the load and the losses
+        if Q_plus <= Q_load:
+            RSWT = self.params.rswt_forecast[time_slice]
+            RSWT_min_DT = RSWT - self.params.delta_T(RSWT)
+            m_chc = Q_load / (4.187/3600 * (to_kelvin(RSWT)-to_kelvin(RSWT_min_DT)))
+            m_minus_max = (1 - Q_plus/Q_load) * m_chc
+            Q_minus_max = m_minus_max * 4.187/3600 * (self.params.delta_T(RSWT_minus)*5/9)
+            Q_missing = Q_load - Q_plus - Q_minus_max
+            Q_missing = 0 if Q_missing < 0 else Q_missing
+            if Q_missing > 0 and not self.params.soft_constraint:
+                return
+            # Find the next node that would be the closest to matching the energy
+            next_node_energy = node.energy - (Q_plus + Q_minus_max)
+            next_nodes = [x for x in self.nodes[time_slice+1] if x.energy <= node.energy and x.energy >= next_node_energy]
+            next_node = sorted(next_nodes, key=lambda x: x.energy)[0]
+            # Penalty is slightly more expensive than the cost of producing Q_missing in the next hour
+            cop = self.params.COP(oat=self.params.oat_forecast[time_slice+1], lwt=next_node.top_temp)
+            penalty = (Q_missing+1)/cop * self.params.elec_price_forecast[time_slice+1]/100
+            self.edges[node].append(DEdge(node, next_node, penalty, 0))
 
     def solve_dijkstra(self):
         for time_slice in range(self.params.horizon-1, -1, -1):
@@ -302,9 +344,8 @@ class DGraph():
         
         # Plot the shortest path
         fig, ax = plt.subplots(2,1, sharex=True, figsize=(10,6))
-        ny_tz = pytz.timezone('America/New_York')
-        start = datetime.fromtimestamp(self.params.start_time, tz=ny_tz).strftime('%Y-%m-%d %H:%M')
-        end = (datetime.fromtimestamp(self.params.start_time, tz=ny_tz) + timedelta(hours=self.params.horizon)).strftime('%Y-%m-%d %H:%M')
+        start = datetime.fromtimestamp(self.params.start_time).strftime('%Y-%m-%d %H:%M')
+        end = (datetime.fromtimestamp(self.params.start_time) + timedelta(hours=self.params.horizon)).strftime('%Y-%m-%d %H:%M')
         fig.suptitle(f'From {start} to {end}\nCost: {round(self.initial_node.pathcost,2)} $', fontsize=10)
         
         # Top plot
