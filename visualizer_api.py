@@ -500,7 +500,7 @@ def get_requested_messages(request: MessagesRequest, running_locally:bool=False)
         sources.append(source)
         pb_types.append(message.payload['ProblemType'])
         summaries.append(message.payload['Summary'])
-        details.append(message.payload['Details'].replace('\n','<br>'))
+        details.append(message.payload['Details'].replace('<','').replace('>','').replace('\n','<br>'))
         times_created.append(str(pendulum.from_timestamp(message.payload['TimeCreatedMs']/1000, tz='America/New_York').replace(microsecond=0)))
 
     summary_table = {
