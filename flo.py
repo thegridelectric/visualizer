@@ -264,6 +264,9 @@ class DGraph():
             RSWT_min_DT = RSWT - self.params.delta_T(RSWT)
             m_chc = Q_load / (4.187/3600 * (to_kelvin(RSWT)-to_kelvin(RSWT_min_DT)))
             m_minus_max = (1 - Q_plus/Q_load) * m_chc
+            if m_minus_max > self.params.storage_volume*3.785:
+                print("m_minus_max > total storage mass!")
+                m_minus_max = self.params.storage_volume*3.785
             Q_minus_max = m_minus_max * 4.187/3600 * (self.params.delta_T(RSWT_minus)*5/9)
             Q_missing = Q_load - Q_plus - Q_minus_max
             Q_missing = 0 if Q_missing < 0 else Q_missing
