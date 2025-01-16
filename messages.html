@@ -124,7 +124,7 @@
                 Object.keys(data).forEach(key => {
                     if (key !== "Details" && key !== "SummaryTable") {
                         const td = document.createElement('td');
-                        td.innerHTML = data[key][i];
+                        td.textContent = data[key][i];
                         row.appendChild(td);
                     }
                 });
