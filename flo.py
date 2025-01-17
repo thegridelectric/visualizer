@@ -69,9 +69,10 @@ class DParams():
             print(error_text)
         
     def COP(self, oat, lwt):
-        oat = to_celcius(oat)
-        lwt = to_celcius(lwt)
-        return self.config.CopIntercept + self.config.CopOatCoeff*oat + self.config.CopLwtCoeff*lwt      
+        if oat < 15: 
+            return 1.4
+        else:
+            return 1.02 + 0.9/35 * oat
 
     def required_heating_power(self, oat, ws):
         r = self.alpha + self.beta*oat + self.gamma*ws
@@ -248,6 +249,7 @@ class DGraph():
                             self.edges[node_now].append(DEdge(node_now, node_next, cost, hp_heat_out))
 
     def add_rswt_minus_edge(self, node: DNode, time_slice, Q_losses):
+        # return
         # In these calculations the load is both the heating requirement and the losses
         Q_load = self.params.load_forecast[time_slice] + Q_losses
         # Find the heat stored in the water that is hotter than RSWT

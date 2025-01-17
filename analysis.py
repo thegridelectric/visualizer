@@ -29,7 +29,7 @@ def download_excel(house_alias, start_ms):
         return
 
     for key, value in flo_params_msg.payload.items():
-        print(f'{key}: {value}')
+        # print(f'{key}: {value}')
         if key=='AlphaTimes10': 
             flo_params_msg.payload[key] = 103
         elif key=='BetaTimes100': 
@@ -47,7 +47,7 @@ def download_excel(house_alias, start_ms):
     g.export_to_excel()
     print("Done.")
 
-just_before = pendulum.datetime(2025, 1, 4, 15, 5, tz="America/New_York").timestamp()*1000
+just_before = pendulum.datetime(2025, 1, 4, 12, 5, tz="America/New_York").timestamp()*1000
 download_excel("oak", just_before)
 
 # def generate_excel(params:FloParamsHouse0):
