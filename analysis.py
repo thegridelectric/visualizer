@@ -9,6 +9,7 @@ from fake_models import MessageSql
 import os
 
 def download_excel(house_alias, start_ms):
+    print("Finding latest Dijstra...")
     settings = Settings(_env_file=dotenv.find_dotenv())
     engine = create_engine(settings.db_url.get_secret_value())
     Session = sessionmaker(bind=engine)
@@ -46,8 +47,8 @@ def download_excel(house_alias, start_ms):
     g.export_to_excel()
     print("Done.")
 
-start = pendulum.datetime(2025, 1, 4, 12, 5, tz="America/New_York").timestamp()*1000
-download_excel("oak", start)
+just_before = pendulum.datetime(2025, 1, 4, 15, 5, tz="America/New_York").timestamp()*1000
+download_excel("oak", just_before)
 
 # def generate_excel(params:FloParamsHouse0):
 #     print("Running Dijkstra and saving analysis to excel...")

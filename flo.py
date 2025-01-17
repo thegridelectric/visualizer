@@ -74,7 +74,7 @@ class DParams():
         return self.config.CopIntercept + self.config.CopOatCoeff*oat + self.config.CopLwtCoeff*lwt      
 
     def required_heating_power(self, oat, ws):
-        r = self.alpha + self.beta*oat + self.gamma*((55-oat)*ws)
+        r = self.alpha + self.beta*oat + self.gamma*ws
         return r if r>0 else 0
 
     def delivered_heating_power(self, swt):
@@ -347,8 +347,8 @@ class DGraph():
         
         # Plot the shortest path
         fig, ax = plt.subplots(2,1, sharex=True, figsize=(10,6))
-        start = datetime.fromtimestamp(self.params.start_time).strftime('%Y-%m-%d %H:%M')
-        end = (datetime.fromtimestamp(self.params.start_time) + timedelta(hours=self.params.horizon)).strftime('%Y-%m-%d %H:%M')
+        start = datetime.fromtimestamp(self.params.start_time, tz=pytz.timezone("America/New_York")).strftime('%Y-%m-%d %H:%M')
+        end = (datetime.fromtimestamp(self.params.start_time, tz=pytz.timezone("America/New_York")) + timedelta(hours=self.params.horizon)).strftime('%Y-%m-%d %H:%M')
         fig.suptitle(f'From {start} to {end}\nCost: {round(self.initial_node.pathcost,2)} $', fontsize=10)
         
         # Top plot
@@ -370,7 +370,7 @@ class DGraph():
         tank_top_colors = [cmap(norm(x)) for x in sp_top_temp]
         tank_bottom_colors = [cmap(norm(x-self.params.delta_T(x))) for x in sp_top_temp]
         sp_thermocline_reversed = [self.params.num_layers-x+1 for x in sp_thermocline]
-        ax[1].bar(sp_time, sp_thermocline, bottom=sp_thermocline_reversed, color=tank_top_colors, alpha=0.7)
+        bars_top = ax[1].bar(sp_time, sp_thermocline, bottom=sp_thermocline_reversed, color=tank_top_colors, alpha=0.7)
         ax[1].bar(sp_time, sp_thermocline_reversed, color=tank_bottom_colors, alpha=0.7)
         ax[1].set_xlabel('Time [hours]')
         ax[1].set_ylabel('Storage state')
@@ -378,6 +378,10 @@ class DGraph():
         ax[1].set_yticks([])
         if len(sp_time)>10 and len(sp_time)<50:
             ax[1].set_xticks(list(range(0,len(sp_time)+1,2)))
+        for i, bar in enumerate(bars_top):
+            height = bar.get_height()
+            ax[1].text(bar.get_x() + bar.get_width() / 2, bar.get_y() + height / 2, 
+                    f'{int(sp_top_temp[i])}', ha='center', va='center', color='white', fontsize=5)
         ax3 = ax[1].twinx()
         ax3.plot(sp_time, sp_soc, color='black', alpha=0.4, label='SoC')
         ax3.set_ylabel('State of charge [%]')
@@ -494,7 +498,8 @@ class DGraph():
 
         # Write to Excel
         os.makedirs('results', exist_ok=True)
-        file_path = 'result.xlsx'#os.path.join('results', f'result_{round(datetime.now(pytz.utc).timestamp())}.xlsx')
+        start = datetime.fromtimestamp(self.params.start_time, tz=pytz.timezone("America/New_York")).strftime('%Y-%m-%d %H:%M')
+        file_path = os.path.join('results', f'result_{start}.xlsx')
         with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
             results_df.to_excel(writer, index=False, sheet_name='Pathcost')
             results_df.to_excel(writer, index=False, sheet_name='Next node')
