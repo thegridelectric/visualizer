@@ -22,22 +22,24 @@ def download_excel(house_alias, start_ms):
         MessageSql.message_persisted_ms <= start_ms,
     ).order_by(desc(MessageSql.message_persisted_ms)).first()
 
+    print(f"Found up to time {pendulum.from_timestamp(flo_params_msg.message_persisted_ms/1000, tz='America/New_York')}")
+
     if not flo_params_msg:
         print("No FLO params")
         if os.path.exists('result.xlsx'):
             os.remove('result.xlsx')
         return
 
-    for key, value in flo_params_msg.payload.items():
-        # print(f'{key}: {value}')
-        if key=='AlphaTimes10': 
-            flo_params_msg.payload[key] = 103
-        elif key=='BetaTimes100': 
-            flo_params_msg.payload[key] = -19
-        elif key=='GammaEx6':
-            flo_params_msg.payload[key] = 1500
-        elif key=='DdPowerKw':
-            flo_params_msg.payload[key] = 10.3
+    # for key, value in flo_params_msg.payload.items():
+    #     # print(f'{key}: {value}')
+    #     if key=='AlphaTimes10': 
+    #         flo_params_msg.payload[key] = 103
+    #     elif key=='BetaTimes100': 
+    #         flo_params_msg.payload[key] = -19
+    #     elif key=='GammaEx6':
+    #         flo_params_msg.payload[key] = 1500
+    #     elif key=='DdPowerKw':
+    #         flo_params_msg.payload[key] = 10.3
 
     flo_params = FloParamsHouse0(**flo_params_msg.payload)
 
@@ -47,8 +49,8 @@ def download_excel(house_alias, start_ms):
     g.export_to_excel()
     print("Done.")
 
-just_before = pendulum.datetime(2025, 1, 4, 12, 5, tz="America/New_York").timestamp()*1000
-download_excel("oak", just_before)
+# just_before = pendulum.datetime(2025, 1, 18, 9, 5, tz="America/New_York").timestamp()*1000
+# download_excel("oak", just_before)
 
 # def generate_excel(params:FloParamsHouse0):
 #     print("Running Dijkstra and saving analysis to excel...")
