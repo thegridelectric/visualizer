@@ -45,6 +45,8 @@ class DParams():
         self.dd_power = config.DdPowerKw
         self.dd_rswt = config.DdRswtF
         self.dd_delta_t = config.DdDeltaTF
+        self.hp_is_off = config.HpIsOff
+        self.hp_turn_on_minutes = config.HpTurnOnMinutes
         self.quadratic_coefficients = self.get_quadratic_coeffs()
         self.available_top_temps, self.energy_between_nodes = self.get_available_top_temps()
         self.load_forecast = [self.required_heating_power(oat,ws) for oat,ws in zip(self.oat_forecast,self.ws_forecast)]
@@ -54,6 +56,9 @@ class DParams():
         self.min_cop = 1
         self.max_cop = 3
         self.soft_constraint: bool = True
+        self.rswt_plus = {}
+        for rswt in self.rswt_forecast:
+            self.rswt_plus[rswt] = self.first_top_temp_above_rswt(rswt)
         
     def check_hp_sizing(self):
         max_load_elec = max(self.load_forecast) / self.COP(min(self.oat_forecast), max(self.rswt_forecast))
@@ -66,9 +71,10 @@ class DParams():
             print(error_text)
         
     def COP(self, oat, lwt):
-        oat = to_celcius(oat)
-        lwt = to_celcius(lwt)
-        return self.config.CopIntercept + self.config.CopOatCoeff*oat + self.config.CopLwtCoeff*lwt      
+        if oat < self.config.CopMinOatF: 
+            return self.config.CopMin
+        else:
+            return self.config.CopIntercept + self.config.CopOatCoeff * oat
 
     def required_heating_power(self, oat, ws):
         r = self.alpha + self.beta*oat + self.gamma*ws
@@ -129,7 +135,11 @@ class DParams():
             temp_drop_f = available_temps[i] - available_temps[i-1]
             energy_between_nodes[available_temps[i]] = round(m_layer * 4.187/3600 * temp_drop_f*5/9,3)
         return available_temps, energy_between_nodes
-    
+
+    def first_top_temp_above_rswt(self, rswt):
+        for x in sorted(self.available_top_temps):
+            if x > rswt:
+                return x
 
 class DNode():
     def __init__(self, time_slice:int, top_temp:float, thermocline:float, parameters:DParams):
@@ -197,24 +207,36 @@ class DGraph():
             
             for node_now in self.nodes[h]:
                 self.edges[node_now] = []
+
+                # The losses might be lower than energy between two nodes
+                losses = self.params.storage_losses_percent/100 * (node_now.energy-self.bottom_node.energy)
+                if self.params.load_forecast[h]==0 and losses>0 and losses<self.params.energy_between_nodes[node_now.top_temp]:
+                    losses = self.params.energy_between_nodes[node_now.top_temp] + 1/1e9
+
+                # If the current top temperature is the first one available above RSWT
+                # If it exists, add an edge from the current node that drains the storage further than RSWT
+                RSWT_plus = self.params.rswt_plus[self.params.rswt_forecast[h]]
+                if node_now.top_temp == RSWT_plus and h < self.params.horizon-1:
+                    self.add_rswt_minus_edge(node_now, h, losses)
                 
                 for node_next in self.nodes[h+1]:
 
-                    # The losses might be lower than energy between two nodes
-                    losses = self.params.storage_losses_percent/100 * (node_now.energy-self.bottom_node.energy)
-                    if self.params.load_forecast[h]==0 and losses>0 and losses<self.params.energy_between_nodes[node_now.top_temp]:
-                        losses = self.params.energy_between_nodes[node_now.top_temp] + 1/1e9
-
                     store_heat_in = node_next.energy - node_now.energy
                     hp_heat_out = store_heat_in + self.params.load_forecast[h] + losses
+
+                    # If HP is off, it will take time to turn on during which it will not provide heat
+                    max_hp_elec_in = (
+                        ((1-self.params.hp_turn_on_minutes/60) if self.params.hp_is_off else 1) 
+                        * self.params.max_hp_elec_in
+                        )
                     
                     # This condition reduces the amount of times we need to compute the COP
-                    if (hp_heat_out/self.params.max_cop <= self.params.max_hp_elec_in and
+                    if (hp_heat_out/self.params.max_cop <= max_hp_elec_in and
                         hp_heat_out/self.params.min_cop >= self.params.min_hp_elec_in):
                     
                         cop = self.params.COP(oat=self.params.oat_forecast[h], lwt=node_next.top_temp)
 
-                        if (hp_heat_out/cop <= self.params.max_hp_elec_in and 
+                        if (hp_heat_out/cop <= max_hp_elec_in and 
                             hp_heat_out/cop >= self.params.min_hp_elec_in):
 
                             cost = self.params.elec_price_forecast[h]/100 * hp_heat_out/cop
@@ -227,13 +249,48 @@ class DGraph():
                                      and
                                     (node_now.top_temp < self.params.rswt_forecast[h] or 
                                      node_next.top_temp < self.params.rswt_forecast[h])):
-                                    if self.params.soft_constraint:
-                                        # TODO: make cost punishment proportional to constraint violation
+                                    if self.params.soft_constraint and not [x for x in self.edges[node_now] if x.head==node_next]:
                                         cost += 1e5
                                     else:
                                         continue
                             
                             self.edges[node_now].append(DEdge(node_now, node_next, cost, hp_heat_out))
+
+    def add_rswt_minus_edge(self, node: DNode, time_slice, Q_losses):
+        # In these calculations the load is both the heating requirement and the losses
+        Q_load = self.params.load_forecast[time_slice] + Q_losses
+        # Find the heat stored in the water that is hotter than RSWT
+        Q_plus = 0
+        RSWT_minus = node.top_temp
+        if node.top_temp > self.params.rswt_forecast[time_slice]:
+            m_layer_kg = self.params.storage_volume*3.785 / self.params.num_layers
+            m_plus = (node.thermocline-0.5) * m_layer_kg
+            Q_plus = m_plus * 4.187/3600 * (to_kelvin(node.top_temp)-to_kelvin(node.bottom_temp))
+            RSWT_minus = node.bottom_temp
+        # The hot part of the storage alone can not provide the load and the losses
+        if Q_plus <= Q_load:
+            RSWT = self.params.rswt_forecast[time_slice]
+            RSWT_min_DT = RSWT - self.params.delta_T(RSWT)
+            m_chc = Q_load / (4.187/3600 * (to_kelvin(RSWT)-to_kelvin(RSWT_min_DT)))
+            m_minus_max = (1 - Q_plus/Q_load) * m_chc
+            if m_minus_max > self.params.storage_volume*3.785:
+                print("m_minus_max > total storage mass!")
+                m_minus_max = self.params.storage_volume*3.785
+            Q_minus_max = m_minus_max * 4.187/3600 * (self.params.delta_T(RSWT_minus)*5/9)
+            Q_missing = Q_load - Q_plus - Q_minus_max
+            if Q_missing < 0:
+                print(f"Isn't this impossible? Q_load - Q_plus - Q_minus_max = {round(Q_missing,2)} kWh")
+            Q_missing = 0 if Q_missing < 0 else Q_missing
+            if Q_missing > 0 and not self.params.soft_constraint:
+                return
+            # Find the next node that would be the closest to matching the energy
+            next_node_energy = node.energy - (Q_plus + Q_minus_max)
+            next_nodes = [x for x in self.nodes[time_slice+1] if x.energy <= node.energy and x.energy >= next_node_energy]
+            next_node = sorted(next_nodes, key=lambda x: x.energy)[0]
+            # Penalty is slightly more expensive than the cost of producing Q_missing in the next hour
+            cop = self.params.COP(oat=self.params.oat_forecast[time_slice+1], lwt=next_node.top_temp)
+            penalty = (Q_missing+1)/cop * self.params.elec_price_forecast[time_slice+1]/100
+            self.edges[node].append(DEdge(node, next_node, penalty, 0))
 
     def solve_dijkstra(self):
         for time_slice in range(self.params.horizon-1, -1, -1):
@@ -301,8 +358,8 @@ class DGraph():
         
         # Plot the shortest path
         fig, ax = plt.subplots(2,1, sharex=True, figsize=(10,6))
-        start = datetime.fromtimestamp(self.params.start_time).strftime('%Y-%m-%d %H:%M')
-        end = (datetime.fromtimestamp(self.params.start_time) + timedelta(hours=self.params.horizon)).strftime('%Y-%m-%d %H:%M')
+        start = datetime.fromtimestamp(self.params.start_time, tz=pytz.timezone("America/New_York")).strftime('%Y-%m-%d %H:%M')
+        end = (datetime.fromtimestamp(self.params.start_time, tz=pytz.timezone("America/New_York")) + timedelta(hours=self.params.horizon)).strftime('%Y-%m-%d %H:%M')
         fig.suptitle(f'From {start} to {end}\nCost: {round(self.initial_node.pathcost,2)} $', fontsize=10)
         
         # Top plot
@@ -324,7 +381,7 @@ class DGraph():
         tank_top_colors = [cmap(norm(x)) for x in sp_top_temp]
         tank_bottom_colors = [cmap(norm(x-self.params.delta_T(x))) for x in sp_top_temp]
         sp_thermocline_reversed = [self.params.num_layers-x+1 for x in sp_thermocline]
-        ax[1].bar(sp_time, sp_thermocline, bottom=sp_thermocline_reversed, color=tank_top_colors, alpha=0.7)
+        bars_top = ax[1].bar(sp_time, sp_thermocline, bottom=sp_thermocline_reversed, color=tank_top_colors, alpha=0.7)
         ax[1].bar(sp_time, sp_thermocline_reversed, color=tank_bottom_colors, alpha=0.7)
         ax[1].set_xlabel('Time [hours]')
         ax[1].set_ylabel('Storage state')
@@ -332,6 +389,10 @@ class DGraph():
         ax[1].set_yticks([])
         if len(sp_time)>10 and len(sp_time)<50:
             ax[1].set_xticks(list(range(0,len(sp_time)+1,2)))
+        for i, bar in enumerate(bars_top):
+            height = bar.get_height()
+            ax[1].text(bar.get_x() + bar.get_width() / 2, bar.get_y() + height / 2, 
+                    f'{int(sp_top_temp[i])}', ha='center', va='center', color='white', fontsize=5)
         ax3 = ax[1].twinx()
         ax3.plot(sp_time, sp_soc, color='black', alpha=0.4, label='SoC')
         ax3.set_ylabel('State of charge [%]')
@@ -448,7 +509,8 @@ class DGraph():
 
         # Write to Excel
         os.makedirs('results', exist_ok=True)
-        file_path = 'result.xlsx'#os.path.join('results', f'result_{round(datetime.now(pytz.utc).timestamp())}.xlsx')
+        start = datetime.fromtimestamp(self.params.start_time, tz=pytz.timezone("America/New_York")).strftime('%Y-%m-%d %H:%M')
+        file_path = os.path.join('results', f'result_{start}.xlsx')
         with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
             results_df.to_excel(writer, index=False, sheet_name='Pathcost')
             results_df.to_excel(writer, index=False, sheet_name='Next node')
