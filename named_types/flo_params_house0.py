@@ -16,9 +16,11 @@ class FloParamsHouse0(BaseModel):
     StorageLossesPercent: float = 0.5
     HpMinElecKw: float = -0.5
     HpMaxElecKw: float = 11
-    CopIntercept: float = 2
-    CopOatCoeff: float = 0
+    CopIntercept: float = 1.02
+    CopOatCoeff: float = 0.0257
     CopLwtCoeff: float = 0
+    CopMin: float = 1.4
+    CopMinOatF: float = 15
     # Initial state
     InitialTopTempF: StrictInt 
     InitialThermocline: StrictInt

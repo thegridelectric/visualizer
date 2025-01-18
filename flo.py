@@ -71,10 +71,10 @@ class DParams():
             print(error_text)
         
     def COP(self, oat, lwt):
-        if oat < 15: 
-            return 1.4
+        if oat < self.config.CopMinOatF: 
+            return self.config.CopMin
         else:
-            return 1.02 + 0.9/35 * oat
+            return self.config.CopIntercept + self.config.CopOatCoeff * oat
 
     def required_heating_power(self, oat, ws):
         r = self.alpha + self.beta*oat + self.gamma*ws
