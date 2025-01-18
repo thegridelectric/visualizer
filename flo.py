@@ -45,6 +45,8 @@ class DParams():
         self.dd_power = config.DdPowerKw
         self.dd_rswt = config.DdRswtF
         self.dd_delta_t = config.DdDeltaTF
+        self.hp_is_off = config.HpIsOff
+        self.hp_turn_on_minutes = config.HpTurnOnMinutes
         self.quadratic_coefficients = self.get_quadratic_coeffs()
         self.available_top_temps, self.energy_between_nodes = self.get_available_top_temps()
         self.load_forecast = [self.required_heating_power(oat,ws) for oat,ws in zip(self.oat_forecast,self.ws_forecast)]
@@ -221,14 +223,20 @@ class DGraph():
 
                     store_heat_in = node_next.energy - node_now.energy
                     hp_heat_out = store_heat_in + self.params.load_forecast[h] + losses
+
+                    # If HP is off, it will take time to turn on during which it will not provide heat
+                    max_hp_elec_in = (
+                        ((1-self.params.hp_turn_on_minutes/60) if self.params.hp_is_off else 1) 
+                        * self.params.max_hp_elec_in
+                        )
                     
                     # This condition reduces the amount of times we need to compute the COP
-                    if (hp_heat_out/self.params.max_cop <= self.params.max_hp_elec_in and
+                    if (hp_heat_out/self.params.max_cop <= max_hp_elec_in and
                         hp_heat_out/self.params.min_cop >= self.params.min_hp_elec_in):
                     
                         cop = self.params.COP(oat=self.params.oat_forecast[h], lwt=node_next.top_temp)
 
-                        if (hp_heat_out/cop <= self.params.max_hp_elec_in and 
+                        if (hp_heat_out/cop <= max_hp_elec_in and 
                             hp_heat_out/cop >= self.params.min_hp_elec_in):
 
                             cost = self.params.elec_price_forecast[h]/100 * hp_heat_out/cop
@@ -249,7 +257,6 @@ class DGraph():
                             self.edges[node_now].append(DEdge(node_now, node_next, cost, hp_heat_out))
 
     def add_rswt_minus_edge(self, node: DNode, time_slice, Q_losses):
-        # return
         # In these calculations the load is both the heating requirement and the losses
         Q_load = self.params.load_forecast[time_slice] + Q_losses
         # Find the heat stored in the water that is hotter than RSWT
@@ -271,6 +278,8 @@ class DGraph():
                 m_minus_max = self.params.storage_volume*3.785
             Q_minus_max = m_minus_max * 4.187/3600 * (self.params.delta_T(RSWT_minus)*5/9)
             Q_missing = Q_load - Q_plus - Q_minus_max
+            if Q_missing < 0:
+                print(f"Isn't this impossible? Q_load - Q_plus - Q_minus_max = {round(Q_missing,2)} kWh")
             Q_missing = 0 if Q_missing < 0 else Q_missing
             if Q_missing > 0 and not self.params.soft_constraint:
                 return
