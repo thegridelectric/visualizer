@@ -36,10 +36,7 @@
                     })
                 });
 
-                console.log('ok')
-
                 if (response.ok) {
-                    console.log('ok')
                     const blob = await response.blob();
                     const link = document.createElement('a');
                     const url = window.URL.createObjectURL(blob);
