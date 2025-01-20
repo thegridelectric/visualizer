@@ -501,7 +501,7 @@ class DGraph():
         plt.plot(qs, ps)
         prices = [x.PriceTimes1000/1000 for x in pq_pairs]
         plt.scatter(quantities, prices)
-        plt.ylabel("Price [cts/kWh]")
+        plt.ylabel("Price [USD/MWh]")
         plt.xlabel("Quantity [kWh]")
         plt.grid()
         plt.savefig('plot_pq.png', dpi=130)
