@@ -443,6 +443,7 @@ def get_data(request: Union[DataRequest, CsvRequest, DijkstraRequest]):
     max_time_ms_dt = max_time_ms_dt.tz_convert('America/New_York').replace(tzinfo=None)
 
     # Weather forecasts
+    weather_messages = None
     if isinstance(request, DataRequest):
         try:
             weather_messages = session.query(MessageSql).filter(
