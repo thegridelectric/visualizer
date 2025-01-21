@@ -26,7 +26,7 @@ import os
 from fastapi.responses import FileResponse
 from typing import Union
 
-RUNNING_LOCALLY = False
+RUNNING_LOCALLY = True
 
 PYPLOT_PLOT = True
 MATPLOTLIB_PLOT = False
@@ -506,6 +506,10 @@ def get_requested_messages(request: MessagesRequest, running_locally:bool=False)
         [m for m in messages if m.message_type_name == 'gridworks.event.problem'],
         key=lambda x: (levels[x.payload['ProblemType']], x.payload['TimeCreatedMs'])
     )
+    sorted_glitches = sorted(
+        [m for m in messages if m.message_type_name == 'glitch'],
+        key=lambda x: (levels[str(x.payload['Type']).lower()], x.payload['CreatedMs'])
+    )
 
     for message in sorted_problem_types:
         source = message.payload['Src']
@@ -516,6 +520,13 @@ def get_requested_messages(request: MessagesRequest, running_locally:bool=False)
         summaries.append(message.payload['Summary'])
         details.append(message.payload['Details'].replace('<','').replace('>','').replace('\n','<br>'))
         times_created.append(str(pendulum.from_timestamp(message.payload['TimeCreatedMs']/1000, tz='America/New_York').replace(microsecond=0)))
+    
+    for message in sorted_glitches:
+        sources.append(message.payload['FromGNodeAlias'])
+        pb_types.append(message.payload['Type'])
+        summaries.append(message.payload['Summary'])
+        details.append(message.payload['Details'].replace('<','').replace('>','').replace('\n','<br>'))
+        times_created.append(str(pendulum.from_timestamp(message.payload['CreatedMs']/1000, tz='America/New_York').replace(microsecond=0)))
 
     summary_table = {
         'critical': str(len([x for x in pb_types if x=='critical'])),
