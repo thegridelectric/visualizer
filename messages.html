@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8">
+    <title>GridWorks Message Tracker</title>
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
+    <!-- Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/luxon@3.0.1/build/global/luxon.min.js"></script>
+    
+    <script>
+        let password;
+        let darkmode_tf = false;
+
+        async function getMessages(password, start_ms, end_ms, message_types, house_alias) {
+
+            disable_plot_buttons()
+            showLoader()
+            
+            try {
+                const response = await fetch(`https://visualizer.electricity.works/messages`, {
+                // const response = await fetch(`http://localhost:8000/messages`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        password: password, 
+                        selected_message_types: message_types,
+                        house_alias: house_alias,
+                        start_ms: start_ms, 
+                        end_ms: end_ms,
+                        darkmode: darkmode_tf,
+                    })
+                });
+                const contentType = response.headers.get("Content-Type");
+                if (contentType && contentType.includes("application/json")) {
+                    const data = await response.json();
+                    if ('success' in data) {
+                        if (data.success === false) {
+                            alert(data.message);
+                            if (data.reload) {
+                                location.reload();
+                            }
+                            return;
+                        }
+                    }
+                    console.log("About to render table...")
+                    renderTable(data);
+                    console.log("Done")
+                }
+            } catch (error) {
+                console.error('Error fetching messages:', error);
+                alert(`Error fetching messages.`);
+            } finally {
+                enable_plot_buttons();
+                hideLoader();
+            }
+        }
+
+        function renderTable(data) {
+            console.log('Rendering table with data:', data);
+
+            // First render the SummaryTable (if it exists)
+            if (data.SummaryTable) {
+                const summaryTable = document.createElement('table');
+                summaryTable.classList.add('summary-table');
+
+                // Create table headers for the SummaryTable
+                const summaryHeaderRow = document.createElement('tr');
+                const th1 = document.createElement('th');
+                th1.textContent = "Log level";
+                summaryHeaderRow.appendChild(th1);
+                const th2 = document.createElement('th');
+                th2.textContent = "Count";
+                summaryHeaderRow.appendChild(th2);
+                summaryTable.appendChild(summaryHeaderRow);
+
+                // Render each row of the SummaryTable
+                Object.keys(data.SummaryTable).forEach(logLevel => {
+                    const row = document.createElement('tr');
+                    const logLevelCell = document.createElement('td');
+                    logLevelCell.textContent = logLevel;  // Log level
+                    const countCell = document.createElement('td');
+                    countCell.textContent = data.SummaryTable[logLevel];  // Count
+
+                    row.appendChild(logLevelCell);
+                    row.appendChild(countCell);
+                    summaryTable.appendChild(row);
+                });
+
+                // Insert the summary table above the main data table
+                const tableContainer = document.getElementById('table-container');
+                tableContainer.innerHTML = ''; // Clear any existing content in the container
+                tableContainer.appendChild(summaryTable);  // Add the summary table first
+            }
+
+            // Now render the main data table (excluding "Details" and "SummaryTable" keys)
+            const table = document.createElement('table');
+            table.classList.add('data-table');
+
+            // Create table headers for the main data table
+            const headerRow = document.createElement('tr');
+            Object.keys(data).forEach(key => {
+                if (key !== "Details" && key !== "SummaryTable") {
+                    const th = document.createElement('th');
+                    th.textContent = key;
+                    headerRow.appendChild(th);
+                }
+            });
+            table.appendChild(headerRow);
+
+            // Determine the number of rows based on the first column
+            const numRows = data[Object.keys(data)[0]].length;
+
+            // Add the rows to the main data table
+            for (let i = 0; i < numRows; i++) {
+                const row = document.createElement('tr');
+                row.dataset.index = i;
+
+                Object.keys(data).forEach(key => {
+                    if (key !== "Details" && key !== "SummaryTable") {
+                        const td = document.createElement('td');
+                        td.textContent = data[key][i];
+                        row.appendChild(td);
+                    }
+                });
+
+                row.addEventListener('click', function() {
+                    displayDetails(data, i);
+                });
+
+                table.appendChild(row);
+            }
+
+            // Append the main data table below the summary table
+            const tableContainer = document.getElementById('table-container');
+            tableContainer.appendChild(table);  // Add the main table
+        }
+
+
+        function displayDetails(data, index) {
+            const details = data.Details[index];
+            const timeCreated = data["Time created"][index];
+            const fromNode = data["From node"][index];
+            const logLevel = data["Log level"][index];
+            const summary = data["Summary"][index];
+            
+            const detailsContainer = document.getElementById('details-container');
+            const overlay = document.getElementById('details-overlay');
+            const detailsContent = document.getElementById('details-content');
+
+            if (detailsContainer && overlay && detailsContent) {
+                let detailsHTML = `
+                    <b>Log level:</b> ${logLevel}<br>
+                    <b>From node:</b> ${fromNode}<br>
+                    <b>Summary:</b> ${summary}<br>
+                    <b>Time created:</b> ${timeCreated}<br>
+                    <p>${details}</p>
+                `;
+                detailsContent.innerHTML = detailsHTML;
+
+                overlay.style.display = 'flex';
+                detailsContainer.classList.add('show');
+
+                const closeBtn = document.getElementById('close-btn');
+                closeBtn.addEventListener('click', function() {
+                    closeModal(overlay, detailsContainer);
+                });
+
+                overlay.addEventListener('click', function(event) {
+                    if (event.target === overlay) {
+                        closeModal(overlay, detailsContainer);
+                    }
+                });
+            } else {
+                console.error('Overlay or container not found');
+            }
+        }
+
+        function closeModal(overlay, detailsContainer) {
+            overlay.style.display = 'none';
+            detailsContainer.classList.remove('show');
+        }
+
+
+
+        function getDefaultDate(is_start) {
+            const nyDate = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
+            if (is_start) { 
+                nyDate.setDate(nyDate.getDate() - 1);
+                nyDate.setHours(20, 0, 0, 0);
+            } else {
+                nyDate.setMinutes(nyDate.getMinutes() + 1);  
+            } 
+            const year = nyDate.getFullYear();
+            const month = String(nyDate.getMonth() + 1).padStart(2, '0');
+            const day = String(nyDate.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+
+        function getDefaultTime(is_start) {
+            const nyDate = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
+            if (is_start) { 
+                nyDate.setDate(nyDate.getDate() - 1);
+                nyDate.setHours(20, 0, 0, 0);
+            } else {
+                nyDate.setMinutes(nyDate.getMinutes() + 1);  
+            }  
+            const hours = String(nyDate.getHours()).padStart(2, '0');
+            const minutes = String(nyDate.getMinutes()).padStart(2, '0');
+
+            return `${hours}:${minutes}`;
+        }
+
+        function setNow() {
+            const nyDate = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
+            nyDate.setMinutes(nyDate.getMinutes() + 1);
+            document.getElementById('endDatePicker').value = nyDate.toISOString().split('T')[0];
+            document.getElementById('endTimePicker').value = nyDate.toTimeString().split(' ')[0].substring(0, 5);
+            // getData(event)
+        }
+
+        function enable_plot_buttons() {
+            console.log('Enabled')
+            const submitButton = document.querySelector('#form2 input[type="submit"]');
+            const nowButton = document.getElementById('nowButton');
+            const loadingText = document.getElementById('loadingText');
+            submitButton.style.display = 'inline';
+            nowButton.style.display = 'inline';
+            loadingText.style.display = 'none';
+        }
+
+        function disable_plot_buttons() {
+            console.log('Disabled')
+            const submitButton = document.querySelector('#form2 input[type="submit"]');
+            const nowButton = document.getElementById('nowButton');
+            const loadingText = document.getElementById('loadingText');
+            submitButton.style.display = 'none';
+            nowButton.style.display = 'none';
+            loadingText.style.display = 'inline';
+        }
+
+        function LogIn(event) {
+            event.preventDefault();
+            password = document.getElementById("passwd").value;
+            document.getElementById("login").style.display = "none";
+            document.getElementById('startDatePicker').value = getDefaultDate(true);
+            document.getElementById('startTimePicker').value = getDefaultTime(true);
+            document.getElementById('endDatePicker').value = getDefaultDate();
+            document.getElementById('endTimePicker').value = getDefaultTime();
+            document.getElementById("content").style.display = "block";
+            getData(event);
+        }
+
+        function getData(event) {
+            event.preventDefault();
+
+            const selectedMessageTypes = Array.from(document.querySelectorAll('input[name="channels"]:checked'))
+                .map(checkbox => checkbox.value);
+
+            const houseAlias = document.getElementById('housealias').value;
+
+            const startdate = document.getElementById('startDatePicker').value;
+            const starttime = document.getElementById('startTimePicker').value;
+            const starttime_luxon = luxon.DateTime.fromFormat(`${startdate} ${starttime}`, 'yyyy-MM-dd HH:mm', { zone: 'America/New_York' });
+            const startUnixMilliseconds = starttime_luxon.toUTC().toMillis();
+
+            const enddate = document.getElementById('endDatePicker').value;
+            const endtime = document.getElementById('endTimePicker').value;
+            const endtime_luxon = luxon.DateTime.fromFormat(`${enddate} ${endtime}`, 'yyyy-MM-dd HH:mm', { zone: 'America/New_York' });
+            const endUnixMilliseconds = endtime_luxon.toUTC().toMillis();
+
+            getMessages(password, startUnixMilliseconds, endUnixMilliseconds, selectedMessageTypes, houseAlias)
+        }
+
+        function dropDownMenu(){
+            const header = document.getElementById("header");
+            if (header.style.height === '75px') {
+                document.getElementById("header").style.height = "238px";
+
+            } else {
+                document.getElementById("header").style.height = "75px";
+            }
+        }
+
+        function showLoader() {
+            const loader = document.getElementById('loader');
+            loader.style.display = 'inline-block';
+        }
+
+        function hideLoader() {
+            const loader = document.getElementById('loader');
+            loader.style.display = 'none';
+        }
+
+        function toggleDarkMode() {
+            const toggleButton = document.getElementById('toggle-mode');
+            document.body.classList.toggle('dark-mode');
+            darkmode_tf = !darkmode_tf
+        }
+            
+    </script>
+
+    <style>
+
+        :root {
+            --body-bgcolor: #ffffff;
+            --header-textcolor: #555555;
+            --header-bgcolor: #F5F5F7;
+            --box-bgcolor: #F5F5F7;
+            --borderbottom: rgb(226,226,226);
+            --box-textcolor: rgb(55,55,55);
+            --button-bgcolor: #3f3f3f;
+            --button-hover: #3f3f3f;
+            --button-options: #3f3f3f;
+            --options-hover: #3f3f3f;
+            --inputs-bgcolor: #ffffff;
+            --loading-color: rgba(255, 255, 255, 0.636);
+            --loading-bgcolor:rgba(169, 169, 169, 0.594);
+            --checkbox-textcolor: #555;
+            --loader-bigpart: #cdcdcd;
+            --loader-smallpart: #3f3f3f;
+        }
+
+        .dark-mode {
+            --body-bgcolor: #222222;
+            --header-textcolor: #f5f5f7;
+            --header-bgcolor: #222222;
+            --box-bgcolor: #3a3a3a;
+            --borderbottom: #515151;
+            --box-textcolor: #f5f5f7;
+            --button-bgcolor: #6d6d6d;
+            --button-hover: #787878;
+            --button-options: #cbcbcb;
+            --options-hover: transparent;
+            --inputs-bgcolor: #e7e7e7;
+            --loading-color: rgba(206, 206, 206, 0.636);
+            --loading-bgcolor: rgba(107, 107, 107, 0.246);
+            --checkbox-textcolor: #dbdbdb;
+            --loader-bigpart: #cdcdcd;
+            --loader-smallpart: #3a3a3a;
+        }
+
+        body {
+            background-color: var(--body-bgcolor);
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            font-family: 'Montserrat';
+        }
+
+        .data-table, .summary-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .data-table th, .data-table td, .summary-table th, .summary-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+
+        .data-table th, .summary-table th {
+            background-color: #f2f2f2;
+        }
+        
+        .data-table tr:hover {
+            background-color: var(--header-bgcolor); 
+            cursor: pointer;
+        }
+
+        .summary-table {
+            max-width: 500px;
+            margin-bottom: 40px;
+        }
+
+        #details-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 999;
+        }
+
+        #details-container {
+            position: relative;
+            background-color: #fff;
+            border-radius: 8px;
+            padding-top: 30px;
+            padding-bottom: 30px;
+            padding-left: 50px;
+            padding-right: 50px;
+            max-width: 80%;
+            min-width: 60%;
+            max-height: 80%;
+            overflow-y:scroll; 
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            z-index: 1000;
+            transform: scale(0);
+            transform-origin: center;
+            transition: transform 0.3s ease-out;
+        }
+
+        #details-container.show {
+            transform: scale(1);
+        }
+
+        #close-btn {
+            font-family: 'Montserrat';
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background-color:var(--button-bgcolor); 
+            color: #fff;
+            border: none;
+            border-radius: 50%;
+            font-size: 18px;
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+
+        #close-btn:hover {
+            background-color:var(--button-hover);
+        }
+
+
+        .details-content {
+            white-space: pre-wrap;
+        }
+
+        #header{
+            height: 75px; 
+            color: var(--header-textcolor); 
+            background-color: var(--header-bgcolor); 
+            display: flex; 
+            align-items: stretch;
+            margin-bottom: 0;
+        }
+
+        a {
+            color: var(--header-textcolor);
+            text-decoration: none;
+        }
+
+        #pageTitle {
+            font-family: 'Montserrat';
+            font-size: 40px;
+            padding: 20px;
+            padding-left:5%;
+            color: #323232
+        }
+
+        #houseAliasHeader {
+            color: var(--header-textcolor);
+            font-family: 'Montserrat';
+            font-size: 35px;
+            padding-bottom: 25px;
+            margin: 0px;
+        }
+
+        #LoginHeader {
+            color: var(--header-textcolor);
+            font-family: 'Montserrat';
+            font-size: 35px;
+            padding-bottom: 15px;
+            margin: 0px;
+        }
+
+        #checkboxButton {
+            margin-right: 12px;
+        }
+
+        #submit_button, #close-button, #csv_button, #login-button, #nowButton, #checkboxButton{
+            cursor: pointer;
+            font-size:15px;
+            font-family: 'Montserrat';
+            margin-top:0px;
+            color:white;
+            border-radius:30px;
+            text-align:center;
+            height:40px;
+            padding-left: 20px;
+            padding-right: 20px;
+            background-color:var(--button-bgcolor); 
+            border: none;
+        }
+
+        #nowButton, #checkboxButton {
+            cursor: pointer;
+            font-size:15px;
+            font-family: 'Montserrat';
+            margin-top:0px;
+            color:var(--button-options);
+            background-color: transparent;
+            border-radius:30px;
+            text-align:center;
+            height:40px;
+            padding-left: 15px;
+            padding-right: 15px;
+            border: var(--button-options) 2px solid;
+        }
+
+        #login-button {
+            margin-top: 10px;
+        }
+
+        #nowButton {
+            color: rgb(63, 63, 63);
+            background-color: var(--inputs-bgcolor);
+            margin-left:0px;
+            border-radius: 5px;
+            border: none
+        }
+
+        #submit_button:hover, #close-button:hover, #csv_button:hover, #login-button:hover, #nowButton:hover {
+            background-color:var(--button-hover);
+        }
+
+        #checkboxButton:hover {
+            background-color:var(--options-hover);
+            color:white;
+        }
+
+        #nowButton:hover {
+            background-color: white;
+        }
+
+        #Inputs, #LoginBox{
+            min-height: 110px;
+            margin-left: 5%;
+            margin-right: 5%;
+            margin-bottom: 50px;
+            margin-top:30px;
+            padding: 30px;
+            background-color: var(--box-bgcolor);
+            border-radius: 10px;
+        }
+
+        #LoginBox {
+            padding-bottom: 80px;
+        }
+
+        #checkboxDiv{
+            color: var(--box-textcolor);
+            margin-bottom: 25px;
+        }
+
+        #GWlogo {
+            height: 75px; 
+            margin: 0; 
+            padding: 0; 
+            width:100%; 
+            min-width: 175px; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center;
+            font-size: 16px;
+        }
+
+        .menuItem {
+            cursor: pointer;
+            height: 75px; 
+            margin: 0; 
+            padding: 0; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center;
+            flex: 1;
+            width: 20vw;
+            max-width: 135px;
+            min-width: 100px;
+            transition: all 0.3s ease;
+        }
+
+        #menubutton{
+            display: none;
+        }
+
+        #darkbutton {
+            position: absolute;
+            display: flex; 
+            font-size: 20px;
+            height:75px;
+            width: 40px;
+            right:30px;
+            cursor: pointer;
+            justify-content: center;
+            align-items: center; 
+            flex-direction: column;
+        }
+
+        .toggle-circle {
+            width: 15px;
+            height: 15px;
+            background-color: var(--header-textcolor, #333); /* dark color */
+            border-radius: 50%;
+            position: absolute;
+            top: 30px;
+            left: 12.5px;
+            transition: transform 0.3s ease;
+        }
+
+        .toggle-circle::before {
+            content: '';
+            width: 10px;
+            height: 10px;
+            background-color: var(--header-bgcolor, #333);
+            border-radius: 50%;
+            position: absolute;
+            left: 7px;
+            top: 1px;
+        }
+
+        @media (max-width: 800px) {
+            #GWlogo {
+                border-bottom: var(--borderbottom) 0.5px solid;
+            }
+            .menuItem {
+                width: 100%;
+                max-width: 100%;
+                height:40px;
+                border-bottom: var(--borderbottom) 0.5px solid;
+            }
+            #header {
+                flex-direction: column;
+                height: 75px;
+                overflow:hidden
+            }
+            #menubutton {
+                position: absolute;
+                display: flex; 
+                font-size: 20px;
+                right:0;
+                height:75px;
+                width: 75px;
+                cursor: pointer;
+                justify-content: center;
+                align-items: center; 
+                flex-direction: column;
+            }
+            #darkbutton {
+                right:60px;
+            }
+        }
+
+        #passwd, #startDatePicker, #startTimePicker, #endDatePicker, #endTimePicker, #housealias {
+            margin-top: 10px;
+            height: 40px;
+            border-radius: 5px;
+            border: none;
+            background-color: var(--inputs-bgcolor);
+            color: rgb(53, 53, 53);
+            padding-left: 15px;
+            padding-right: 10px;
+            margin-bottom: 10px;
+            font-size: 16px;
+            font-family: 'Montserrat';
+        }
+
+        #housealias {
+            margin-bottom: 25px;
+        }
+
+        #table-container {
+            margin-left: 5%;
+            margin-right: 5%;
+            padding-top: 10px;
+            margin-bottom: 60px;
+        }
+
+        #footer {
+            background-color: #eeeeee;
+            color: #6c6c6c;
+            font-size: 14px;
+            width: 100%;
+            margin: 0px;
+            padding: 10px;
+            text-align: center;
+            bottom: 0;
+            left: 0;
+        }
+
+        input[type="checkbox"] {
+            appearance: none;
+            width: 22px;
+            height: 22px;
+            border: 2px solid #d1d1d6;
+            border-radius: 4px;
+            background-color: var(--box-bgcolor);
+            position: relative;
+            cursor: pointer;
+            margin-right: 10px;
+            transition: background-color 0.2s ease, border-color 0.2s ease;
+        }
+
+        input[type="checkbox"]:checked {
+            background-color: #d1d1d6;
+            border-color: #d1d1d6;
+        }
+
+        #checkboxDiv label {
+            display: inline-flex;
+            align-items: center;
+            font-size: 16px;
+            color: var(--checbox-textcolor);
+            cursor: pointer;
+            user-select: none;
+        }
+
+        #loadingText, #csvLoadingText {
+            /* cursor:progress; */
+            font-size:15px;
+            font-family: 'Montserrat';
+            margin-top:0px;
+            color:var(--loading-color);
+            border-radius:30px;
+            text-align:center;
+            height:40px;
+            padding-left: 20px;
+            padding-right: 20px;
+            background-color:var(--loading-bgcolor); 
+            border: none;
+        } 
+
+        #loader {
+            border: 10px solid var(--loader-bigpart);
+            border-top: 10px solid var(--loader-smallpart);
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+    </style>
+
+</head>
+
+<body> <!-- class="dark-mode" -->
+    
+    <div>
+        <div id="header">
+            <div id="menubutton" onclick="dropDownMenu()">
+                <div style="width: 30%; height:2px; background-color: var(--header-textcolor);margin-bottom: 6px;"></div>
+                <div style="width: 30%; height:2px; background-color: var(--header-textcolor);"></div>
+            </div>
+            <div id="darkbutton" onclick="toggleDarkMode()">
+                <div class="toggle-circle"></div>
+            </div>
+            <a href="">
+            <div id="GWlogo">
+                <span style="font-family: 'Montserrat'">
+                    <span style="font-weight: normal;">GRIDWORKS</span><br>CONSULTING
+                </span>
+            </div>
+            </a>
+            <a href="index.html">
+            <div class='menuItem'>
+                <span style="font-size: 14px;">
+                    Visualizer
+                </span>
+            </div>
+            </a>
+            <a href="dashboard.html">
+                <div class='menuItem'>
+                    <span style="font-size: 14px;">
+                        Dashboard
+                    </span>
+                </div>
+            </a>
+            <a href="messages.html">
+                <div class='menuItem'>
+                    <span style="font-size: 14px; font-weight: bold;">
+                        Messages
+                    </span>
+                </div>
+            </a>
+            <a href="https://gridworks-consulting.com/">
+            <div class='menuItem'>
+                <span style="font-size: 14px;">
+                    About
+                </span>
+            </div>
+            </a>
+        </div> 
+
+        <!-- Login -->
+        <div id="login" style="display: block;">               
+            <div id="LoginBox">
+                <h2 id="LoginHeader">Log in</h2>
+                <form id="form1" onsubmit="LogIn(event)">
+                    <input type="password" id="passwd" name="passwordpicker" placeholder="Password"><br>
+                    <input id='login-button' type="submit" style='position: absolute' value="Log in">
+                </form>
+            </div>
+        </div> 
+
+
+        <div id="content" style="display: none;">               
+        
+            <!-- INPUTS -->
+            <div id="Inputs">
+                <h2 id="houseAliasHeader">Message tracker</h2>
+                <form  id="form2">
+
+                    <!-- Select the message types -->
+                    <label style="color: var(--box-textcolor); font-size: 16px;">Message types<br><br></label>
+                    <div id="checkboxDiv">
+                        <!-- <label><input type="checkbox" name="channels" value="energy.instruction">energy.instruction</label><br> -->
+                        <!-- <label><input type="checkbox" name="channels" value="snapshot.spaceheat" checked>snapshot.spaceheat</label><br> -->
+                        <!-- <label><input type="checkbox" name="channels" value="report" checked>report</label><br> -->
+                        <!-- <label><input type="checkbox" name="channels" value="power.watts" checked>power.watts</label><br> -->
+                        <label><input type="checkbox" name="channels" value="gridworks.event.problem" checked>gridworks.event.problem</label><br>
+                        <!-- <label><input type="checkbox" name="channels" value="layout.lite" checked>layout.lite</label><br> -->
+                        <!-- <label><input type="checkbox" name="channels" value="flo.params.house0" checked>flo.params.house0</label><br> -->
+                        <!-- <label><input type="checkbox" name="channels" value="atn.bid">atn.bid</label><br> -->
+                    </div>
+
+                    <!-- Select house alias -->
+                    <label style="color: var(--box-textcolor); font-size: 16px;" for="housealias">House alias<br></label>
+                    <input type="text" id="housealias" name="housealiaspicker" placeholder="All houses"><br>
+
+                    <!-- Select start and end datetime -->
+                    <label style="color: var(--box-textcolor); font-size: 16px;" for="startDatePicker">Start<br></label>
+                    <input type="date" id="startDatePicker" name="startDatePicker">
+                    <input type="time" id="startTimePicker" name="startTimePicker"><br><br>
+                    <label style="color: var(--box-textcolor); font-size: 16px;" for="endDatePicker">End<br></label>
+                    <input type="date" id="endDatePicker" name="endDatePicker">
+                    <input type="time" id="endTimePicker" name="endTimePicker">
+                    <button type="button" id="nowButton" onclick=setNow()>Now</button><br><br>
+
+                    <!-- Submit button and loader -->
+                    <input id='loadingText' type="button" style='position: absolute' value="Get messages">
+                    <input id='submit_button' type="submit" style='position: absolute' value="Get messages" onclick="getData(event)">
+                    <div id="loader" style="margin-left: 172px; position:absolute; display:none"></div>
+                    <br><br>
+                </form>
+            </div>
+
+        <div id="table-container"></div>
+        <div id="details-overlay">
+            <div id="details-container">
+                <button id="close-btn">X</button>
+                <div id="details-content"></div>
+            </div>
+        </div>
+
+    
+    </div>
+
+</body>
+
+</html>
