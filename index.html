@@ -205,6 +205,7 @@
                     const plotsDiv7 = document.getElementById('Plot7');
                     const plotsDiv8 = document.getElementById('Plot8');
                     const plotsDiv9 = document.getElementById('Plot9');
+                    const plotsDiv10 = document.getElementById('Plot10');
                     const plotsDivPng = document.getElementById('PlotPng');
                     plotsDiv1.innerHTML = '';
                     plotsDiv2.innerHTML = '';
@@ -215,6 +216,7 @@
                     plotsDiv7.innerHTML = '';
                     plotsDiv8.innerHTML = '';
                     plotsDiv9.innerHTML = '';
+                    plotsDiv10.innerHTML = '';
                     plotsDivPng.innerHTML = '';
 
                     let iframeCount = 0;
@@ -250,6 +252,8 @@
                                 plotsDiv8.appendChild(iframe);
                             } else if (iframeCount === 8) {
                                 plotsDiv9.appendChild(iframe);
+                            } else if (iframeCount === 9) {
+                                plotsDiv10.appendChild(iframe);
                             }
                             iframeCount++;
                         } else if (filename.endsWith('.png')) {
@@ -436,6 +440,7 @@
             const plotsDiv7 = document.getElementById('Plot7');
             const plotsDiv8 = document.getElementById('Plot8');
             const plotsDiv9 = document.getElementById('Plot9');
+            const plotsDiv10 = document.getElementById('Plot10');
             const plotsDivPng = document.getElementById('PlotPng');
             plotsDiv1.innerHTML = '';
             plotsDiv2.innerHTML = '';
@@ -446,6 +451,7 @@
             plotsDiv7.innerHTML = '';
             plotsDiv8.innerHTML = '';
             plotsDiv9.innerHTML = '';
+            plotsDiv10.innerHTML = '';
             plotsDivPng.innerHTML = '';
             const toggleButton = document.getElementById('toggle-mode');
             document.body.classList.toggle('dark-mode');
@@ -502,7 +508,7 @@
             font-family: 'Montserrat';
         }
 
-        #PlotPng, #Plot1, #Plot2, #Plot3, #Plot4, #Plot5, #Plot6, #Plot7, #Plot8, #Plot9 {
+        #PlotPng, #Plot1, #Plot2, #Plot3, #Plot4, #Plot5, #Plot6, #Plot7, #Plot8, #Plot9, #Plot10 {
             display: flex;
             justify-content: center;
             padding-bottom:15px;
@@ -1027,6 +1033,7 @@
         <div id="Plot7"></div>
         <div id="Plot8"></div>
         <div id="Plot9"></div>
+        <div id="Plot10"></div>
         <div id="PlotPng"></div>
         </div>
 

@@ -24,6 +24,7 @@ import plotly.graph_objects as go
 from analysis import download_excel
 import os
 from fastapi.responses import FileResponse
+from typing import Union
 
 RUNNING_LOCALLY = False
 
@@ -174,7 +175,7 @@ aa_modes_order = [
 # Pull data from journaldb
 # ------------------------------
 
-def get_data(request):
+def get_data(request: Union[DataRequest, CsvRequest, DijkstraRequest]):
 
     import time
     request_start = time.time()
@@ -188,14 +189,14 @@ def get_data(request):
             "success": False, 
             "message": "Wrong password.", 
             "reload":True
-            }, 0, 0, 0, 0, 0, 0, 0
+            }, 0, 0, 0, 0, 0, 0, 0, 0
     
     if request.house_alias == '':
         return {
             "success": False, 
             "message": "Please enter a house alias.", 
             "reload": True
-            }, 0, 0, 0, 0, 0, 0, 0
+            }, 0, 0, 0, 0, 0, 0, 0, 0
     
     if not request.continue_option:
         if (request.end_ms - request.start_ms)/1000/60/60/24 > MAX_DAYS_WARNING:
@@ -207,7 +208,7 @@ def get_data(request):
                 "message": warning_message, 
                 "reload":False,
                 "continue_option": True,
-                }, 0, 0, 0, 0, 0, 0, 0
+                }, 0, 0, 0, 0, 0, 0, 0, 0
 
     if not RUNNING_LOCALLY: 
         if (request.end_ms - request.start_ms)/1000/60/60/24 > 5 and isinstance(request, DataRequest):
@@ -215,14 +216,14 @@ def get_data(request):
                 "success": False,
                 "message": "That's too many days to plot.", 
                 "reload": False,
-                }, 0, 0, 0, 0, 0, 0, 0
+                }, 0, 0, 0, 0, 0, 0, 0, 0
         
         if (request.end_ms - request.start_ms)/1000/60/60/24 > 21 and isinstance(request, CsvRequest):
             return {
                 "success": False,
                 "message": "That's too many days of data to download.", 
                 "reload": False,
-                }, 0, 0, 0, 0, 0, 0, 0
+                }, 0, 0, 0, 0, 0, 0, 0, 0
     
     if MESSAGE_SQL:
 
@@ -243,7 +244,7 @@ def get_data(request):
                 "success": False, 
                 "message": f"No data found for house '{request.house_alias}' in the selected timeframe.", 
                 "reload":False
-                }, 0, 0, 0, 0, 0, 0, 0
+                }, 0, 0, 0, 0, 0, 0, 0, 0
         
         channels = {}
         for message in messages:
@@ -252,7 +253,7 @@ def get_data(request):
                     "success": False, 
                     "message": f"Timeout: getting the data took too much time.", 
                     "reload":False
-                    }, 0, 0, 0, 0, 0, 0, 0
+                    }, 0, 0, 0, 0, 0, 0, 0, 0
             for channel in message.payload['ChannelReadingList']:
                 # Find the channel name
                 if message.message_type_name == 'report':
@@ -441,7 +442,19 @@ def get_data(request):
     min_time_ms_dt = min_time_ms_dt.tz_convert('America/New_York').replace(tzinfo=None)
     max_time_ms_dt = max_time_ms_dt.tz_convert('America/New_York').replace(tzinfo=None)
 
-    return "", channels, zones, modes, top_modes, aa_modes, min_time_ms_dt, max_time_ms_dt
+    # Weather forecasts
+    if isinstance(request, DataRequest):
+        try:
+            weather_messages = session.query(MessageSql).filter(
+                MessageSql.from_alias.like(f'%{request.house_alias}%'),
+                MessageSql.message_type_name == "weather.forecast",
+                MessageSql.message_persisted_ms >= request.start_ms,
+                MessageSql.message_persisted_ms <= request.end_ms,
+            ).order_by(asc(MessageSql.message_persisted_ms)).all()
+        except:
+            print("Could not get weather messages")
+
+    return "", channels, zones, modes, top_modes, aa_modes, weather_messages, min_time_ms_dt, max_time_ms_dt
 
 # ------------------------------
 # Get messages for message tracker
@@ -569,7 +582,7 @@ async def get_csv(request: CsvRequest, apirequest: Request):
     try:
         async with async_timeout.timeout(TIMEOUT_SECONDS):
             
-            error_msg, channels, _, __, ___, ____, _____, ______ = await asyncio.to_thread(get_data, request)
+            error_msg, channels, _, __, ___, ____, _____, ______, _______ = await asyncio.to_thread(get_data, request)
             print(f"Time to fetch data: {round(time.time() - request_start,2)} sec")
 
             if time.time() - request_start > TIMEOUT_SECONDS:
@@ -703,7 +716,6 @@ async def get_excel(request: DijkstraRequest):
 # ------------------------------
 # Generate interactive plots
 # ------------------------------
-from typing import Union
 
 @app.post('/plots')
 async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Request):
@@ -727,7 +739,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
     try:
         async with async_timeout.timeout(TIMEOUT_SECONDS):
             
-            error_msg, channels, zones, modes, top_modes, aa_modes, min_time_ms_dt, max_time_ms_dt = await asyncio.to_thread(get_data, request)
+            error_msg, channels, zones, modes, top_modes, aa_modes, weather, min_time_ms_dt, max_time_ms_dt = await asyncio.to_thread(get_data, request)
             print(f"Time to fetch data: {round(time.time() - request_start,2)} sec")
     
             if error_msg != '':
@@ -1860,6 +1872,77 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                 html_buffer9 = io.StringIO()
                 fig.write_html(html_buffer9)
                 html_buffer9.seek(0)
+
+                # --------------------------------------
+                # PLOT 10: Weather forecasts
+                # --------------------------------------
+
+                if time.time() - request_start > TIMEOUT_SECONDS:
+                    raise asyncio.TimeoutError('Timed out')
+                if await apirequest.is_disconnected():
+                    raise asyncio.CancelledError("Client disconnected.")
+
+                fig = go.Figure()
+
+                oat_forecasts, ws_forecasts = {}, {}
+                for message in weather:
+                    forecast_start_time = int((message.message_persisted_ms/1000 // 3600) * 3600)
+                    oat_forecasts[forecast_start_time] = message.payload['OatF']
+                    ws_forecasts[forecast_start_time] = message.payload['WindSpeedMph']
+
+                for weather_time in oat_forecasts:
+                    forecast_times = [int(weather_time) + 3600*i for i in range(len(oat_forecasts[weather_time]))]
+                    forecast_times = [pendulum.from_timestamp(x, tz="America/New_York") for x in forecast_times]
+                    fig.add_trace(
+                        go.Scatter(
+                            x=forecast_times,
+                            y=oat_forecasts[weather_time],
+                            mode='lines',
+                            line=dict(color=home_alone_line, width=2),
+                            opacity=0.2,
+                            showlegend=False,
+                            line_shape='hv'
+                        )
+                    )
+
+                fig.update_layout(
+                    title=dict(text='Weather Forecasts', x=0.5, xanchor='center'),
+                    plot_bgcolor=plot_background_hex,
+                    paper_bgcolor=plot_background_hex,
+                    font_color=fontcolor_hex,
+                    title_font_color=fontcolor_hex,
+                    margin=dict(t=30, b=30),
+                    xaxis=dict(
+                        range=[min_time_ms_dt, max_time_ms_dt],
+                        mirror=True,
+                        ticks='outside',
+                        showline=True,
+                        linecolor=fontcolor_hex,
+                        showgrid=False
+                        ),
+                    yaxis=dict(
+                        mirror=True,
+                        ticks='outside',
+                        showline=True,
+                        linecolor=fontcolor_hex,
+                        zeroline=False,
+                        showgrid=True, 
+                        gridwidth=1, 
+                        gridcolor=gridcolor_hex, 
+                        ),
+                    legend=dict(
+                        x=0,
+                        y=1,
+                        xanchor='left',
+                        yanchor='top',
+                        orientation='h',
+                        bgcolor='rgba(0, 0, 0, 0)'
+                    )
+                )
+
+                html_buffer10 = io.StringIO()
+                fig.write_html(html_buffer10)
+                html_buffer10.seek(0)
                 
 
     except asyncio.TimeoutError:
@@ -2194,6 +2277,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
             zip_file.writestr('plot7.html', html_buffer7.read())
             zip_file.writestr('plot8.html', html_buffer8.read())
             zip_file.writestr('plot9.html', html_buffer9.read())
+            zip_file.writestr('plot10.html', html_buffer10.read())
         # if MATPLOTLIB_PLOT:
         #     zip_file.writestr(f'plot.png', img_buf.getvalue())
     zip_buffer.seek(0)
