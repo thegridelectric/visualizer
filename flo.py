@@ -51,11 +51,35 @@ class DParams():
         self.available_top_temps, self.energy_between_nodes = self.get_available_top_temps()
         self.load_forecast = [self.required_heating_power(oat,ws) for oat,ws in zip(self.oat_forecast,self.ws_forecast)]
         self.rswt_forecast = [self.required_swt(x) for x in self.load_forecast]
+        # Modify load forecast to include energy available in the buffer
+        available_buffer = config.BufferAvailableKwh
+        i = 0
+        while available_buffer > 0:
+            self.load_forecast[i] = self.load_forecast[i] - min(available_buffer, self.load_forecast[i])
+            available_buffer = available_buffer - min(available_buffer, self.load_forecast[i])
+            i += 1
+        # Modify load forecast to include energy available in the house (zones above thermostat)
+        available_house = config.HouseAvailableKwh
+        i = 0
+        if available_house < 0:
+            self.load_forecast[0] += -available_house
+        else:
+            while available_house > 0:
+                self.load_forecast[i] = self.load_forecast[i] - min(available_house, self.load_forecast[i])
+                available_house = available_house - min(available_house, self.load_forecast[i])
+                i += 1
         self.check_hp_sizing()
         # TODO: add to config
         self.min_cop = 1
         self.max_cop = 3
         self.soft_constraint: bool = True
+        # First time step can be shorter than an hour
+        if datetime.fromtimestamp(self.start_time).minute > 0:
+            self.fraction_of_hour_remaining: float = datetime.fromtimestamp(self.start_time).minute / 60
+        else:
+            self.fraction_of_hour_remaining: float = 1
+        self.load_forecast[0] = self.load_forecast[0]*self.fraction_of_hour_remaining
+        # Find the first top temperature above RSWT for each hour
         self.rswt_plus = {}
         for rswt in self.rswt_forecast:
             self.rswt_plus[rswt] = self.first_top_temp_above_rswt(rswt)
@@ -223,12 +247,11 @@ class DGraph():
 
                     store_heat_in = node_next.energy - node_now.energy
                     hp_heat_out = store_heat_in + self.params.load_forecast[h] + losses
-
-                    # If HP is off, it will take time to turn on during which it will not provide heat
-                    max_hp_elec_in = (
-                        ((1-self.params.hp_turn_on_minutes/60) if self.params.hp_is_off else 1) 
-                        * self.params.max_hp_elec_in
-                        )
+                    
+                    # Adjust the max elec the HP can use in the first time step
+                    # (Duration of time step + turn-on effects)
+                    max_hp_elec_in = self.params.max_hp_elec_in * (self.params.fraction_of_hour_remaining if h==0 else 1)
+                    max_hp_elec_in = (((1-self.params.hp_turn_on_minutes/60) if self.params.hp_is_off else 1) * max_hp_elec_in)
                     
                     # This condition reduces the amount of times we need to compute the COP
                     if (hp_heat_out/self.params.max_cop <= max_hp_elec_in and
@@ -304,7 +327,7 @@ class DGraph():
                 node.next_node = best_edge.head
     
     def generate_bid(self):
-        self.pq_pairs = []
+        self.pq_pairs: List[PriceQuantityUnitless] = []
         min_elec_ctskwh, max_elec_ctskwh = -10, 200
         for elec_price in range(min_elec_ctskwh*10, max_elec_ctskwh*10):
             elec_price = elec_price/10
