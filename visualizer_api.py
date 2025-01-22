@@ -25,6 +25,7 @@ from analysis import download_excel
 import os
 from fastapi.responses import FileResponse
 from typing import Union
+import plotly.colors as pc
 
 RUNNING_LOCALLY = True
 
@@ -449,7 +450,7 @@ def get_data(request: Union[DataRequest, CsvRequest, DijkstraRequest]):
             weather_messages = session.query(MessageSql).filter(
                 MessageSql.from_alias.like(f'%{request.house_alias}%'),
                 MessageSql.message_type_name == "weather.forecast",
-                MessageSql.message_persisted_ms >= request.start_ms,
+                MessageSql.message_persisted_ms >= request.start_ms - 24*60*60*1000,
                 MessageSql.message_persisted_ms <= request.end_ms,
             ).order_by(asc(MessageSql.message_persisted_ms)).all()
         except:
@@ -1874,6 +1875,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                     raise asyncio.CancelledError("Client disconnected.")
 
                 fig = go.Figure()
+                color_scale = pc.diverging.RdBu[::-1]
 
                 oat_forecasts, ws_forecasts = {}, {}
                 for message in weather:
@@ -1881,18 +1883,26 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                     oat_forecasts[forecast_start_time] = message.payload['OatF']
                     ws_forecasts[forecast_start_time] = message.payload['WindSpeedMph']
 
-                for weather_time in oat_forecasts:
-                    forecast_times = [int(weather_time) + 3600*i for i in range(len(oat_forecasts[weather_time]))]
+                for idx, weather_time in enumerate(oat_forecasts):
+                    forecast_times = [int(weather_time) + 3600 * i for i in range(len(oat_forecasts[weather_time]))]
                     forecast_times = [pendulum.from_timestamp(x, tz="America/New_York") for x in forecast_times]
+                    color = color_scale[int((idx / len(oat_forecasts)) * (len(color_scale) - 1))]
+                    opcty = 0.2
+                    showme = False
+                    if idx == len(oat_forecasts) - 1:
+                        color = 'red'
+                        opcty = 1
+                        showme = True
                     fig.add_trace(
                         go.Scatter(
                             x=forecast_times,
                             y=oat_forecasts[weather_time],
                             mode='lines',
-                            line=dict(color=home_alone_line, width=2),
-                            opacity=0.2,
-                            showlegend=False,
-                            line_shape='hv'
+                            line=dict(color=color, width=2),
+                            opacity=opcty,
+                            showlegend=showme,
+                            line_shape='hv',
+                            name=f"{pendulum.from_timestamp(weather_time, tz="America/New_York").hour}" 
                         )
                     )
 
