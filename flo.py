@@ -530,19 +530,26 @@ class DGraph():
         # To plot quantities on x-axis and prices on y-axis
         ps, qs = [], []
         index_p = 0
-        for p in range(min(prices), max(prices)+1):
+        expected_price_usd_mwh = self.params.elec_price_forecast[0] * 10
+        for p in sorted(list(range(min(prices), max(prices)+1)) + [expected_price_usd_mwh*1000]):
             ps.append(p/1000)
             if p >= prices[index_p+1]:
                 index_p += 1
+            if p == expected_price_usd_mwh*1000:
+                interesection = (quantities[index_p], expected_price_usd_mwh)
             qs.append(quantities[index_p])
         plt.plot(qs, ps)
         prices = [x.PriceTimes1000/1000 for x in pq_pairs]
         plt.scatter(quantities, prices)
-        expected_price = self.params.elec_price_forecast[0]
-        plt.plot([min(quantities)-2, max(quantities)+2],[expected_price*10]*2)
+        plt.plot([min(quantities)-1, max(quantities)+1],[expected_price_usd_mwh]*2)
+        plt.scatter(interesection[0], interesection[1])
+        plt.text(interesection[0]+0.25, interesection[1]+15, f'({round(interesection[0],3)}, {round(interesection[1],1)})', fontsize=10, color='tab:orange')
+        plt.xticks(quantities)
+        plt.yticks(prices+[expected_price_usd_mwh])
         plt.ylabel("Price [USD/MWh]")
         plt.xlabel("Quantity [kWh]")
-        plt.grid()
+        plt.grid(alpha=0.3)
+        plt.tight_layout()
         plt.savefig('plot_pq.png', dpi=130)
         plt.close()
 
