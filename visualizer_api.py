@@ -1893,6 +1893,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                         color = 'red'
                         opcty = 1
                         showme = True
+
                     fig.add_trace(
                         go.Scatter(
                             x=forecast_times,
