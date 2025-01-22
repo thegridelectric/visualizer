@@ -538,10 +538,10 @@ class DGraph():
             if p == expected_price_usd_mwh*1000:
                 interesection = (quantities[index_p], expected_price_usd_mwh)
             qs.append(quantities[index_p])
-        plt.plot(qs, ps)
+        plt.plot(qs, ps, label='demand (bid)')
         prices = [x.PriceTimes1000/1000 for x in pq_pairs]
         plt.scatter(quantities, prices)
-        plt.plot([min(quantities)-1, max(quantities)+1],[expected_price_usd_mwh]*2)
+        plt.plot([min(quantities)-1, max(quantities)+1],[expected_price_usd_mwh]*2, label="supply (expected market price)")
         plt.scatter(interesection[0], interesection[1])
         plt.text(interesection[0]+0.25, interesection[1]+15, f'({round(interesection[0],3)}, {round(interesection[1],1)})', fontsize=10, color='tab:orange')
         plt.xticks(quantities)
@@ -549,6 +549,7 @@ class DGraph():
         plt.ylabel("Price [USD/MWh]")
         plt.xlabel("Quantity [kWh]")
         plt.grid(alpha=0.3)
+        plt.legend()
         plt.tight_layout()
         plt.savefig('plot_pq.png', dpi=130)
         plt.close()
