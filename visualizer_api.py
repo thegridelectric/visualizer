@@ -1903,7 +1903,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                             opacity=opcty,
                             showlegend=showme,
                             line_shape='hv',
-                            name=f"{pendulum.from_timestamp(weather_time, tz="America/New_York").hour}" 
+                            name=f"{pendulum.from_timestamp(weather_time, tz='America/New_York').hour}" 
                         )
                     )
 
