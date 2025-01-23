@@ -27,7 +27,7 @@ from fastapi.responses import FileResponse
 from typing import Union
 import plotly.colors as pc
 
-RUNNING_LOCALLY = True
+RUNNING_LOCALLY = False
 
 PYPLOT_PLOT = True
 MATPLOTLIB_PLOT = False

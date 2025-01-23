@@ -18,7 +18,6 @@ def to_kelvin(t):
 def to_celcius(t):
     return (t-32)*5/9
 
-
 class DParams():
     def __init__(self, config: FloParamsHouse0) -> None:
         self.config = config
@@ -194,12 +193,12 @@ class DNode():
 
 
 class DEdge():
-    def __init__(self, tail:DNode, head:DNode, cost:float, hp_heat_out:float, rswt_plus_edge_elec:Optional[float]=None):
+    def __init__(self, tail:DNode, head:DNode, cost:float, hp_heat_out:float, rswt_minus_edge_elec:Optional[float]=None):
         self.tail: DNode = tail
         self.head: DNode = head
         self.cost = cost
         self.hp_heat_out = hp_heat_out
-        self.rswt_plus_edge_elec = rswt_plus_edge_elec
+        self.rswt_minus_edge_elec = rswt_minus_edge_elec
         self.fake_cost: Optional[float] = None
 
     def __repr__(self):
@@ -316,7 +315,7 @@ class DGraph():
             # Penalty is slightly more expensive than the cost of producing Q_missing in the next hour
             cop = self.params.COP(oat=self.params.oat_forecast[time_slice+1], lwt=next_node.top_temp)
             penalty = (Q_missing+1)/cop * self.params.elec_price_forecast[time_slice+1]/100
-            self.edges[node].append(DEdge(node, next_node, penalty, 0, rswt_plus_edge_elec=(Q_missing+1)/cop))
+            self.edges[node].append(DEdge(node, next_node, penalty, 0, rswt_minus_edge_elec=(Q_missing+1)/cop))
 
     def solve_dijkstra(self):
         for time_slice in range(self.params.horizon-1, -1, -1):
@@ -339,8 +338,8 @@ class DGraph():
             for edge in self.edges[self.initial_node]:
                 if edge.cost >= 1e5: # penalized node
                     edge.fake_cost = edge.cost
-                elif edge.rswt_plus_edge_elec is not None: # penalized node
-                    edge.fake_cost = edge.rswt_plus_edge_elec * elec_price_usd_mwh/1000
+                elif edge.rswt_minus_edge_elec is not None: # penalized node
+                    edge.fake_cost = edge.rswt_minus_edge_elec * elec_price_usd_mwh/1000
                 else:
                     cop = self.params.COP(oat=self.params.oat_forecast[0], lwt=edge.head.top_temp)
                     edge.fake_cost = edge.hp_heat_out / cop * elec_price_usd_mwh/1000
