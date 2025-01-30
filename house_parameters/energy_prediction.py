@@ -110,12 +110,13 @@ mod = smf.ols(formula=formula, data=train_df)
 res = mod.fit()
 
 # Predict on the testing data
+test_df = df.copy()
 test_df['energy_pred_reg'] = res.predict(test_df)
 test_df['energy_pred_alpha'] = test_df.apply(lambda row: energy_alpha_pred(row['oat_dry'], row['wind_speed']), axis=1)
 test_df = test_df.sort_values(by='date')
 
 plt.figure(figsize=(10,4))
-plt.scatter(test_df.date, test_df.energy, label='used', alpha=0.7, color='gray')
+plt.plot(test_df.date, test_df.energy, '-o', label='used', alpha=0.7, color='gray')
 plt.scatter(test_df.date, test_df.energy_pred_alpha, label='predicted - alpha', alpha=0.7)
 plt.scatter(test_df.date, test_df.energy_pred_reg, label='predicted - new', alpha=0.7)
 

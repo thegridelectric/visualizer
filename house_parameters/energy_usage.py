@@ -9,6 +9,7 @@ import datetime
 import pytz
 from datetime import datetime
 import numpy as np
+import json
 
 ALPHA = 9.8
 BETA = -ALPHA/55
@@ -24,15 +25,39 @@ Session = sessionmaker(bind=engine)
 session = Session()
 
 # CHOOSE DATES FOR TRAINING DATA
-start_ms_train = pendulum.datetime(2024,12,3).timestamp()*1000
-end_ms_train = pendulum.datetime(2025,1,13).timestamp()*1000
-print("Finding data...")
-MESSAGES = session.query(MessageSql).filter(
-    MessageSql.message_type_name == "report",
-    MessageSql.message_persisted_ms >= start_ms_train,
-    MessageSql.message_persisted_ms <= end_ms_train,
-).order_by(asc(MessageSql.message_persisted_ms)).all()
-print("Done!")
+# start_ms_train = pendulum.datetime(2024,12,3).timestamp()*1000
+# end_ms_train = pendulum.datetime(2025,1,18).timestamp()*1000
+# print("Finding data...")
+# MESSAGES = session.query(MessageSql).filter(
+#     MessageSql.message_type_name == "report",
+#     MessageSql.message_persisted_ms >= start_ms_train,
+#     MessageSql.message_persisted_ms <= end_ms_train,
+# ).order_by(asc(MessageSql.message_persisted_ms)).all()
+# print("Done!")
+
+# # Save as json
+# messages_dict = [m.to_dict() for m in MESSAGES]
+# with open('messages.json', 'w') as file:
+#     json.dump(messages_dict, file, indent=4)
+# print("Saved messages to json")
+
+def from_dict_msg(data):
+    message = MessageSql(
+            message_id=data["MessageId"],
+            from_alias=data["FromAlias"],
+            message_type_name=data["MessageTypeName"],
+            message_persisted_ms=data["MessagePersistedMs"],
+            payload=data["Payload"],
+            message_created_ms=data.get("MessageCreatedMs")  # This is optional
+        )
+    return message
+
+# Load the list of messages from the JSON file
+print('Reading json file...')
+with open('messages.json', 'r') as file:
+    messages_dict = json.load(file)
+messages_loaded = [from_dict_msg(message_data) for message_data in messages_dict]
+print("Opened messages from json")
 
 def required_heating_power(oat, ws):
     r = ALPHA + BETA*oat + GAMMA*ws
@@ -90,7 +115,7 @@ def get_weather_data(latitude, longitude, start_time, end_time):
 
 def energy_used(house_alias, year, month, day, hour=None, onpeak_period=None):
 
-    selected_messages = MESSAGES.copy()
+    selected_messages = messages_loaded.copy()
 
     # --------------------------------
     # Get the start and end time
@@ -121,8 +146,6 @@ def energy_used(house_alias, year, month, day, hour=None, onpeak_period=None):
                     if f'{house_alias}' in x.from_alias
                     and x.message_persisted_ms >= start_ms-5*60*1000
                     and x.message_persisted_ms <= end_ms+5*60*1000]:
-        if message.message_persisted_ms > end_ms:
-            print("There are messages after end_ms") #TODO:REmove
         for channel in message.payload['ChannelReadingList']:
             # Find the channel name
             if message.message_type_name == 'report':
@@ -141,8 +164,6 @@ def energy_used(house_alias, year, month, day, hour=None, onpeak_period=None):
                 else:
                     channels[channel_name]['values'].extend(channel['ValueList'])
                     channels[channel_name]['times'].extend(channel['ScadaReadTimeUnixMsList'])
-                if message.message_persisted_ms > end_ms and 'buffer' in channel_name:
-                    print(f"{pendulum.from_timestamp(channels[channel_name]['times'][-1]/1000, tz='America/New_York')}")
     
     for key in channels.keys():
         sorted_times_values = sorted(zip(channels[key]['times'], channels[key]['values']))
@@ -267,7 +288,7 @@ def energy_used(house_alias, year, month, day, hour=None, onpeak_period=None):
         last_values_buffer.append(channels[buffer_key]['values'][closest_index])
         last_times_buffer.append(channels[buffer_key]['times'][closest_index])
     if last_times_buffer and first_times_buffer:
-        if last_times_buffer[-1] - first_times_buffer[-1] < 30*60*1000:
+        if last_times_buffer[-1] - first_times_buffer[-1] < 50*60*1000:
             print("Not enough time between first and last value:")
             print(f"-First: {pendulum.from_timestamp(first_times_buffer[-1]/1000, tz='America/New_York')}")
             print(f"-Last: {pendulum.from_timestamp(last_times_buffer[-1]/1000, tz='America/New_York')}")
