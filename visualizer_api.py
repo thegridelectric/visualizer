@@ -36,9 +36,17 @@ TIMEOUT_SECONDS = 5*60
 MAX_DAYS_WARNING = 3
 
 settings = Settings(_env_file=dotenv.find_dotenv())
-valid_password = settings.visualizer_api_password.get_secret_value()
+admin_user_password = settings.visualizer_api_password.get_secret_value()
 engine = create_engine(settings.db_url.get_secret_value())
 Session = sessionmaker(bind=engine)
+
+def valid_password(house_alias, password):
+    if password == admin_user_password:
+        return True
+    house_owner_password = getattr(settings, f"{house_alias}_owner_password").get_secret_value()
+    if password == house_owner_password:
+        return True
+    return False
 
 app = FastAPI()
 
@@ -181,7 +189,7 @@ def get_data(request: Union[DataRequest, CsvRequest, DijkstraRequest]):
     import time
     request_start = time.time()
 
-    if request.password != valid_password:
+    if not valid_password(request.house_alias, request.password):
         with open('failed_logins.log', 'a') as log_file:
             log_entry = f"{pendulum.now()} - Failed login from {request.ip_address} with password: {request.password}\n"
             log_entry += f"Timezone '{request.timezone}', device: {request.user_agent}\n\n"
@@ -557,7 +565,7 @@ def get_requested_messages(request: MessagesRequest, running_locally:bool=False)
 
 @app.post('/messages')
 async def get_messages(request: MessagesRequest):
-    if request.password != valid_password:
+    if not valid_password(request.house_alias, request.password):
         return {
             "success": False, 
             "message": "Wrong password.", 
