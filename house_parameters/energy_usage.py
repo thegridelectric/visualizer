@@ -15,6 +15,8 @@ ALPHA = 9.8
 BETA = -ALPHA/55
 GAMMA = 0.05
 
+PRINT=False
+
 # --------------------------------
 # Get the data
 # --------------------------------
@@ -113,7 +115,7 @@ def get_weather_data(latitude, longitude, start_time, end_time):
     return weather_data
 
 
-def energy_used(house_alias, year, month, day, hour=None, onpeak_period=None):
+def energy_used(house_alias, year, month, day, hour=None, onpeak_period=None, thermal_mass=3):
 
     selected_messages = messages_loaded.copy()
 
@@ -139,7 +141,7 @@ def energy_used(house_alias, year, month, day, hour=None, onpeak_period=None):
     start_ms = pendulum.datetime(year, month, day, hour_start, tz="America/New_York").timestamp() * 1000 
     end_ms = pendulum.datetime(year, month, day, hour_end, 5, tz="America/New_York").timestamp() * 1000 
 
-    print(f"\nCalculatig energy used on {year}/{month}/{day}, from {hour_start}:00 to {hour_end}:00")
+    if PRINT: print(f"\nCalculatig energy used on {year}/{month}/{day}, from {hour_start}:00 to {hour_end}:00")
 
     channels = {}
     for message in [x for x in selected_messages 
@@ -204,6 +206,12 @@ def energy_used(house_alias, year, month, day, hour=None, onpeak_period=None):
         all_channels[key]['values'] = list(sorted_values)
         all_channels[key]['times'] = list(sorted_times)
 
+    zones_gw_temps = []
+    for channel_name in all_channels.keys():
+        if 'gw-temp' in channel_name:
+            all_channels[channel_name]['values'] = [x/1000 for x in all_channels[channel_name]['values']]
+            zones_gw_temps.append(channel_name)
+
     zones = {}
     for channel_name in all_channels.keys():
         if 'zone' in channel_name and 'gw-temp' not in channel_name:
@@ -254,15 +262,17 @@ def energy_used(house_alias, year, month, day, hour=None, onpeak_period=None):
             closest_index = differences.index(min(differences))
             set_end[zone] = chn['values'][closest_index]
 
-    threshold = 2
+    threshold = 1.5
     for zone in zones:
         if zone not in set_start or zone not in set_end or zone not in temp_start or zone not in temp_end:
             print("ERROR")
         else:
             if ((np.abs(set_start[zone]-temp_start[zone])>threshold) or np.abs(set_end[zone]-temp_end[zone])>threshold):
-                print("Setpoint is not the same as temperature either at start or end of hour")
-                print(f"Set: {set_start[zone]}, Temp: {temp_start[zone]}")
-                return np.nan
+                if not (house_alias=='beech' and 'zone2' in zone):
+                    if PRINT: 
+                        print("Setpoint is not the same as temperature either at start or end of hour")
+                        print(f"Set: {set_start[zone]}, Temp: {temp_start[zone]}")
+                    return np.nan
 
     # --------------------------------
     # Buffer energy use
@@ -289,12 +299,14 @@ def energy_used(house_alias, year, month, day, hour=None, onpeak_period=None):
         last_times_buffer.append(channels[buffer_key]['times'][closest_index])
     if last_times_buffer and first_times_buffer:
         if last_times_buffer[-1] - first_times_buffer[-1] < 50*60*1000:
-            print("Not enough time between first and last value:")
-            print(f"-First: {pendulum.from_timestamp(first_times_buffer[-1]/1000, tz='America/New_York')}")
-            print(f"-Last: {pendulum.from_timestamp(last_times_buffer[-1]/1000, tz='America/New_York')}")
+            if PRINT: 
+                print("Not enough time between first and last value:")
+                print(f"-First: {pendulum.from_timestamp(first_times_buffer[-1]/1000, tz='America/New_York')}")
+                print(f"-Last: {pendulum.from_timestamp(last_times_buffer[-1]/1000, tz='America/New_York')}")
             return np.nan
     if len(first_values_buffer) != 4 or len(last_values_buffer) != 4:
-        print("Some buffer temperatures are missing, try another day/period")
+        if PRINT: 
+            print("Some buffer temperatures are missing, try another day/period")
         return np.nan
     else:
         first_values_buffer = [x/1000 for x in first_values_buffer]
@@ -332,12 +344,14 @@ def energy_used(house_alias, year, month, day, hour=None, onpeak_period=None):
 
     if last_times_store and first_times_store:
         if last_times_store[-1] - first_times_store[-1] < 30*60*1000:
-            print("Not enough time between first and last value (store):")
-            print(f"-First: {pendulum.from_timestamp(first_times_store[-1]/1000, tz='America/New_York')}")
-            print(f"-Last: {pendulum.from_timestamp(last_times_store[-1]/1000, tz='America/New_York')}")
+            if PRINT: 
+                print("Not enough time between first and last value (store):")
+                print(f"-First: {pendulum.from_timestamp(first_times_store[-1]/1000, tz='America/New_York')}")
+                print(f"-Last: {pendulum.from_timestamp(last_times_store[-1]/1000, tz='America/New_York')}")
             return np.nan
     if len(first_values_store) != 12 or len(last_values_store) != 12:
-        print("Some storage temperatures are missing, try another day/period")
+        if PRINT: 
+            print("Some storage temperatures are missing, try another day/period")
         return np.nan
     else:
         first_values_store = [x/1000 for x in first_values_store]
@@ -349,10 +363,60 @@ def energy_used(house_alias, year, month, day, hour=None, onpeak_period=None):
         # print(f"Store after: {[to_fahrenheit(x) for x in last_values_store]}")
         # print(f"Store used: {store_energy_used}")
 
-    total_energy_used = store_energy_used+buffer_energy_used
-    if hour is None:
-        print(f"Energy used: {round(total_energy_used,1)} kWh")
-    return round(total_energy_used,2)
+    # --------------------------------
+    # Energy stored in house
+    # --------------------------------
+
+    temp_start, temp_end = {}, {}
+    energy_stored_in_house = 0
+
+    for zone in zones_gw_temps:
+        if PRINT: print(f"\n{zone}")
+        chn = all_channels[zone]
+    
+        temperatures = [
+            value for time, value 
+            in zip(chn['times'], chn['values']) 
+            if time < end_ms
+            and time > start_ms - 15*60*1000
+            ]
+        temperatures_no_tail = [
+            value for time, value 
+            in zip(chn['times'], chn['values']) 
+            if time < end_ms
+            and time > start_ms
+            ]
+        tail_size = len(temperatures) - len(temperatures_no_tail)
+        
+        alpha = 0.5
+        smoothed_temperatures = [temperatures[0]]*len(temperatures)
+        for t in range(len(temperatures)-1):
+            smoothed_temperatures[t+1] = (1-alpha)*smoothed_temperatures[t] + alpha*temperatures[t+1]
+        smoothed_temperatures = smoothed_temperatures[tail_size:]
+        temperatures = temperatures[tail_size:]
+
+        temp_start[zone] = round(to_fahrenheit(smoothed_temperatures[0]),2)
+        temp_end[zone] = round(to_fahrenheit(smoothed_temperatures[-1]),2)
+
+        if PRINT: 
+            print(f"Temp start: {temp_start[zone]}")
+            print(f"Temp end: {temp_end[zone]}")
+
+        if 'beech' in house_alias:
+            if 'zone1' in zone:
+                energy_stored_in_house += round(thermal_mass * (temp_end[zone] - temp_start[zone]),2)
+        else:
+            energy_stored_in_house += round(thermal_mass/len(zones_gw_temps) * (temp_end[zone] - temp_start[zone]),2)
+
+        if PRINT: print(f"Energy stored in house: {energy_stored_in_house} kWh")
+
+    energy_into_house = store_energy_used + buffer_energy_used
+    if PRINT: print(f"Energy put into the house: {round(energy_into_house,1)} kWh")
+
+    energy_out_house = energy_into_house - energy_stored_in_house
+    if PRINT: print(f"Energy put out the house: {round(energy_out_house,1)} kWh")
+
+    return round(energy_out_house,2)
     
     # # --------------------------------
     # # PREDICTED energy use
