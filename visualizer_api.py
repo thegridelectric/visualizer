@@ -524,7 +524,7 @@ def get_requested_messages(request: MessagesRequest, running_locally:bool=False)
     
     for message in sorted_glitches:
         sources.append(message.payload['FromGNodeAlias'])
-        pb_types.append(message.payload['Type'])
+        pb_types.append(str(message.payload['Type']).lower())
         summaries.append(message.payload['Summary'])
         details.append(message.payload['Details'].replace('<','').replace('>','').replace('\n','<br>'))
         times_created.append(str(pendulum.from_timestamp(message.payload['CreatedMs']/1000, tz='America/New_York').replace(microsecond=0)))
