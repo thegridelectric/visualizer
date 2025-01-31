@@ -45,7 +45,6 @@ def valid_password(house_alias, password):
     if password == admin_user_password:
         return True
     house_owner_password = getattr(settings, f"{house_alias}_owner_password").get_secret_value()
-    print(house_owner_password)
     if password == house_owner_password:
         return True
     return False
