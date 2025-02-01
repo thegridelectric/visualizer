@@ -115,7 +115,7 @@ def get_weather_data(latitude, longitude, start_time, end_time):
     return weather_data
 
 
-def energy_used(house_alias, year, month, day, hour=None, onpeak_period=None, thermal_mass=3):
+def energy_used(house_alias, year, month, day, hour=None, onpeak_period=None, above_setpoint=False, thermal_mass=0):
 
     selected_messages = messages_loaded.copy()
 
@@ -262,17 +262,17 @@ def energy_used(house_alias, year, month, day, hour=None, onpeak_period=None, th
             closest_index = differences.index(min(differences))
             set_end[zone] = chn['values'][closest_index]
 
-    threshold = 1.5
-    for zone in zones:
-        if zone not in set_start or zone not in set_end or zone not in temp_start or zone not in temp_end:
-            print("ERROR")
-        else:
-            if ((np.abs(set_start[zone]-temp_start[zone])>threshold) or np.abs(set_end[zone]-temp_end[zone])>threshold):
-                if not (house_alias=='beech' and 'zone2' in zone):
-                    if PRINT: 
-                        print("Setpoint is not the same as temperature either at start or end of hour")
-                        print(f"Set: {set_start[zone]}, Temp: {temp_start[zone]}")
-                    return np.nan
+    # threshold = 1.5
+    # for zone in zones:
+    #     if zone not in set_start or zone not in set_end or zone not in temp_start or zone not in temp_end:
+    #         print("ERROR")
+    #     else:
+    #         if ((np.abs(set_start[zone]-temp_start[zone])>threshold) or np.abs(set_end[zone]-temp_end[zone])>threshold):
+    #             if not (house_alias=='beech' and 'zone2' in zone):
+    #                 if PRINT: 
+    #                     print("Setpoint is not the same as temperature either at start or end of hour")
+    #                     print(f"Set: {set_start[zone]}, Temp: {temp_start[zone]}")
+    #                 return np.nan
 
     # --------------------------------
     # Buffer energy use
@@ -405,6 +405,8 @@ def energy_used(house_alias, year, month, day, hour=None, onpeak_period=None, th
         if 'beech' in house_alias:
             if 'zone1' in zone:
                 energy_stored_in_house += round(thermal_mass * (temp_end[zone] - temp_start[zone]),2)
+                if above_setpoint:
+                    return round(temp_start[zone] - temp_end[zone],2)
         else:
             energy_stored_in_house += round(thermal_mass/len(zones_gw_temps) * (temp_end[zone] - temp_start[zone]),2)
 
