@@ -534,7 +534,7 @@ class DGraph():
         expected_price_usd_mwh = self.params.elec_price_forecast[0] * 10
         for p in sorted(list(range(min(prices), max(prices)+1)) + [expected_price_usd_mwh*1000]):
             ps.append(p/1000)
-            if p >= prices[index_p+1]:
+            if index_p+1 < len(prices) and p >= prices[index_p+1]:
                 index_p += 1
             if p == expected_price_usd_mwh*1000:
                 interesection = (quantities[index_p], expected_price_usd_mwh)
