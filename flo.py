@@ -57,9 +57,10 @@ class DParams():
         i = 0
         while available_buffer > 0:
             print(f"Hour {i}: load {round(self.load_forecast[i],2)}, available {available_buffer}")
+            load_backup = self.load_forecast[i]
             self.load_forecast[i] = self.load_forecast[i] - min(available_buffer, self.load_forecast[i])
             print(f"Load becomes {round(self.load_forecast[i],2)}")
-            available_buffer = available_buffer - min(available_buffer, self.load_forecast[i])
+            available_buffer = available_buffer - min(available_buffer, load_backup)
             print(f"Available becomes {available_buffer}\n")
             i += 1
         print(f"Hour {i}: load {self.load_forecast[i]}, available {available_buffer}")
