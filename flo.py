@@ -523,6 +523,8 @@ class DGraph():
 
         # Add the PQ pairs to a seperate sheet and plot the curve
         pq_pairs = self.generate_bid()
+        print(pq_pairs)
+        print(len(pq_pairs))
         prices = [x.PriceTimes1000 for x in pq_pairs]
         quantities = [x.QuantityTimes1000/1000 for x in pq_pairs]
         pqpairs_df = pd.DataFrame({'price':[x/1000 for x in prices], 'quantity':quantities})
@@ -532,6 +534,7 @@ class DGraph():
         expected_price_usd_mwh = self.params.elec_price_forecast[0] * 10
         for p in sorted(list(range(min(prices), max(prices)+1)) + [expected_price_usd_mwh*1000]):
             ps.append(p/1000)
+            print(index_p)
             if p >= prices[index_p+1]:
                 index_p += 1
             if p == expected_price_usd_mwh*1000:
