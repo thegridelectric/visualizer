@@ -154,12 +154,13 @@ modes_colors_hex = {
     'HpOnStoreOff': '#636EFA',
     'HpOnStoreCharge': '#feca52',
     'Initializing': '#a3a3a3',
+    'StratBoss': '#ee93fa',
     'WaitingForTemperaturesOnPeak': '#a3a3a3',
     'WaitingForTemperaturesOffPeak': '#4f4f4f',
     'Dormant': '#4f4f4f'
 }
 modes_order = [
-    'HpOffStoreDischarge', 'HpOffStoreOff', 'HpOnStoreOff', 'HpOnStoreCharge', 'Initializing', 'Dormant']
+    'HpOffStoreDischarge', 'HpOffStoreOff', 'HpOnStoreOff', 'HpOnStoreCharge', 'StratBoss', 'Initializing', 'Dormant']
 
 top_modes_colors_hex = {
     'HomeAlone': '#EF553B',
@@ -389,6 +390,10 @@ def get_data(request: Union[DataRequest, CsvRequest, DijkstraRequest]):
         final_states = list(set(final_states))
         for time, state in zip(formatted_times, relays['auto.h.n']['values']):
             if state in final_states:
+                if state not in modes:
+                    modes[state] = {}
+                    modes[state]['times'] = []
+                    modes[state]['values'] = []
                 modes['all']['times'].append(time)
                 modes['all']['values'].append(idx)
                 modes[state]['times'].append(time)
@@ -750,10 +755,9 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
             
             error_msg, channels, zones, modes, top_modes, aa_modes, weather, min_time_ms_dt, max_time_ms_dt = await asyncio.to_thread(get_data, request)
             print(f"Time to fetch data: {round(time.time() - request_start,2)} sec")
-            if request.selected_channels == ['bids']:
 
+            if request.selected_channels == ['bids']:
                 zip_bids = get_bids(request.house_alias, request.start_ms, request.end_ms)
-                print("Made it here!")
                 return zip_bids
     
             if error_msg != '':
@@ -1783,7 +1787,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                         showgrid=False
                         ),
                     yaxis=dict(
-                        range = [-0.6, 7-0.8],
+                        range = [-0.6, 8-0.8],
                         mirror=True,
                         ticks='outside',
                         showline=True,
