@@ -486,13 +486,15 @@ class DGraph():
         dijkstra_nextnodes_df = pd.DataFrame(dijkstra_nextnodes)
         
         # Second dataframe: the forecasts
+        start_time = datetime.fromtimestamp(self.params.start_time, tz=pytz.timezone("America/New_York"))
         forecast_df = pd.DataFrame({'Forecast':['0'], 'Unit':['0'], **{h: [0.0] for h in range(self.params.horizon)}})
-        forecast_df.loc[0] = ['Price - total'] + ['cts/kWh'] + self.params.elec_price_forecast
-        forecast_df.loc[1] = ['Price - distribution'] + ['cts/kWh'] + self.params.dist_forecast
-        forecast_df.loc[2] = ['Price - LMP'] + ['cts/kWh'] + self.params.lmp_forecast
-        forecast_df.loc[3] = ['Heating load'] + ['kW'] + [round(x,2) for x in self.params.load_forecast]
-        forecast_df.loc[4] = ['OAT'] + ['F'] + [round(x,2) for x in self.params.oat_forecast]
-        forecast_df.loc[5] = ['Required SWT'] + ['F'] + [round(x) for x in self.params.rswt_forecast]
+        forecast_df.loc[0] = ['Hour'] + [start_time.strftime("%d/%m/%Y")] + [(start_time + timedelta(hours=x)).hour for x in range(self.params.horizon)]
+        forecast_df.loc[1] = ['Price - total'] + ['cts/kWh'] + self.params.elec_price_forecast
+        forecast_df.loc[2] = ['Price - distribution'] + ['cts/kWh'] + self.params.dist_forecast
+        forecast_df.loc[3] = ['Price - LMP'] + ['cts/kWh'] + self.params.lmp_forecast
+        forecast_df.loc[4] = ['Heating load'] + ['kW'] + [round(x,2) for x in self.params.load_forecast]
+        forecast_df.loc[5] = ['OAT'] + ['F'] + [round(x,2) for x in self.params.oat_forecast]
+        forecast_df.loc[6] = ['Required SWT'] + ['F'] + [round(x) for x in self.params.rswt_forecast]
         
         # Third dataframe: the shortest path
         shortestpath_df = pd.DataFrame({'Shortest path':['0'], 'Unit':['0'], **{h: [0.0] for h in range(self.params.horizon+1)}})
@@ -603,8 +605,8 @@ class DGraph():
             nextnode_sheet.column_dimensions['C'].width = 15
             parameters_sheet.column_dimensions['A'].width = 40
             parameters_sheet.column_dimensions['B'].width = 70
-            pathcost_sheet.freeze_panes = 'D14'
-            nextnode_sheet.freeze_panes = 'D14'
+            pathcost_sheet.freeze_panes = 'D16'
+            nextnode_sheet.freeze_panes = 'D16'
 
             # Highlight shortest path
             highlight_fill = PatternFill(start_color='72ba93', end_color='72ba93', fill_type='solid')
