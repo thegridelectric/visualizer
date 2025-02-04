@@ -15,7 +15,12 @@
         let house_alias, password;
         let darkmode_tf = false;
 
-        async function downloadExcel() {
+        async function downloadExcel(event) {
+
+            event.preventDefault();
+
+            disable_dijkstra_buttons()
+            showLoader()
 
             const enddate = document.getElementById('endDatePicker').value;
             const endtime = document.getElementById('endTimePicker').value;
@@ -62,6 +67,9 @@
             } catch (error) {
                 console.error('Error downloading Excel file:', error);
                 alert('Error downloading the file.');
+            } finally {
+                enable_dijkstra_buttons()
+                hideLoader()
             }
         }
 
@@ -363,6 +371,19 @@
             csvLoadingText.style.display = 'inline';
         }
 
+        function enable_dijkstra_buttons() {
+            const dijkstraButton= document.getElementById('dijkstra_button');
+            const dijkstraLoadingText = document.getElementById('dijkstraLoadingText');
+            dijkstraButton.style.display = 'inline';
+            dijkstraLoadingText.style.display = 'none';
+        }
+
+        function disable_dijkstra_buttons() {
+            const dijkstraButton= document.getElementById('dijkstra_button');
+            const dijkstraLoadingText = document.getElementById('dijkstraLoadingText');
+            dijkstraButton.style.display = 'none';
+            dijkstraLoadingText.style.display = 'none'; // 'inline';
+        }
 
         function LogInFunction(event) {
             event.preventDefault();
@@ -574,7 +595,7 @@
             margin-right: 12px;
         }
 
-        #submit_button, #close-button, #csv_button, #login-button, #nowButton, #checkboxButton{
+        #submit_button, #close-button, #csv_button, #login-button, #nowButton, #checkboxButton, #dijkstra_button {
             cursor: pointer;
             font-size:15px;
             font-family: 'Montserrat';
@@ -864,7 +885,7 @@
             outline: none;
         }
 
-        #loadingText, #csvLoadingText {
+        #loadingText, #csvLoadingText, #dijkstraLoadingText {
             /* cursor:progress; */
             font-size:15px;
             font-family: 'Montserrat';
@@ -1028,6 +1049,12 @@
                     <div style="position: absolute; height:35px; width: 100%;"></div>
                     <br>
                 </div>
+                <div style="margin-left: 160px; position:absolute; display:inline">
+                    <button id="dijkstra_button" style='position:relative;' onclick='downloadExcel(event)'>Dijkstra</button>
+                    <button id="dijkstraLoadingText" style='display:none;'>Dijkstra</button><br>
+                    <div style="position: absolute; height:35px; width: 100%;"></div>
+                    <br>
+                </div>
                 <div id="loader" style="margin-left: 172px; position:absolute; display:none"></div>
                 <!-- <span id="loadingText" style="font-weight: bold; color: rgb(55, 55, 55); display: none; position: absolute; margin-top:11px;">Loading data...</span> -->
             </form>
@@ -1046,7 +1073,6 @@
         <div id="PlotPng"></div>
         </div>
 
-    <button id="dijkstra_download" onclick="downloadExcel()">Dijkstra</button>
     <!-- content -->
     </div> 
     </div>
