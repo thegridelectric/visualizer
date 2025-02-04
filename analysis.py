@@ -124,7 +124,6 @@ def get_bids(house_alias, start_ms, end_ms):
                     plt.yticks(prices)
                 else:
                     plt.yticks(prices + [expected_price_usd_mwh])
-                plt.yticks(prices+[expected_price_usd_mwh])
                 plt.ylabel("Price [USD/MWh]")
                 plt.xlabel("Quantity [kWh]")
                 plt.title(datetime.fromtimestamp(g.params.start_time, tz=pytz.timezone("America/New_York")).strftime('%Y-%m-%d %H:%M'))
