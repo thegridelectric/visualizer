@@ -21,7 +21,7 @@ from fake_models import MessageSql
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import plotly.graph_objects as go
-from analysis import download_excel
+from analysis import download_excel, get_bids
 import os
 from fastapi.responses import FileResponse
 from typing import Union
@@ -84,9 +84,9 @@ class DataRequest(BaseModel):
     start_ms: int
     end_ms: int
     selected_channels: List[str]
-    ip_address: str
-    user_agent: str
-    timezone: str
+    ip_address: Optional[str] = ''
+    user_agent: Optional[str] = ''
+    timezone: Optional[str] = ''
     continue_option: Optional[bool] = False
     darkmode: Optional[bool] = False
 
@@ -234,7 +234,16 @@ def get_data(request: Union[DataRequest, CsvRequest, DijkstraRequest]):
                 "message": "That's too many days of data to download.", 
                 "reload": False,
                 }, 0, 0, 0, 0, 0, 0, 0, 0
-    
+        
+    if request.selected_channels == ['bids']:
+        print("Looking for bids only")
+        return {
+                "success": True,
+                "message": "Getting bids, not plots", 
+                "reload": False,
+                }, 0, 0, 0, 0, 0, 0, 0, 0
+        # call a new function that gets the bids
+        
     if MESSAGE_SQL:
 
         session = Session()
@@ -741,6 +750,11 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
             
             error_msg, channels, zones, modes, top_modes, aa_modes, weather, min_time_ms_dt, max_time_ms_dt = await asyncio.to_thread(get_data, request)
             print(f"Time to fetch data: {round(time.time() - request_start,2)} sec")
+            if request.selected_channels == ['bids']:
+
+                zip_bids = get_bids(request.house_alias, request.start_ms, request.end_ms)
+                print("Made it here!")
+                return zip_bids
     
             if error_msg != '':
                 return error_msg

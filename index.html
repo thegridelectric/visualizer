@@ -165,12 +165,6 @@
             disable_plot_buttons()
             showLoader()
 
-            const ipResponse = await fetch('https://api.ipify.org?format=json');
-            const ipData = await ipResponse.json();
-            const ipAddress = ipData.ip;
-            const userAgent = navigator.userAgent;
-            const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-
             try {
                 // const response = await fetch(`https://visualizer.electricity.works/plots`, {
                 const response = await fetch(`http://localhost:8000/plots`, {
@@ -184,9 +178,6 @@
                         start_ms: start_ms, 
                         end_ms: end_ms,
                         selected_channels: channels,
-                        ip_address: ipAddress,
-                        user_agent: userAgent,
-                        timezone: timezone,
                         continue_option: continueOption,
                         darkmode: darkmode_tf,
                     })
@@ -291,6 +282,78 @@
             }
         }
 
+        async function fetchBids(house_alias, password, start_ms, end_ms, continueOption) {
+
+            disable_bid_buttons()
+            showLoader()
+
+            try {
+                // const response = await fetch(`https://visualizer.electricity.works/plots`, {
+                const response = await fetch(`http://localhost:8000/plots`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        house_alias: `${house_alias}`,
+                        password: password, 
+                        start_ms: start_ms, 
+                        end_ms: end_ms,
+                        selected_channels: ["bids"],
+                        continue_option: continueOption,
+                        darkmode: darkmode_tf,
+                    })
+                });
+
+                const contentType = response.headers.get("Content-Type");
+
+                if (contentType && contentType.includes("application/json")) {
+                    const data = await response.json();
+                    if ('success' in data && data.success === false) {
+                        if (data.continue_option) {
+                            const userChoice = confirm(data.message);
+                            console.log(userChoice ? "User chose to Continue" : "User chose to Abort");
+                            if (userChoice) {
+                                await fetchBids(house_alias, password, start_ms, end_ms, true); 
+                            }
+                        } else { 
+                            alert(data.message);
+                            if (data.reload) {
+                                location.reload();
+                            }
+                        }
+                    }
+                } else {
+                    const blob = await response.blob();
+                    const zip = await JSZip.loadAsync(blob);
+                    const plotsDiv = document.getElementById('Bids');
+                    plotsDiv.innerHTML = '';
+
+                    // Convert zip.files into an array to preserve the order
+                    const fileNames = Object.keys(zip.files);
+
+                    for (const filename of fileNames) {
+                        const fileData = await zip.files[filename].async('blob');
+                        const imgUrl = URL.createObjectURL(fileData);
+                        
+                        const imageDiv = document.createElement('div');
+                        const img = document.createElement('img');
+                        img.src = imgUrl;
+                        img.alt = 'Plot Image';
+                        imageDiv.appendChild(img);
+                        imageDiv.classList.add('image-container');
+                        plotsDiv.appendChild(imageDiv);
+                    }
+                }
+            } catch (error) {
+                console.error('Error fetching bids:', error);
+                alert(`Error fetching bids for house '${house_alias}'.`);
+            } finally {
+                enable_bid_buttons();
+                hideLoader();
+            }
+            }
+
         function getDefaultDate(is_start) {
             const nyDate = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
             if (is_start) { 
@@ -324,7 +387,7 @@
             nyDate.setMinutes(nyDate.getMinutes() + 1);
             document.getElementById('endDatePicker').value = nyDate.toISOString().split('T')[0];
             document.getElementById('endTimePicker').value = nyDate.toTimeString().split(' ')[0].substring(0, 5);
-            getData(event)
+            getData(event, false)
         }
 
         function handleKey(event) {
@@ -338,7 +401,6 @@
         }
 
         function enable_plot_buttons() {
-            console.log('Enabled')
             const submitButton = document.querySelector('#form2 input[type="submit"]');
             const nowButton = document.getElementById('nowButton');
             const loadingText = document.getElementById('loadingText');
@@ -348,7 +410,6 @@
         }
 
         function disable_plot_buttons() {
-            console.log('Disabled')
             const submitButton = document.querySelector('#form2 input[type="submit"]');
             const nowButton = document.getElementById('nowButton');
             const loadingText = document.getElementById('loadingText');
@@ -382,7 +443,21 @@
             const dijkstraButton= document.getElementById('dijkstra_button');
             const dijkstraLoadingText = document.getElementById('dijkstraLoadingText');
             dijkstraButton.style.display = 'none';
-            dijkstraLoadingText.style.display = 'none'; // 'inline';
+            dijkstraLoadingText.style.display = 'inline';
+        }
+
+        function enable_bid_buttons() {
+            const dijkstraButton= document.getElementById('bid_button');
+            const dijkstraLoadingText = document.getElementById('bidLoadingText');
+            dijkstraButton.style.display = 'inline';
+            dijkstraLoadingText.style.display = 'none';
+        }
+
+        function disable_bid_buttons() {
+            const dijkstraButton= document.getElementById('bid_button');
+            const dijkstraLoadingText = document.getElementById('bidLoadingText');
+            dijkstraButton.style.display = 'none';
+            dijkstraLoadingText.style.display = 'inline';
         }
 
         function LogInFunction(event) {
@@ -403,11 +478,11 @@
             document.getElementById('endTimePicker').value = getDefaultTime();
             document.getElementById("content").style.display = "block";
 
-            getData(event);
+            getData(event, false);
         }
 
 
-        function getData(event) {
+        function getData(event, get_bids) {
             event.preventDefault();
 
             const selectedChannels = Array.from(document.querySelectorAll('input[name="channels"]:checked'))
@@ -423,7 +498,12 @@
             const endtime_luxon = luxon.DateTime.fromFormat(`${enddate} ${endtime}`, 'yyyy-MM-dd HH:mm', { zone: 'America/New_York' });
             const endUnixMilliseconds = endtime_luxon.toUTC().toMillis();
 
-            fetchPlots(house_alias, password, startUnixMilliseconds, endUnixMilliseconds, selectedChannels, false)
+            if (get_bids === true) {
+                console.log('Getting bids')
+                fetchBids(house_alias, password, startUnixMilliseconds, endUnixMilliseconds, false)
+            } else {
+                fetchPlots(house_alias, password, startUnixMilliseconds, endUnixMilliseconds, selectedChannels, false)
+            }
         }
 
         function toggleCheckbox() {
@@ -544,6 +624,25 @@
             padding-bottom:15px;
         }
 
+        #Bids {
+            display: flex;
+            flex-direction: column;  /* Align items vertically */
+            gap: 10px;
+            margin-left: 5%;
+            margin-right: 5%;
+            display: flex;
+            justify-content: center;
+            padding-bottom:15px;
+            overflow: scroll;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .image-container img {
+            width: 100%;
+            max-width: 500px;
+        }
+        
         #PlotPng img {
             width: 100%;
             max-width: 1100px;
@@ -595,7 +694,7 @@
             margin-right: 12px;
         }
 
-        #submit_button, #close-button, #csv_button, #login-button, #nowButton, #checkboxButton, #dijkstra_button {
+        #submit_button, #close-button, #csv_button, #login-button, #nowButton, #checkboxButton, #dijkstra_button, #bid_button {
             cursor: pointer;
             font-size:15px;
             font-family: 'Montserrat';
@@ -658,6 +757,7 @@
             margin-bottom: 50px;
             margin-top:30px;
             padding: 30px;
+            padding-bottom: 70px;
             /* padding-bottom: 75px; */
             background-color: var(--box-bgcolor);
             border-radius: 10px;
@@ -885,7 +985,7 @@
             outline: none;
         }
 
-        #loadingText, #csvLoadingText, #dijkstraLoadingText {
+        #loadingText, #csvLoadingText, #dijkstraLoadingText, #bidLoadingText {
             /* cursor:progress; */
             font-size:15px;
             font-family: 'Montserrat';
@@ -1042,20 +1142,28 @@
                 <button type="button" id="nowButton" onclick=setNow()>Now</button><br><br>
                 <button type="button" id="checkboxButton" onclick=toggleCheckbox()>Options</button>
                 <input id='loadingText' type="button" style='position: absolute' value="Plot">
-                <input id='submit_button' type="submit" style='position: absolute' value="Plot" onclick="getData(event)">
+                <input id='submit_button' type="submit" style='position: absolute' value="Plot" onclick="getData(event, false)">
+                <div id="loader" style="margin-left: 172px; position:absolute; display:none"></div>
                 <div style="margin-left: 80px; position:absolute; display:inline">
                     <button id="csv_button" style='position:relative;' onclick='exportCSV(event, false)'>CSV</button>
                     <button id="csvLoadingText" style='display:none;'>CSV</button><br>
                     <div style="position: absolute; height:35px; width: 100%;"></div>
                     <br>
                 </div>
-                <div style="margin-left: 160px; position:absolute; display:inline">
-                    <button id="dijkstra_button" style='position:relative;' onclick='downloadExcel(event)'>Dijkstra</button>
-                    <button id="dijkstraLoadingText" style='display:none;'>Dijkstra</button><br>
+                <br>
+                <br>
+                <div style="margin-left: 0px; position:absolute; display:inline">
+                    <button id="dijkstra_button" style='position:relative;' onclick='downloadExcel(event)'>FLO</button>
+                    <button id="dijkstraLoadingText" style='display:none;'>FLO</button><br>
                     <div style="position: absolute; height:35px; width: 100%;"></div>
                     <br>
                 </div>
-                <div id="loader" style="margin-left: 172px; position:absolute; display:none"></div>
+                <div style="margin-left: 80px; position:absolute; display:inline">
+                    <button id="bid_button" style='position:relative;' onclick="getData(event, true)">Bids</button>
+                    <button id="bidLoadingText" style='display:none;'>Bids</button><br>
+                    <div style="position: absolute; height:35px; width: 100%;"></div>
+                    <br>
+                </div>
                 <!-- <span id="loadingText" style="font-weight: bold; color: rgb(55, 55, 55); display: none; position: absolute; margin-top:11px;">Loading data...</span> -->
             </form>
         </div>
@@ -1070,6 +1178,7 @@
         <div id="Plot8"></div>
         <div id="Plot9"></div>
         <div id="Plot10"></div>
+        <div id="Bids"></div>
         <div id="PlotPng"></div>
         </div>
 
