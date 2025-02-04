@@ -537,7 +537,7 @@ def get_requested_messages(request: MessagesRequest, running_locally:bool=False)
 
     for message in sorted_problem_types:
         source = message.payload['Src']
-        if ".scada" in source:
+        if ".scada" in source and source.split('.')[-1] in ['scada', 's2']:
             source = source.split('.scada')[0].split('.')[-1]
         sources.append(source)
         pb_types.append(message.payload['ProblemType'])
@@ -546,7 +546,10 @@ def get_requested_messages(request: MessagesRequest, running_locally:bool=False)
         times_created.append(str(pendulum.from_timestamp(message.payload['TimeCreatedMs']/1000, tz='America/New_York').replace(microsecond=0)))
     
     for message in sorted_glitches:
-        sources.append(message.payload['FromGNodeAlias'])
+        source = message.payload['FromGNodeAlias']
+        if ".scada" in source and source.split('.')[-1] in ['scada', 's2']:
+            source = source.split('.scada')[0].split('.')[-1]
+        sources.append(source)
         pb_types.append(str(message.payload['Type']).lower())
         summaries.append(message.payload['Summary'])
         details.append(message.payload['Details'].replace('<','').replace('>','').replace('\n','<br>'))
