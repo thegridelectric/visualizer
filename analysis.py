@@ -120,7 +120,7 @@ def get_bids(house_alias, start_ms, end_ms):
                 plt.scatter(interesection[0], interesection[1])
                 plt.text(interesection[0]+0.25, interesection[1]+15, f'({round(interesection[0],3)}, {round(interesection[1],1)})', fontsize=10, color='tab:orange')
                 plt.xticks(quantities)
-                if min([x-expected_price_usd_mwh for x in prices]) < 5:
+                if min([abs(x-expected_price_usd_mwh) for x in prices]) < 5:
                     plt.yticks(prices)
                 else:
                     plt.yticks(prices + [expected_price_usd_mwh])
