@@ -28,7 +28,7 @@ from typing import Union
 import plotly.colors as pc
 import json
 
-RUNNING_LOCALLY = True
+RUNNING_LOCALLY = False
 
 PYPLOT_PLOT = True
 MATPLOTLIB_PLOT = False
