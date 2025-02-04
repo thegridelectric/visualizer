@@ -144,7 +144,7 @@ class DParams():
         while round(x + self.delta_T_inverse(x),2) <= 175:
             x = round(x + self.delta_T_inverse(x),2)
             available_temps.append(int(x))
-        while x+10 <= 185:
+        while x+10 <= 175:
             x += 10
             available_temps.append(int(x))
         x = self.initial_top_temp
@@ -168,6 +168,7 @@ class DParams():
         for i in range(1,len(available_temps)):
             temp_drop_f = available_temps[i] - available_temps[i-1]
             energy_between_nodes[available_temps[i]] = round(m_layer * 4.187/3600 * temp_drop_f*5/9,3)
+        print(available_temps)
         return available_temps, energy_between_nodes
 
     def first_top_temp_above_rswt(self, rswt):
