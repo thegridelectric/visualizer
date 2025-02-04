@@ -136,12 +136,15 @@ class DParams():
         return [float(x) for x in np.linalg.solve(A, y_hpower)] 
     
     def get_available_top_temps(self) -> Tuple[Dict, Dict]:
+        self.max_thermocline = self.num_layers
+        if self.initial_top_temp > 175:
+            self.max_thermocline = self.initial_thermocline
         available_temps = [self.initial_top_temp]
         x = self.initial_top_temp
         while round(x + self.delta_T_inverse(x),2) <= 175:
             x = round(x + self.delta_T_inverse(x),2)
             available_temps.append(int(x))
-        while x+10 <= 185:
+        while x+10 <= 175:
             x += 10
             available_temps.append(int(x))
         x = self.initial_top_temp
@@ -152,13 +155,20 @@ class DParams():
             x += -10
             available_temps.append(int(x))
         available_temps = sorted(available_temps)
-        if max(available_temps) < 176:
-            available_temps = available_temps + [185]
+        if max(available_temps) < 165:
+            available_temps = available_temps + [175]
+        # if there is more than 20 F between top and bottom, add an intermediate
+        extra_temps = []
+        for i in range(len(available_temps)-1):
+            if available_temps[i+1] - available_temps[i] > 20:
+                extra_temps.append(int((available_temps[i+1] + available_temps[i])/2))
+        available_temps = sorted(available_temps + extra_temps)
         energy_between_nodes = {}
         m_layer = self.storage_volume*3.785 / self.num_layers
         for i in range(1,len(available_temps)):
             temp_drop_f = available_temps[i] - available_temps[i-1]
             energy_between_nodes[available_temps[i]] = round(m_layer * 4.187/3600 * temp_drop_f*5/9,3)
+        print(available_temps)
         return available_temps, energy_between_nodes
 
     def first_top_temp_above_rswt(self, rswt):
@@ -218,12 +228,25 @@ class DGraph():
         self.initial_node = DNode(0, self.params.initial_top_temp, self.params.initial_thermocline, self.params)
         for time_slice in range(self.params.horizon+1):
             self.nodes[time_slice] = [self.initial_node] if time_slice==0 else []
-            self.nodes[time_slice].extend(
-                DNode(time_slice, top_temp, thermocline, self.params)
-                for top_temp in self.params.available_top_temps[1:]
-                for thermocline in range(1,self.params.num_layers+1)
-                if (time_slice, top_temp, thermocline) != (0, self.params.initial_top_temp, self.params.initial_thermocline)
-            )
+            if self.params.max_thermocline < self.params.num_layers:
+                self.nodes[time_slice].extend(
+                    DNode(time_slice, top_temp, thermocline, self.params)
+                    for top_temp in self.params.available_top_temps[1:-1]
+                    for thermocline in range(1,self.params.num_layers+1)
+                    if (time_slice, top_temp, thermocline) != (0, self.params.initial_top_temp, self.params.initial_thermocline)
+                )
+                self.nodes[time_slice].extend(
+                    DNode(time_slice, self.params.available_top_temps[-1], thermocline, self.params)
+                    for thermocline in range(1,self.params.max_thermocline+1)
+                    if (time_slice, self.params.available_top_temps[-1], thermocline) != (0, self.params.initial_top_temp, self.params.initial_thermocline)
+                )
+            else:
+                self.nodes[time_slice].extend(
+                    DNode(time_slice, top_temp, thermocline, self.params)
+                    for top_temp in self.params.available_top_temps[1:]
+                    for thermocline in range(1,self.params.num_layers+1)
+                    if (time_slice, top_temp, thermocline) != (0, self.params.initial_top_temp, self.params.initial_thermocline)
+                )
 
     def create_edges(self):
         
@@ -486,13 +509,15 @@ class DGraph():
         dijkstra_nextnodes_df = pd.DataFrame(dijkstra_nextnodes)
         
         # Second dataframe: the forecasts
+        start_time = datetime.fromtimestamp(self.params.start_time, tz=pytz.timezone("America/New_York"))
         forecast_df = pd.DataFrame({'Forecast':['0'], 'Unit':['0'], **{h: [0.0] for h in range(self.params.horizon)}})
-        forecast_df.loc[0] = ['Price - total'] + ['cts/kWh'] + self.params.elec_price_forecast
-        forecast_df.loc[1] = ['Price - distribution'] + ['cts/kWh'] + self.params.dist_forecast
-        forecast_df.loc[2] = ['Price - LMP'] + ['cts/kWh'] + self.params.lmp_forecast
-        forecast_df.loc[3] = ['Heating load'] + ['kW'] + [round(x,2) for x in self.params.load_forecast]
-        forecast_df.loc[4] = ['OAT'] + ['F'] + [round(x,2) for x in self.params.oat_forecast]
-        forecast_df.loc[5] = ['Required SWT'] + ['F'] + [round(x) for x in self.params.rswt_forecast]
+        forecast_df.loc[0] = ['Hour'] + [start_time.strftime("%d/%m/%Y")] + [(start_time + timedelta(hours=x)).hour for x in range(self.params.horizon)]
+        forecast_df.loc[1] = ['Price - total'] + ['cts/kWh'] + self.params.elec_price_forecast
+        forecast_df.loc[2] = ['Price - distribution'] + ['cts/kWh'] + self.params.dist_forecast
+        forecast_df.loc[3] = ['Price - LMP'] + ['cts/kWh'] + self.params.lmp_forecast
+        forecast_df.loc[4] = ['Heating load'] + ['kW'] + [round(x,2) for x in self.params.load_forecast]
+        forecast_df.loc[5] = ['OAT'] + ['F'] + [round(x,2) for x in self.params.oat_forecast]
+        forecast_df.loc[6] = ['Required SWT'] + ['F'] + [round(x) for x in self.params.rswt_forecast]
         
         # Third dataframe: the shortest path
         shortestpath_df = pd.DataFrame({'Shortest path':['0'], 'Unit':['0'], **{h: [0.0] for h in range(self.params.horizon+1)}})
@@ -605,8 +630,8 @@ class DGraph():
             nextnode_sheet.column_dimensions['C'].width = 15
             parameters_sheet.column_dimensions['A'].width = 40
             parameters_sheet.column_dimensions['B'].width = 70
-            pathcost_sheet.freeze_panes = 'D14'
-            nextnode_sheet.freeze_panes = 'D14'
+            pathcost_sheet.freeze_panes = 'D16'
+            nextnode_sheet.freeze_panes = 'D16'
 
             # Highlight shortest path
             highlight_fill = PatternFill(start_color='72ba93', end_color='72ba93', fill_type='solid')
