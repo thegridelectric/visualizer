@@ -41,7 +41,19 @@
                     const link = document.createElement('a');
                     const url = window.URL.createObjectURL(blob);
                     link.href = url;
-                    link.download = 'dijkstra_result.xlsx';
+                    const endDateFile = new Date(endUnixMilliseconds);
+                    const newYorkDate = endDateFile.toLocaleString('en-US', { 
+                        timeZone: 'America/New_York', 
+                        hour12: false, 
+                        year: 'numeric', 
+                        month: 'short', 
+                        day: 'numeric', 
+                        hour: 'numeric', 
+                    })
+                    .replace(/,/g, '')
+                    .replace(/\s/g, '_')
+                    .toLowerCase();
+                    link.download = `flo_${house_alias}_${newYorkDate}.xlsx`;
                     link.click();
                     window.URL.revokeObjectURL(url);
                 } else {
@@ -1034,7 +1046,7 @@
         <div id="PlotPng"></div>
         </div>
 
-    <button id="dijkstra_download" onclick="downloadExcel()">Download latest Dijkstra</button>
+    <button id="dijkstra_download" onclick="downloadExcel()">Dijkstra</button>
     <!-- content -->
     </div> 
     </div>
