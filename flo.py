@@ -168,7 +168,6 @@ class DParams():
         for i in range(1,len(available_temps)):
             temp_drop_f = available_temps[i] - available_temps[i-1]
             energy_between_nodes[available_temps[i]] = round(m_layer * 4.187/3600 * temp_drop_f*5/9,3)
-        print(available_temps)
         return available_temps, energy_between_nodes
 
     def first_top_temp_above_rswt(self, rswt):
