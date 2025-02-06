@@ -174,12 +174,13 @@ aa_modes_colors_hex = {
     'HpOffStoreOff': '#00CC96',
     'HpOnStoreOff': '#636EFA',
     'HpOnStoreCharge': '#feca52',
+    'StratBoss': '#ee93fa',
     'WaitingNoElec': '#a3a3a3',
     'WaitingElec': '#4f4f4f',
     'Dormant': '#4f4f4f'
 }
 aa_modes_order = [
-        'HpOffStoreDischarge', 'HpOffStoreOff', 'HpOnStoreOff', 'HpOnStoreCharge', 'WaitingNoElec', 'WaitingElec', 'Dormant'
+        'HpOffStoreDischarge', 'HpOffStoreOff', 'HpOnStoreOff', 'HpOnStoreCharge', 'StratBoss', 'WaitingNoElec', 'WaitingElec', 'Dormant'
         ]
 
 # ------------------------------
