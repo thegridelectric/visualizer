@@ -24,6 +24,7 @@ class FloParamsHouse0(BaseModel):
     HpTurnOnMinutes: int = 10
     # Initial state
     InitialTopTempF: StrictInt
+    InitialBottomTempF: StrictInt = 0
     InitialThermocline: StrictInt
     HpIsOff: bool = False
     BufferAvailableKwh: float = 0
@@ -49,7 +50,7 @@ class FloParamsHouse0(BaseModel):
     PriceUnit: str
     ParamsGeneratedS: int
     TypeName: Literal["flo.params.house0"] = "flo.params.house0"
-    Version: Literal["000", "001"] = "001"
+    Version: Literal["000", "001", "002"] = "002"
 
     def to_dict(self):
         return vars(self)
