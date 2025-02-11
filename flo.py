@@ -180,7 +180,6 @@ class DParams():
         skip_next_i = False
         for i in range(len(available_temps)):
             if i<len(available_temps)-1 and available_temps[i][0] == available_temps[i+1][0]:
-                print(f"Combining {available_temps[i]} with {available_temps[i+1]}")
                 available_temps_no_duplicates.append((available_temps[i][0], available_temps[i][1]+available_temps[i+1][1]))
                 skip_next_i = True
             elif not skip_next_i:
@@ -189,6 +188,14 @@ class DParams():
                 skip_next_i = False
         available_temps = available_temps_no_duplicates.copy()
             
+        if max([x[0] for x in available_temps]) < 170:
+            available_temps.append((170, self.num_layers))
+
+        self.available_top_temps = [x[0] for x in available_temps]
+        if self.available_top_temps != sorted(self.available_top_temps):
+            for i in range(1, len(available_temps)):
+                available_temps[i] = (max(available_temps[i][0], available_temps[i-1][0]), available_temps[i][1])
+        
         self.available_top_temps = [x[0] for x in available_temps]
         if self.available_top_temps != sorted(self.available_top_temps):
             print("ERROR sorted is not the same")
@@ -625,7 +632,7 @@ class DGraph():
         # First dataframe: the Dijkstra graph
         dijkstra_pathcosts = {}
         dijkstra_pathcosts['Model'] = [repr(x) for x in self.nodes_by_energy]
-        dijkstra_pathcosts['Energy'] = [x.energy for x in self.nodes_by_energy]
+        dijkstra_pathcosts['Energy (relative)'] = [round(x.energy-self.bottom_node.energy,2) for x in self.nodes_by_energy]
         dijkstra_pathcosts['Index'] = list(range(1,len(self.nodes_by_energy)+1))
         dijkstra_nextnodes = dijkstra_pathcosts.copy()
         for h in range(self.params.horizon):

@@ -50,7 +50,7 @@ class FloParamsHouse0(BaseModel):
     PriceUnit: str
     ParamsGeneratedS: int
     TypeName: Literal["flo.params.house0"] = "flo.params.house0"
-    Version: Literal["000", "001", "002"] = "002"
+    Version: Literal["000", "001"] = "001"
 
     def to_dict(self):
         return vars(self)
