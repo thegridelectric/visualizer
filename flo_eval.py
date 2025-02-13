@@ -28,13 +28,16 @@ class FloEval():
         self.selected_messages = None
         self.get_flo_params()
 
+    def unix_ms_to_date(self, time_ms):
+        return pendulum.from_timestamp(time_ms/1000, tz=self.timezone_str)
+
     def get_flo_params(self):
         flo_params_messages: List[MessageSql] = self.session.query(MessageSql).filter(
             MessageSql.message_type_name == "flo.params.house0",
             MessageSql.from_alias.like(f'%{self.house_alias}%'),
             MessageSql.message_persisted_ms >= self.flo_start_ms - 0.5*3600*1000,
             MessageSql.message_persisted_ms <= self.flo_start_ms + 48*3600*1000,
-        ).order_by(desc(MessageSql.message_persisted_ms)).all()
+        ).order_by(asc(MessageSql.message_persisted_ms)).all()
 
         # Remove duplicates
         self.flo_params_messages: List[MessageSql] = []
@@ -43,7 +46,7 @@ class FloEval():
                 self.flo_params_messages.append(m)
 
         flo_params_msg = self.flo_params_messages[0]
-        print(f"Found FLO at {pendulum.from_timestamp(flo_params_msg.message_persisted_ms/1000, tz=self.timezone_str)}")
+        print(f"Found FLO at {self.unix_ms_to_date(flo_params_msg.message_persisted_ms)}")
         self.flo_params = FloParamsHouse0(**flo_params_msg.payload)
 
     def get_load_forecast(self):
@@ -57,13 +60,43 @@ class FloEval():
             alpha + beta*oat + gamma*ws if alpha + beta*oat + gamma*ws>0 else 0 for oat,ws in zip(oat_forecast, ws_forecast)
             ]
         # First forecast for each hour
-        oat_true = [x.payload['OatForecastF'][0] for x in self.flo_params_messages]
-        ws_true = [x.payload['WindSpeedForecastMph'][0] for x in self.flo_params_messages]
-        times = [pendulum.from_timestamp(x.payload['StartUnixS'],tz=self.timezone_str) for x in self.flo_params_messages]
+        weather_messages: List[MessageSql] = self.session.query(MessageSql).filter(
+            MessageSql.message_type_name == "weather.forecast",
+            MessageSql.from_alias.like(f'%{self.house_alias}%'),
+            MessageSql.message_persisted_ms >= self.flo_start_ms - 2*3600*1000,
+            MessageSql.message_persisted_ms <= self.flo_start_ms + 48*3600*1000,
+        ).order_by(asc(MessageSql.message_persisted_ms)).all()
+
+        true_weather = {
+            'time': [],
+            'oat': [],
+            'ws': []
+        }
+        for i in range(48):
+            desired_time = self.flo_start_ms/1000 + 3600*i
+            found_data = False
+            for w in weather_messages:
+                if w.payload['Time'][0] == desired_time:
+                    true_weather['time'].append(w.payload['Time'][0])
+                    true_weather['oat'].append(w.payload['OatF'][0])
+                    true_weather['ws'].append(w.payload['WindSpeedMph'][0])
+                    found_data = True
+                    break
+            if not found_data:
+                if true_weather['oat']:
+                    true_weather['time'].append(desired_time)
+                    true_weather['oat'].append(true_weather['oat'][-1])
+                    true_weather['ws'].append(true_weather['ws'][-1])
+                else:
+                    raise Exception("Could not find true weather forecasts")
+
+        self.oat_true = true_weather['oat']
+        self.ws_true = true_weather['ws']
+
         self.load_forecast_true_weather = [
-            alpha + beta*oat + gamma*ws if alpha + beta*oat + gamma*ws>0 else 0 for oat,ws in zip(oat_true, ws_true)
+            alpha + beta*oat + gamma*ws if alpha + beta*oat + gamma*ws>0 else 0 for oat,ws in zip(self.oat_true, self.ws_true)
             ]
-        sorted_times_values = sorted(zip(times, self.load_forecast_true_weather))
+        sorted_times_values = sorted(zip(true_weather['time'], self.load_forecast_true_weather))
         sorted_times, sorted_values = zip(*sorted_times_values)
         self.load_forecast_true_weather = list(sorted_values)
 
@@ -82,6 +115,25 @@ class FloEval():
                 sp_heat_out.append(edge_i.hp_heat_out)
             node_i = node_i.next_node
         self.hp_forecast = sp_heat_out
+
+        # With true weather
+        flo_params_true_weather = self.flo_params.model_copy()
+        flo_params_true_weather.OatForecastF = self.oat_true
+        flo_params_true_weather.WindSpeedForecastMph = self.ws_true
+        g = DGraph(flo_params_true_weather)
+        g.solve_dijkstra()
+        sp_heat_out = []
+        the_end = False
+        node_i = g.initial_node
+        while not the_end:
+            if node_i.next_node is None:
+                the_end = True
+                sp_heat_out.append(edge_i.hp_heat_out)
+            else:
+                edge_i = [e for e in g.edges[node_i] if e.head==node_i.next_node][0]
+                sp_heat_out.append(edge_i.hp_heat_out)
+            node_i = node_i.next_node
+        self.hp_forecast_true_weather = sp_heat_out
 
     def get_hp_and_load_true(self):
         self.get_hp_and_tanks_energy_out()
@@ -183,7 +235,7 @@ class FloEval():
                 self.hp_true_avg_power.append(np.nan)
                 if PRINT: print(f"Could not find HP avg power: {e}") 
 
-        start_time = pendulum.from_timestamp(self.flo_start_ms/1000, tz=self.timezone_str)
+        start_time = self.unix_ms_to_date(self.flo_start_ms)
         hours = [(start_time+timedelta(hours=i)) for i in range(60)]
         plt.figure(figsize=(13,4))
         plt.step(hours[:len(self.hp_true_avg_power)], self.hp_true_avg_power, where='post', 
@@ -300,8 +352,8 @@ class FloEval():
                 if last_times_buffer[-1] - first_times_buffer[-1] < 50*60*1000:
                     if PRINT: 
                         print("Not enough time between first and last value:")
-                        print(f"-First: {pendulum.from_timestamp(first_times_buffer[-1]/1000, tz=self.timezone_str)}")
-                        print(f"-Last: {pendulum.from_timestamp(last_times_buffer[-1]/1000, tz=self.timezone_str)}")
+                        print(f"-First: {self.unix_ms_to_date(first_times_buffer[-1])}")
+                        print(f"-Last: {self.unix_ms_to_date(last_times_buffer[-1])}")
                     self.tanks_energy_out.append(np.nan)
                     continue
             if len(first_values_buffer) != 4 or len(last_values_buffer) != 4:
@@ -346,8 +398,8 @@ class FloEval():
                 if last_times_store[-1] - first_times_store[-1] < 30*60*1000:
                     if PRINT: 
                         print("Not enough time between first and last value (store):")
-                        print(f"-First: {pendulum.from_timestamp(first_times_store[-1]/1000, tz=self.timezone_str)}")
-                        print(f"-Last: {pendulum.from_timestamp(last_times_store[-1]/1000, tz=self.timezone_str)}")
+                        print(f"-First: {self.unix_ms_to_date(first_times_store[-1])}")
+                        print(f"-Last: {self.unix_ms_to_date(last_times_store[-1])}")
                     self.tanks_energy_out.append(np.nan)
                     continue
             if len(first_values_store) != 12 or len(last_values_store) != 12:
@@ -372,12 +424,12 @@ class FloEval():
         if PRINT: print(self.tanks_energy_out)
 
     def plot(self):
-        self.get_hp_forecast()
         self.get_load_forecast()
         self.get_hp_and_load_true()
         self.compare_power_instruction_vs_real()
+        self.get_hp_forecast()
 
-        start_time = pendulum.from_timestamp(self.flo_start_ms/1000, tz=self.timezone_str)
+        start_time = self.unix_ms_to_date(self.flo_params.StartUnixS*1000)
         hours = [(start_time+timedelta(hours=i)) for i in range(60)]
 
         plt.figure(figsize=(13,4))
@@ -385,13 +437,58 @@ class FloEval():
         plt.step(hours[:len(self.hp_forecast)], self.hp_forecast, where='post', 
                  color='tab:blue', alpha=0.5, linestyle='dashed', label='HP predicted')
         plt.step(hours[:len(self.load_true)], self.load_true, where='post', color='tab:red', alpha=0.7, label='House losses')
-        plt.step(hours[:len(self.load_forecast_true_weather)], self.load_forecast_true_weather, where='post', color='tab:orange', alpha=0.5, linestyle='dashed', label='House losses predicted with true weather')
         plt.step(hours[:len(self.load_forecast)], self.load_forecast, where='post', 
                  color='tab:red', alpha=0.5, linestyle='dashed', label='House losses predicted')
         plt.ylabel('Heat [kWh]')
         plt.legend(loc='upper right')
         plt.ylim([-1, 20])
-        flo_time = pendulum.from_timestamp(self.flo_start_ms/1000, tz=self.timezone_str).replace(second=0, microsecond=0)
+        flo_time = self.unix_ms_to_date(self.flo_start_ms).replace(second=0, microsecond=0)
         plt.title(f"Prediction from FLO at {self.house_alias} at {flo_time}")
+        plt.show()
+
+        # Improve COP estimation 
+        # plt.figure(figsize=(13,4))
+        # plt.step(hours[:len(self.hp_true)], self.hp_true, where='post', color='tab:blue', alpha=0.7, label='HP')
+        # plt.step(hours[:len(self.hp_forecast)], self.hp_forecast, where='post', 
+        #          color='tab:blue', alpha=0.5, linestyle='dashed', label='HP predicted')
+        # plt.step(hours[:len(self.load_true)], self.load_true, where='post', color='tab:red', alpha=0.7, label='House losses')
+        # plt.step(hours[:len(self.load_forecast)], self.load_forecast, where='post', 
+        #          color='tab:red', alpha=0.5, linestyle='dashed', label='House losses predicted')
+        # plt.ylabel('Heat [kWh]')
+        # plt.legend(loc='upper right')
+        # plt.ylim([-1, 20])
+        # flo_time = self.unix_ms_to_date(self.flo_start_ms).replace(second=0, microsecond=0)
+        # plt.title(f"Prediction from FLO at {self.house_alias} at {flo_time}")
+        # plt.show()
+
+        plt.figure(figsize=(13,4))
+        plt.step(hours[:len(self.hp_true)], self.hp_true, where='post', color='tab:blue', alpha=0.7, label='HP')
+        plt.step(hours[:len(self.hp_forecast_true_weather)], self.hp_forecast_true_weather, where='post', 
+                 color='tab:green', alpha=0.5, linestyle='dashed', label='HP predicted with true weather')
+        plt.step(hours[:len(self.load_true)], self.load_true, where='post', color='tab:red', alpha=0.7, label='House losses')
+        plt.step(hours[:len(self.load_forecast_true_weather)], self.load_forecast_true_weather, where='post', 
+                 color='tab:orange', alpha=0.5, linestyle='dashed', label='House losses predicted with true weather')
+        plt.ylabel('Heat [kWh]')
+        plt.legend(loc='upper right')
+        plt.ylim([-1, 20])
+        flo_time = self.unix_ms_to_date(self.flo_start_ms).replace(second=0, microsecond=0)
+        plt.title(f"TRUE WEATHER prediction from FLO at {self.house_alias} at {flo_time}")
+        # plt.xticks(list(range(0, 49, 2)))
+        plt.show()
+
+        plt.figure(figsize=(13,4))
+        plt.step(hours[:len(self.hp_forecast)], self.hp_forecast, where='post', 
+                 color='tab:blue', alpha=0.5, linestyle='dashed', label='HP predicted')
+        plt.step(hours[:len(self.hp_forecast_true_weather)], self.hp_forecast_true_weather, where='post', 
+                 color='tab:green', alpha=0.5, linestyle='dashed', label='HP predicted with true weather')
+        plt.step(hours[:len(self.load_forecast)], self.load_forecast, where='post', 
+                 color='tab:red', alpha=0.5, linestyle='dashed', label='House losses predicted')
+        plt.step(hours[:len(self.load_forecast_true_weather)], self.load_forecast_true_weather, where='post', 
+                 color='tab:orange', alpha=0.5, linestyle='dashed', label='House losses predicted with true weather')
+        plt.ylabel('Heat [kWh]')
+        plt.legend(loc='upper right')
+        plt.ylim([-1, 20])
+        flo_time = self.unix_ms_to_date(self.flo_start_ms).replace(second=0, microsecond=0)
+        plt.title(f"TRUE WEATHER predictions")
         # plt.xticks(list(range(0, 49, 2)))
         plt.show()
