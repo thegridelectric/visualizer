@@ -86,7 +86,7 @@ class FloHinge():
 
     def plot_hinge(self, combo=''):
         # Want to show initial, discharging, and the result of the 3 branches
-        sp_time = list(range(self.turn_on_hour+3+1))
+        sp_time = list(range(self.turn_on_hour+3+2))
         sp_top_temp = []
         sp_middle_temp = []
         sp_bottom_temp = []
@@ -158,6 +158,7 @@ class FloHinge():
         node_i = self.dg.initial_node
         for i in range(self.turn_on_hour):
             node_i = self.dg.edges[node_i][0].head
+            self.hinge_steps.append(node_i)
         self.turn_on_node = HingeNode(
             time_slice = node_i.time_slice,
             top_temp = node_i.top_temp,
@@ -168,7 +169,6 @@ class FloHinge():
             params = self.g.params
             )
         print(f"Estimated storage at the start of hour {self.turn_on_hour}: {self.turn_on_node}")
-        self.hinge_steps.append(self.turn_on_node)
 
     def evaluate_branches(self):
         self.feasible_branches = {}
@@ -192,7 +192,8 @@ class FloHinge():
 
         for combo in self.feasible_branches:
             b1, b2, b3 = [True if x=='C' else False for x in combo.split('-')]
-            self.hinge_steps = [self.initial_node, self.turn_on_node]
+            self.hinge_steps = []
+            self.get_hinge_start_state()
             self.follow_branch(b1, b2, b3, combo, final=True)
             self.hinge_steps.append(self.feasible_branches[combo]['knitted_to'])
             self.plot_hinge(combo=combo)
