@@ -330,19 +330,7 @@ class FloHinge():
     def knit_branches(self):
         for branch in self.feasible_branches:
             n: HingeNode = self.feasible_branches[branch]['final_state']
-
-            top_temp = min(self.g.params.available_top_temps, key= lambda x: abs(x-n.top_temp))
-            nodes_with_same_top = []
-            # nodes_with_same_top = [x for x in self.g.nodes[self.turn_on_hour+3] if x.top_temp==top_temp]
-            # nodes_with_same_top = [x for x in nodes_with_same_top if x.thermocline1==n.thermocline1]
-            if not nodes_with_same_top:
-                nodes_not_same_top = [n for n in self.g.nodes[self.turn_on_hour+3] if n.top_temp!=top_temp]
-                closest_one = min(nodes_not_same_top, key=lambda x: abs(x.top_temp-top_temp))
-                nodes_with_same_top = [n for n in nodes_with_same_top if n.top_temp==closest_one.top_temp and n.thermocline1==n.thermocline1]
-            if not nodes_with_same_top:
-                nodes_with_same_top = [min(self.g.nodes[n.time_slice], key= lambda x: abs(x.energy-n.energy))]
-            knitted_node = nodes_with_same_top[0]
-            
+            knitted_node = [min(self.g.nodes[n.time_slice], key= lambda x: abs(x.energy-n.energy))][0]            
             self.feasible_branches[branch]['knitted_to'] = knitted_node
             self.feasible_branches[branch]['total_pathcost'] = round(knitted_node.pathcost + self.feasible_branches[branch]['hinge_cost'],2)
 
