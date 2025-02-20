@@ -1,12 +1,18 @@
-from flo import DGraph, DParams, DNode, to_kelvin
-from named_types import FloParamsHouse0
+from flo import DGraph, DParams, DNode, DEdge, to_kelvin
+from named_types import FloParamsHouse0, PriceQuantityUnitless
 from fake_models import MessageSql
 import json
 from typing import List
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
-
+import pandas as pd
+from datetime import datetime, timedelta
+import pytz
+import numpy as np
+from openpyxl.styles import PatternFill, Alignment, Font
+from openpyxl.drawing.image import Image
+import os
 
 class HingeNode():
     def __init__(self, time_slice:int, params: DParams,
@@ -133,6 +139,7 @@ class FloHinge():
             plt.text(bar.get_x() + bar.get_width() / 2, bar.get_y() + bar.get_height() / 2, 
                     f'{int(sp_bottom_temp[i])}', ha='center', va='center', color='white')
         plt.title(f"{'d-'*self.turn_on_hour}{self.best_combination if combo=='' else combo}-knit")
+        plt.savefig('plot_hinge.png', dpi=130)
         plt.show()
 
     def get_hinge_start_state(self):
@@ -394,7 +401,246 @@ class FloHinge():
             self.feasible_branches[branch]['total_pathcost'] = round(knitted_node.pathcost + self.feasible_branches[branch]['hinge_cost'],2)
 
     def generate_bid(self):
-        ...
+        # add new nodes and edges
+        if self.charge1_node:
+            self.g.nodes[0].extend([self.charge1_node, self.discharge1_node])
+            # Charge edge
+            charge1_cost = self.g.params.elec_price_forecast[0] * self.g.params.max_hp_elec_in / 100
+            charge1_hp_heat_out = self.g.params.max_hp_elec_in * self.g.params.COP(self.g.params.oat_forecast[0], 0) 
+            charge1_edge = DEdge(self.g.initial_node, self.charge1_node, charge1_cost, charge1_hp_heat_out)
+            self.g.edges[self.g.initial_node].append(charge1_edge)
+            # Discharge edge
+            discharge1_edge = DEdge(self.g.initial_node, self.discharge1_node, 0, 0)
+            self.g.edges[self.g.initial_node].append(discharge1_edge)
+        else:
+            self.g.nodes[0].extend([self.discharge1_node])
+            # Discharge edge
+            discharge1_edge = DEdge(self.g.initial_node, self.discharge1_node, 0, 0)
+            self.g.edges[self.g.initial_node].append(discharge1_edge)
+
+        self.pq_pairs: List[PriceQuantityUnitless] = []
+        forecasted_price_usd_mwh = self.g.params.elec_price_forecast[0] * 10
+        # For every possible price
+        min_elec_ctskwh, max_elec_ctskwh = -10, 200
+        for elec_price_usd_mwh in sorted(list(range(min_elec_ctskwh*10, max_elec_ctskwh*10))+[forecasted_price_usd_mwh]):
+            # Update the fake cost of initial node edges with the selected price
+            for edge in self.g.edges[self.g.initial_node]:
+                if edge.cost >= 1e4: # penalized node
+                    edge.fake_cost = edge.cost
+                elif edge.rswt_minus_edge_elec is not None: # penalized node
+                    edge.fake_cost = edge.rswt_minus_edge_elec * elec_price_usd_mwh/1000
+                else:
+                    cop = self.g.params.COP(oat=self.g.params.oat_forecast[0], lwt=edge.head.top_temp)
+                    edge.fake_cost = edge.hp_heat_out / cop * elec_price_usd_mwh/1000
+            # Find the best edge with the given price
+            best_edge: DEdge = min(self.g.edges[self.g.initial_node], key=lambda e: e.head.pathcost + e.fake_cost)
+            if best_edge.hp_heat_out < 0: 
+                best_edge_neg = max([e for e in self.g.edges[self.g.initial_node] if e.hp_heat_out<0], key=lambda e: e.hp_heat_out)
+                best_edge_pos = min([e for e in self.g.edges[self.g.initial_node] if e.hp_heat_out>=0], key=lambda e: e.hp_heat_out)
+                best_edge = best_edge_pos if (-best_edge_neg.hp_heat_out >= best_edge_pos.hp_heat_out) else best_edge_neg
+            # Find the associated quantity
+            cop = self.g.params.COP(oat=self.g.params.oat_forecast[0], lwt=best_edge.head.top_temp)
+            best_quantity_kwh = best_edge.hp_heat_out / cop
+            best_quantity_kwh = 0 if best_quantity_kwh<0 else best_quantity_kwh
+            if not self.pq_pairs:
+                self.pq_pairs.append(
+                    PriceQuantityUnitless(
+                        PriceTimes1000 = int(elec_price_usd_mwh * 1000),
+                        QuantityTimes1000 = int(best_quantity_kwh * 1000))
+                )
+            else:
+                # Record a new pair if at least 0.01 kWh of difference in quantity with the previous one
+                if self.pq_pairs[-1].QuantityTimes1000 - int(best_quantity_kwh * 1000) > 10:
+                    self.pq_pairs.append(
+                        PriceQuantityUnitless(
+                            PriceTimes1000 = int(elec_price_usd_mwh * 1000),
+                            QuantityTimes1000 = int(best_quantity_kwh * 1000))
+                    )
+        # remove new nodes and edges
+        if self.charge1_node:
+            self.g.nodes[0].remove(self.charge1_node)
+            self.g.edges[self.g.initial_node].remove(charge1_edge)
+        self.g.nodes[0].remove(self.discharge1_node)
+        self.g.edges[self.g.initial_node].remove(discharge1_edge)
+
+        return self.pq_pairs
+    
+    def export_to_excel(self):
+        # Sort nodes by energy and assign an index
+        for time_slice in range(self.g.params.horizon+1):
+            self.g.nodes_by_energy = sorted(self.g.nodes[time_slice], key=lambda x: (x.energy, x.top_temp), reverse=True)
+            for n in self.g.nodes[time_slice]:
+                n.index = self.g.nodes_by_energy.index(n)+1
+
+        # Along the shortest path
+        electricitiy_used, heat_delivered = [], []
+        node_i = self.g.initial_node
+        while node_i.next_node is not None:
+            losses = self.g.params.storage_losses_percent/100 * (node_i.energy-self.g.bottom_node.energy)
+            if self.g.params.load_forecast[node_i.time_slice]==0 and losses>0 and losses<self.g.params.energy_between_nodes[node_i.top_temp]:
+                losses = self.g.params.energy_between_nodes[node_i.top_temp] + 1/1e9
+            store_heat_in = node_i.next_node.energy - node_i.energy
+            hp_heat_out = store_heat_in + self.g.params.load_forecast[node_i.time_slice] + losses
+            cop = self.g.params.COP(oat=self.g.params.oat_forecast[node_i.time_slice], lwt=node_i.next_node.top_temp)
+            heat_delivered.append(hp_heat_out)
+            electricitiy_used.append(hp_heat_out/cop)
+            node_i = node_i.next_node
+        
+        # First dataframe: the Dijkstra graph
+        dijkstra_pathcosts = {}
+        dijkstra_pathcosts['Model'] = [repr(x) for x in self.g.nodes_by_energy]
+        dijkstra_pathcosts['Energy (relative)'] = [round(x.energy-self.g.bottom_node.energy,2) for x in self.g.nodes_by_energy]
+        dijkstra_pathcosts['Index'] = list(range(1,len(self.g.nodes_by_energy)+1))
+        dijkstra_nextnodes = dijkstra_pathcosts.copy()
+        for h in range(self.g.params.horizon):
+            dijkstra_pathcosts[h] = [round(x.pathcost,2) for x in sorted(self.g.nodes[h], key=lambda x: x.index)]
+            dijkstra_nextnodes[h] = [x.next_node.index for x in sorted(self.g.nodes[h], key=lambda x: x.index)]
+        dijkstra_pathcosts[self.g.params.horizon] = [0 for x in self.g.nodes[self.g.params.horizon]]
+        dijkstra_nextnodes[self.g.params.horizon] = [np.nan for x in self.g.nodes[self.g.params.horizon]]
+        dijkstra_pathcosts_df = pd.DataFrame(dijkstra_pathcosts)
+        dijkstra_nextnodes_df = pd.DataFrame(dijkstra_nextnodes)
+        
+        # Second dataframe: the forecasts
+        start_time = datetime.fromtimestamp(self.g.params.start_time, tz=pytz.timezone("America/New_York"))
+        forecast_df = pd.DataFrame({'Forecast':['0'], 'Unit':['0'], **{h: [0.0] for h in range(self.g.params.horizon)}})
+        forecast_df.loc[0] = ['Hour'] + [start_time.strftime("%d/%m/%Y")] + [(start_time + timedelta(hours=x)).hour for x in range(self.g.params.horizon)]
+        forecast_df.loc[1] = ['Price - total'] + ['cts/kWh'] + self.g.params.elec_price_forecast
+        forecast_df.loc[2] = ['Price - distribution'] + ['cts/kWh'] + self.g.params.dist_forecast
+        forecast_df.loc[3] = ['Price - LMP'] + ['cts/kWh'] + self.g.params.lmp_forecast
+        forecast_df.loc[4] = ['Heating load'] + ['kW'] + [round(x,2) for x in self.g.params.load_forecast]
+        forecast_df.loc[5] = ['OAT'] + ['F'] + [round(x,2) for x in self.g.params.oat_forecast]
+        forecast_df.loc[6] = ['Required SWT'] + ['F'] + [round(x) for x in self.g.params.rswt_forecast]
+        
+        # Third dataframe: the shortest path
+        shortestpath_df = pd.DataFrame({'Shortest path':['0'], 'Unit':['0'], **{h: [0.0] for h in range(self.g.params.horizon+1)}})
+        shortestpath_df.loc[0] = ['Electricity used'] + ['kWh'] + [round(x,3) for x in electricitiy_used] + [0]
+        shortestpath_df.loc[1] = ['Heat delivered'] + ['kWh'] + [round(x,3) for x in heat_delivered] + [0]
+        shortestpath_df.loc[2] = ['Cost - total'] + ['cts'] + [round(x*y,2) for x,y in zip(electricitiy_used, self.g.params.elec_price_forecast)] + [0]
+        shortestpath_df.loc[3] = ['Cost - distribution'] + ['cts'] + [round(x*y,2) for x,y in zip(electricitiy_used, self.g.params.dist_forecast)] + [0]
+        shortestpath_df.loc[4] = ['Cost - LMP'] + ['cts'] + [round(x*y,2) for x,y in zip(electricitiy_used, self.g.params.lmp_forecast)] + [0]
+        
+        # Fourth dataframe: the results
+        total_usd = round(self.g.initial_node.pathcost,2)
+        total_elec = round(sum(electricitiy_used),2)
+        total_heat = round(sum(heat_delivered),2)
+        next_index = self.g.initial_node.next_node.index
+        results = ['Cost ($)', total_usd, 'Electricity (kWh)', total_elec, 'Heat (kWh)', total_heat, 'Next step index', next_index]
+        results_df = pd.DataFrame({'RESULTS':results})
+        
+        # Highlight shortest path
+        highlight_positions = []
+        node_i = self.g.initial_node
+        while node_i.next_node is not None:
+            highlight_positions.append((node_i.index+len(forecast_df)+len(shortestpath_df)+2, 3+node_i.time_slice))
+            node_i = node_i.next_node
+        highlight_positions.append((node_i.index+len(forecast_df)+len(shortestpath_df)+2, 3+node_i.time_slice))
+        
+        # Add the parameters to a seperate sheet
+        parameters = self.g.params.config.to_dict()
+        parameters_df = pd.DataFrame(list(parameters.items()), columns=['Variable', 'Value'])
+
+        # Add the PQ pairs to a seperate sheet and plot the curve
+        pq_pairs = self.generate_bid()
+        print(pq_pairs)
+        print(len(pq_pairs))
+        prices = [x.PriceTimes1000 for x in pq_pairs]
+        quantities = [x.QuantityTimes1000/1000 for x in pq_pairs]
+        pqpairs_df = pd.DataFrame({'price':[x/1000 for x in prices], 'quantity':quantities})
+        # To plot quantities on x-axis and prices on y-axis
+        ps, qs = [], []
+        index_p = 0
+        expected_price_usd_mwh = self.g.params.elec_price_forecast[0] * 10
+        for p in sorted(list(range(min(prices), max(prices)+1)) + [expected_price_usd_mwh*1000]):
+            ps.append(p/1000)
+            if index_p+1 < len(prices) and p >= prices[index_p+1]:
+                index_p += 1
+            if p == expected_price_usd_mwh*1000:
+                interesection = (quantities[index_p], expected_price_usd_mwh)
+            qs.append(quantities[index_p])
+        plt.plot(qs, ps, label='demand (bid)')
+        prices = [x.PriceTimes1000/1000 for x in pq_pairs]
+        plt.scatter(quantities, prices)
+        plt.plot([min(quantities)-1, max(quantities)+1],[expected_price_usd_mwh]*2, label="supply (expected market price)")
+        plt.scatter(interesection[0], interesection[1])
+        plt.text(interesection[0]+0.25, interesection[1]+15, f'({round(interesection[0],3)}, {round(interesection[1],1)})', fontsize=10, color='tab:orange')
+        plt.xticks(quantities)
+        if min([abs(x-expected_price_usd_mwh) for x in prices]) < 5:
+            plt.yticks(prices)
+        else:
+            plt.yticks(prices + [expected_price_usd_mwh])
+        plt.ylabel("Price [USD/MWh]")
+        plt.xlabel("Quantity [kWh]")
+        plt.grid(alpha=0.3)
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig('plot_pq.png', dpi=130)
+        plt.close()
+
+        # Write to Excel
+        os.makedirs('results', exist_ok=True)
+        start = datetime.fromtimestamp(self.g.params.start_time, tz=pytz.timezone("America/New_York")).strftime('%Y-%m-%d %H:%M')
+        # file_path = os.path.join('results', f'result_{start}.xlsx')
+        file_path = 'result.xlsx'
+        with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
+            results_df.to_excel(writer, index=False, sheet_name='Pathcost')
+            results_df.to_excel(writer, index=False, sheet_name='Next node')
+            forecast_df.to_excel(writer, index=False, startcol=1, sheet_name='Pathcost')
+            forecast_df.to_excel(writer, index=False, startcol=1, sheet_name='Next node')
+            shortestpath_df.to_excel(writer, index=False, startcol=1, startrow=len(forecast_df)+1, sheet_name='Pathcost')
+            shortestpath_df.to_excel(writer, index=False, startcol=1, startrow=len(forecast_df)+1, sheet_name='Next node')
+            dijkstra_pathcosts_df.to_excel(writer, index=False, startrow=len(forecast_df)+len(shortestpath_df)+2, sheet_name='Pathcost')
+            dijkstra_nextnodes_df.to_excel(writer, index=False, startrow=len(forecast_df)+len(shortestpath_df)+2, sheet_name='Next node')
+            parameters_df.to_excel(writer, index=False, sheet_name='Parameters')
+            
+            # Add plot in a seperate sheet
+            self.g.plot(show=False)
+            plot_sheet = writer.book.create_sheet(title='Plot')
+            plot_sheet.add_image(Image('plot.png'), 'A1')
+            plot_sheet.add_image(Image('plot_hinge.png'), 'T1')
+
+            # Add plot in a seperate sheet
+            plot2_sheet = writer.book.create_sheet(title='PQ pairs')
+            pqpairs_df.to_excel(writer, index=False, sheet_name='PQ pairs')
+            plot2_sheet.add_image(Image('plot_pq.png'), 'C1')
+
+            # Layout
+            pathcost_sheet = writer.sheets['Pathcost']
+            nextnode_sheet = writer.sheets['Next node']
+            parameters_sheet = writer.sheets['Parameters']
+            for row in pathcost_sheet['A1:A10']:
+                for cell in row:
+                    cell.alignment = Alignment(horizontal='center')
+                    cell.font = Font(bold=True)
+            for row in nextnode_sheet['A1:A10']:
+                for cell in row:
+                    cell.alignment = Alignment(horizontal='center')
+                    cell.font = Font(bold=True)
+            for row in parameters_sheet[f'B1:B{len(parameters_df)+1}']:
+                for cell in row:
+                    cell.alignment = Alignment(horizontal='right')
+            pathcost_sheet.column_dimensions['A'].width = 17.5
+            pathcost_sheet.column_dimensions['B'].width = 15
+            pathcost_sheet.column_dimensions['C'].width = 15
+            nextnode_sheet.column_dimensions['A'].width = 17.5
+            nextnode_sheet.column_dimensions['B'].width = 15
+            nextnode_sheet.column_dimensions['C'].width = 15
+            parameters_sheet.column_dimensions['A'].width = 40
+            parameters_sheet.column_dimensions['B'].width = 70
+            pathcost_sheet.freeze_panes = 'D16'
+            nextnode_sheet.freeze_panes = 'D16'
+
+            # Highlight shortest path
+            highlight_fill = PatternFill(start_color='72ba93', end_color='72ba93', fill_type='solid')
+            for row in range(len(forecast_df)+len(shortestpath_df)+2):
+                pathcost_sheet.cell(row=row+1, column=1).fill = highlight_fill
+                nextnode_sheet.cell(row=row+1, column=1).fill = highlight_fill
+            for row, col in highlight_positions:
+                pathcost_sheet.cell(row=row+1, column=col+1).fill = highlight_fill
+                nextnode_sheet.cell(row=row+1, column=col+1).fill = highlight_fill
+
+        os.remove('plot.png')        
+        os.remove('plot_pq.png')
+        os.remove('plot_hinge.png')
 
 
 if __name__ == '__main__':
@@ -424,3 +670,6 @@ if __name__ == '__main__':
     print(f"Charging gives: {f.charge1_node}")
     print(f"Discharging gives: {f.discharge1_node}")
     print('\n')
+
+    f.generate_bid()
+    f.export_to_excel()
