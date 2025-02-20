@@ -1,4 +1,5 @@
 from flo import DGraph
+from hinge import FloHinge
 from named_types import FloParamsHouse0
 import dotenv
 import pendulum
@@ -14,6 +15,8 @@ from fastapi.responses import StreamingResponse
 from datetime import datetime 
 import pytz
 import json
+
+HINGE = False
 
 def download_excel(house_alias, start_ms):
 
@@ -77,9 +80,13 @@ def download_excel(house_alias, start_ms):
     flo_params = FloParamsHouse0(**flo_params_msg.payload)
 
     print("Running Dijkstra and saving analysis to excel...")
-    g = DGraph(flo_params)
-    g.solve_dijkstra()
-    g.export_to_excel()
+    if HINGE:
+        h = FloHinge(flo_params)
+        h.export_to_excel()
+    else:
+        g = DGraph(flo_params)
+        g.solve_dijkstra()
+        g.export_to_excel()
     print("Done.")
 
 # just_before = pendulum.datetime(2025, 1, 18, 9, 5, tz="America/New_York").timestamp()*1000
