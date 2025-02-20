@@ -204,28 +204,46 @@
                 } else {
                     const blob = await response.blob();
                     const zip = await JSZip.loadAsync(blob);
-                    const plotsDiv1 = document.getElementById('Plot1');
-                    const plotsDiv2 = document.getElementById('Plot2');
-                    const plotsDiv3 = document.getElementById('Plot3');
-                    const plotsDiv4 = document.getElementById('Plot4');
-                    const plotsDiv5 = document.getElementById('Plot5');
-                    const plotsDiv6 = document.getElementById('Plot6');
-                    const plotsDiv7 = document.getElementById('Plot7');
-                    const plotsDiv8 = document.getElementById('Plot8');
-                    const plotsDiv9 = document.getElementById('Plot9');
-                    const plotsDiv10 = document.getElementById('Plot10');
-                    const plotsDivPng = document.getElementById('PlotPng');
-                    plotsDiv1.innerHTML = '';
-                    plotsDiv2.innerHTML = '';
-                    plotsDiv3.innerHTML = '';
-                    plotsDiv4.innerHTML = '';
-                    plotsDiv5.innerHTML = '';
-                    plotsDiv6.innerHTML = '';
-                    plotsDiv7.innerHTML = '';
-                    plotsDiv8.innerHTML = '';
-                    plotsDiv9.innerHTML = '';
-                    plotsDiv10.innerHTML = '';
-                    plotsDivPng.innerHTML = '';
+
+                    const plotDivs = [
+                        document.getElementById('Plot1'),
+                        document.getElementById('Plot2'),
+                        document.getElementById('Plot3'),
+                        document.getElementById('Plot4'),
+                        document.getElementById('Plot5'),
+                        document.getElementById('Plot6'),
+                        document.getElementById('Plot7'),
+                        document.getElementById('Plot8'),
+                        document.getElementById('Plot9'),
+                        document.getElementById('Plot10'),
+                        document.getElementById('PlotPng')
+                    ];
+                    plotDivs.forEach(div => div.innerHTML = '');
+
+                    function createMoveButtons() {
+                        const moveButtonsDiv = document.createElement('div');
+                        moveButtonsDiv.classList.add('move_buttons');
+                        moveButtonsDiv.style.display = 'none';
+
+                        const moveUpButton = document.createElement('button');
+                        moveUpButton.classList.add('move-button');
+                        moveUpButton.textContent = 'Move Up';
+                        moveUpButton.onclick = function() {
+                            moveUp(moveUpButton);
+                        };
+
+                        const moveDownButton = document.createElement('button');
+                        moveDownButton.classList.add('move-button');
+                        moveDownButton.textContent = 'Move Down';
+                        moveDownButton.onclick = function() {
+                            moveDown(moveDownButton);
+                        };
+
+                        moveButtonsDiv.appendChild(moveUpButton);
+                        moveButtonsDiv.appendChild(moveDownButton);
+
+                        return moveButtonsDiv;
+                    }
 
                     let iframeCount = 0;
 
@@ -241,28 +259,12 @@
                             iframe.style.maxWidth = '1500px';
                             iframe.style.height = '375px';
                             iframe.style.border = 'none';
-                            if (iframeCount === 0) {
-                                plotsDiv1.appendChild(iframe);
-                            } else if (iframeCount === 1) {
-                                plotsDiv2.appendChild(iframe);
-                            } else if (iframeCount === 2) {
-                                iframe.style.height = '300px';
-                                plotsDiv3.appendChild(iframe);
-                            } else if (iframeCount === 3) {
-                                plotsDiv4.appendChild(iframe);
-                            } else if (iframeCount === 4) {
-                                plotsDiv5.appendChild(iframe);
-                            } else if (iframeCount === 5) {
-                                plotsDiv6.appendChild(iframe);
-                            } else if (iframeCount === 6) {
-                                plotsDiv7.appendChild(iframe);
-                            } else if (iframeCount === 7) {
-                                plotsDiv8.appendChild(iframe);
-                            } else if (iframeCount === 8) {
-                                plotsDiv9.appendChild(iframe);
-                            } else if (iframeCount === 9) {
-                                plotsDiv10.appendChild(iframe);
-                            }
+
+                            // Use modulo to ensure the plotDivs array is reused for all iframes
+                            const currentDiv = plotDivs[iframeCount % plotDivs.length];
+                            currentDiv.appendChild(iframe);
+                            currentDiv.appendChild(createMoveButtons()); // Append the move buttons
+
                             iframeCount++;
                         } else if (filename.endsWith('.png')) {
                             const imgUrl = URL.createObjectURL(fileData);
@@ -506,6 +508,21 @@
             }
         }
 
+        function reorderPlots() {
+            const move_buttons = document.getElementsByClassName("move_buttons");
+            const reorder_button = document.getElementById("reorder-button");
+            for (let i = 0; i < move_buttons.length; i++) {
+                if (move_buttons[i].style.display === "none") {
+                    move_buttons[i].style.display = "block";
+                    reorder_button.textContent = "Done re-ordering plots";
+                } else {
+                    move_buttons[i].style.display = "none";
+                    reorder_button.textContent = "Re-order plots";
+                }
+            }
+            toggleCheckbox();
+        }
+
         function toggleCheckbox() {
             const checkboxDiv = document.getElementById("checkboxDiv");
             if (checkboxDiv.style.display === "none") {
@@ -620,6 +637,8 @@
 
         #PlotPng, #Plot1, #Plot2, #Plot3, #Plot4, #Plot5, #Plot6, #Plot7, #Plot8, #Plot9, #Plot10 {
             display: flex;
+            flex-direction: column;
+            align-items: center;
             justify-content: center;
             padding-bottom:15px;
         }
@@ -694,7 +713,8 @@
             margin-right: 12px;
         }
 
-        #submit_button, #close-button, #csv_button, #login-button, #nowButton, #checkboxButton, #dijkstra_button, #bid_button {
+        #submit_button, #close-button, #csv_button, #login-button, 
+        #nowButton, #checkboxButton, #dijkstra_button, #bid_button, #reorder-button, .move-button {
             cursor: pointer;
             font-size:15px;
             font-family: 'Montserrat';
@@ -707,6 +727,10 @@
             padding-right: 20px;
             background-color:var(--button-bgcolor); 
             border: none;
+        }
+
+        .move-button{
+            margin-right: 10px;
         }
 
         #nowButton, #checkboxButton {
@@ -736,7 +760,8 @@
             border: none
         }
 
-        #submit_button:hover, #close-button:hover, #csv_button:hover, #login-button:hover, #nowButton:hover {
+        #submit_button:hover, #close-button:hover, #csv_button:hover, #login-button:hover, #nowButton:hover,
+        #checkboxButton:hover, #dijkstra_button:hover, #bid_button:hover, #reorder-button:hover, .move-button:hover {
             background-color:var(--button-hover);
         }
 
@@ -1053,6 +1078,7 @@
         <label><input type="checkbox" name="channels" value="thermocline">Thermocline and centroids</label><br>
         <h2>Plots</h2>
         <label><input type="checkbox" name="channels" value="show-points">Show points</label><br>
+        <button id="reorder-button" style="margin-top: 15px;" onclick="reorderPlots()">Re-order plots</button>
         <h2>Only for CSVs</h2>
         <label><input type="checkbox" name="channels" value="relays" checked>Relays</label><br>
         <label><input type="checkbox" name="channels" value="white-wires" checked>White wires</label><br>
@@ -1168,18 +1194,18 @@
             </form>
         </div>
         <div id="PlotContainer">
-        <div id="Plot1"></div>
-        <div id="Plot2"></div>
-        <div id="Plot3"></div>
-        <div id="Plot4"></div>
-        <div id="Plot5"></div>
-        <div id="Plot6"></div>
-        <div id="Plot7"></div>
-        <div id="Plot8"></div>
-        <div id="Plot9"></div>
-        <div id="Plot10"></div>
-        <div id="Bids"></div>
-        <div id="PlotPng"></div>
+            <div class="draggable" id="Plot1"></div>
+            <div class="draggable" id="Plot2"></div>
+            <div class="draggable" id="Plot3"></div>
+            <div class="draggable" id="Plot4"></div>
+            <div class="draggable" id="Plot5"></div>
+            <div class="draggable" id="Plot6"></div>
+            <div class="draggable" id="Plot7"></div>
+            <div class="draggable" id="Plot8"></div>
+            <div class="draggable" id="Plot9"></div>
+            <div class="draggable" id="Plot10"></div>
+            <div class="draggable" id="Bids"></div>
+            <div class="draggable" id="PlotPng"></div>
         </div>
 
     <!-- content -->
@@ -1190,6 +1216,27 @@
     <!-- <div id="footer">
         Copyright © GridWorks Energy Consulting 2024. All rights reserved.
     </div> -->
+
+    <script>
+        function moveDown(button) {
+            const div = button.parentElement.parentElement;
+            const nextDiv = div.nextElementSibling;
+    
+            if (nextDiv) {
+                div.parentElement.insertBefore(nextDiv, div);
+            }
+        }
+    
+        function moveUp(button) {
+            const div = button.parentElement.parentElement;
+            const prevDiv = div.previousElementSibling;
+    
+            if (prevDiv) {
+                div.parentElement.insertBefore(div, prevDiv);
+            }
+        }
+    </script>
+    
 
 </body>
 
