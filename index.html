@@ -227,14 +227,14 @@
 
                         const moveUpButton = document.createElement('button');
                         moveUpButton.classList.add('move-button');
-                        moveUpButton.textContent = 'Move Up';
+                        moveUpButton.textContent = '⬆︎';
                         moveUpButton.onclick = function() {
                             moveUp(moveUpButton);
                         };
 
                         const moveDownButton = document.createElement('button');
                         moveDownButton.classList.add('move-button');
-                        moveDownButton.textContent = 'Move Down';
+                        moveDownButton.textContent = '⬇︎';
                         moveDownButton.onclick = function() {
                             moveDown(moveDownButton);
                         };
@@ -730,7 +730,9 @@
         }
 
         .move-button{
+            margin-top: -10px;
             margin-right: 10px;
+            margin-bottom: 40px;
         }
 
         #nowButton, #checkboxButton {
