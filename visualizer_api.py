@@ -2034,7 +2034,6 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
 
                 shapes_list = []
                 for x in price_times2:
-                    print(x)
                     # Morning onpeak
                     if x==price_times2[0] and x.hour in [8,9,10,11]:
                         shapes_list.append(
