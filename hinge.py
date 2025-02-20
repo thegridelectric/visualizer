@@ -1,4 +1,4 @@
-from flo import DGraph, DParams, to_kelvin
+from flo import DGraph, DParams, DNode, to_kelvin
 from named_types import FloParamsHouse0
 from fake_models import MessageSql
 import json
@@ -66,6 +66,7 @@ class HingeNode():
         plt.title(title)
         plt.show()
 
+
 class FloHinge():
 
     def __init__(self, flo_params: FloParamsHouse0):
@@ -82,7 +83,6 @@ class FloHinge():
     def start(self):
         self.get_hinge_start_state()
         self.evaluate_branches()
-        self.plot_hinge()
 
     def plot_hinge(self, combo=''):
         # Want to show initial, discharging, and the result of the 3 branches
@@ -115,7 +115,8 @@ class FloHinge():
 
         # Stacking the temperatures and thermoclines
         bars_top = plt.bar(sp_time, sp_thermocline, bottom=sp_thermocline_reversed1, color=tank_top_colors, alpha=0.7, width=0.9)
-        bars_middle = plt.bar(sp_time, [y-x for x,y in zip(sp_thermocline, sp_thermocline2)], bottom=sp_thermocline_reversed2, color=tank_middle_colors, alpha=0.7, width=0.9)
+        bars_middle = plt.bar(sp_time, [y-x for x,y in zip(sp_thermocline, sp_thermocline2)], 
+                              bottom=sp_thermocline_reversed2, color=tank_middle_colors, alpha=0.7, width=0.9)
         bars_bottom = plt.bar(sp_time, sp_thermocline_reversed2, bottom=0, color=tank_bottom_colors, alpha=0.7, width=0.9)
         plt.xlabel('Time [hours]')
         plt.ylabel('Storage state')
@@ -190,7 +191,64 @@ class FloHinge():
         self.best_combination = min(self.feasible_branches, key=lambda k: self.feasible_branches[k]['total_pathcost'])
         print(f"\nThe best path forward is {self.best_combination}")
 
+        # Find the nodes and pathcosts for hour 1
+        if self.turn_on_hour == 0:
+            best_combination_starting_with_charge = None
+            if [x for x in self.feasible_branches if x.split('-')[0]=='C']:
+                best_combination_starting_with_charge = min(
+                    [x for x in self.feasible_branches if x.split('-')[0]=='C'], 
+                    key=lambda k: self.feasible_branches[k]['total_pathcost']
+                    )
+            best_combination_starting_with_discharge = None                 
+            if [x for x in self.feasible_branches if x.split('-')[0]=='D']:
+                best_combination_starting_with_discharge = min(
+                    [x for x in self.feasible_branches if x.split('-')[0]=='D'], 
+                    key=lambda k: self.feasible_branches[k]['total_pathcost']
+                    )
+            # Charging pathcost
+            cost_of_hour_1 = self.g.params.elec_price_forecast[0] * self.g.params.max_hp_elec_in / 100
+            charge1_pathcost = self.feasible_branches[best_combination_starting_with_charge]['total_pathcost'] - cost_of_hour_1
+            charge1_node = self.charge_from(self.turn_on_node)
+            # Discharging pathcost
+            discharge1_pathcost = self.feasible_branches[best_combination_starting_with_discharge]['total_pathcost']
+            discharge1_node = self.discharge_from(self.turn_on_node)
+        else:
+            charge1_pathcost = None
+            charge1_node = None
+            discharge1_pathcost = self.feasible_branches[self.best_combination]['total_pathcost']
+            discharge1_node = self.dg.edges[self.dg.initial_node][0].head
+        
+        if charge1_node:
+            self.charge1_node = DNode(
+                time_slice = 0, 
+                top_temp=charge1_node.top_temp,
+                thermocline1=charge1_node.top_temp,
+                parameters=charge1_node.params,
+                hinge_node = {
+                    'middle_temp': charge1_node.middle_temp,
+                    'bottom_temp': charge1_node.bottom_temp,
+                    'thermocline2': charge1_node.thermocline2,
+                    'pathcost': charge1_pathcost,
+                    }
+                )
+        else:
+            self.charge1_node = None
+        self.discharge1_node = DNode(
+            time_slice = 0, 
+            top_temp=discharge1_node.top_temp,
+            thermocline1=discharge1_node.top_temp,
+            parameters=discharge1_node.params,
+            hinge_node = {
+                'middle_temp': discharge1_node.middle_temp,
+                'bottom_temp': discharge1_node.bottom_temp,
+                'thermocline2': discharge1_node.thermocline2,
+                'pathcost': discharge1_pathcost,
+                }
+            )
+
         for combo in self.feasible_branches:
+            if combo != self.best_combination:
+                continue
             b1, b2, b3 = [True if x=='C' else False for x in combo.split('-')]
             self.hinge_steps = []
             self.get_hinge_start_state()
@@ -335,6 +393,9 @@ class FloHinge():
             self.feasible_branches[branch]['knitted_to'] = knitted_node
             self.feasible_branches[branch]['total_pathcost'] = round(knitted_node.pathcost + self.feasible_branches[branch]['hinge_cost'],2)
 
+    def generate_bid(self):
+        ...
+
 
 if __name__ == '__main__':
 
@@ -357,4 +418,9 @@ if __name__ == '__main__':
     # ----------------------------------
     
     f = FloHinge(flo_params)
-            
+
+    print('\n')
+    print(f"Initial state: {f.initial_node}")
+    print(f"Charging gives: {f.charge1_node}")
+    print(f"Discharging gives: {f.discharge1_node}")
+    print('\n')

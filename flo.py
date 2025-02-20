@@ -235,7 +235,7 @@ class DParams():
                 return x
 
 class DNode():
-    def __init__(self, time_slice:int, top_temp:float, thermocline1:float, parameters:DParams):
+    def __init__(self, time_slice:int, top_temp:float, thermocline1:float, parameters:DParams, hinge_node=None):
         self.params = parameters
         # Position in graph
         self.time_slice = time_slice
@@ -259,6 +259,12 @@ class DNode():
         # Absolute energy level
         self.energy = self.get_energy()
         self.index = None
+        if hinge_node is not None:
+            self.middle_temp = hinge_node['middle_temp']
+            self.thermocline2 = hinge_node['thermocline2']
+            self.bottom_temp = hinge_node['bottom_temp']
+            self.pathcost = hinge_node['pathcost']
+            self.energy = self.get_energy()
 
     def __repr__(self):
         if self.thermocline2 is not None:
