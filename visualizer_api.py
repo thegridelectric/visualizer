@@ -27,6 +27,7 @@ from fastapi.responses import FileResponse
 from typing import Union
 import plotly.colors as pc
 import json
+import csv
 
 RUNNING_LOCALLY = True
 
@@ -35,6 +36,8 @@ MATPLOTLIB_PLOT = False
 MESSAGE_SQL = True
 TIMEOUT_SECONDS = 5*60
 MAX_DAYS_WARNING = 3
+
+HOUSES_RUNNING_ON_NEW_PRICE = ['oak']
 
 settings = Settings(_env_file=dotenv.find_dotenv())
 admin_user_password = settings.visualizer_api_password.get_secret_value()
@@ -1975,6 +1978,167 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                 html_buffer10 = io.StringIO()
                 fig.write_html(html_buffer10)
                 html_buffer10.seek(0)
+
+                # --------------------------------------
+                # PLOT 11: Price
+                # --------------------------------------
+
+                if time.time() - request_start > TIMEOUT_SECONDS:
+                    raise asyncio.TimeoutError('Timed out')
+                if await apirequest.is_disconnected():
+                    raise asyncio.CancelledError("Client disconnected.")
+
+                fig = go.Figure()
+
+                request_hours = int((request.end_ms - request.start_ms)/1000 / 3600)
+                price_times_s = [request.start_ms/1000 + x*3600 for x in range(request_hours+2)]
+                price_times = [pendulum.from_timestamp(x, tz='America/New_York') for x in price_times_s]
+                print(price_times[0])
+                print(price_times[-1])
+
+                # Open and read the CSV file
+                csv_times, csv_dist, csv_lmp = [], [], []
+                with open('elec_prices.csv', newline='', encoding='utf-8') as csvfile:
+                    csvreader = csv.reader(csvfile)
+                    next(csvreader)
+                    for row in csvreader:
+                        csv_times.append(row[0])
+                        csv_dist.append(float(row[1]))
+                        csv_lmp.append(float(row[2]))
+                csv_times = [pendulum.from_format(x, 'M/D/YY H:m', tz='America/New_York').timestamp() for x in csv_times]
+
+                if request.house_alias in HOUSES_RUNNING_ON_NEW_PRICE:
+                    price_values = [
+                        lmp
+                        for time, dist, lmp in zip(csv_times, csv_dist, csv_lmp)
+                        if time in price_times_s
+                        ]
+                    csv_times = [
+                        time for time in csv_times
+                        if time in price_times_s
+                    ]
+                price_times2 = [pendulum.from_timestamp(x, tz='America/New_York') for x in csv_times]
+                # print(price_times2)
+
+                fig.add_trace(
+                    go.Scatter(
+                        x=price_times2,
+                        y=price_values,
+                        mode='lines',
+                        line=dict(color=home_alone_line),
+                        opacity=0.8,
+                        showlegend=False,
+                        line_shape='hv',
+                    )
+                )
+
+                shapes_list = []
+                for x in price_times2:
+                    print(x)
+                    # Morning onpeak
+                    if x==price_times2[0] and x.hour in [8,9,10,11]:
+                        shapes_list.append(
+                            go.layout.Shape(
+                                type='rect',
+                                x0=x,
+                                x1=x + timedelta(hours=5-(x.hour-7)),
+                                y0=0,
+                                y1=1,
+                                xref="x",
+                                yref="paper",
+                                fillcolor="rgba(0, 100, 255, 0.1)",
+                                layer="below",
+                                line=dict(width=0)
+                            )
+                        )
+                    elif x.hour==7:
+                        shapes_list.append(
+                            go.layout.Shape(
+                                type='rect',
+                                x0=x,
+                                x1=x + timedelta(hours=5),
+                                y0=0,
+                                y1=1,
+                                xref="x",
+                                yref="paper",
+                                fillcolor="rgba(0, 100, 255, 0.1)",
+                                layer="below",
+                                line=dict(width=0)
+                            )
+                        )
+                    # Afternoon onpeak
+                    elif x==price_times2[0] and x.hour in [17,18,19]:
+                        shapes_list.append(
+                            go.layout.Shape(
+                                type='rect',
+                                x0=x,
+                                x1=x + timedelta(hours=4-(x.hour-16)),
+                                y0=0,
+                                y1=1,
+                                xref="x",
+                                yref="paper",
+                                fillcolor="rgba(0, 100, 255, 0.1)",
+                                layer="below",
+                                line=dict(width=0)
+                            )
+                        )
+                    elif x.hour==16:
+                        shapes_list.append(
+                            go.layout.Shape(
+                                type='rect',
+                                x0=x,
+                                x1=x + timedelta(hours=4),
+                                y0=0,
+                                y1=1,
+                                xref="x",
+                                yref="paper",
+                                fillcolor="rgba(0, 100, 255, 0.1)",
+                                layer="below",
+                                line=dict(width=0)
+                            )
+                        )
+                    
+                fig.update_layout(yaxis=dict(title='LMP [cts/kWh]'))
+
+                fig.update_layout(
+                    shapes = shapes_list,
+                    title=dict(text='Price Forecast', x=0.5, xanchor='center'),
+                    plot_bgcolor=plot_background_hex,
+                    paper_bgcolor=plot_background_hex,
+                    font_color=fontcolor_hex,
+                    title_font_color=fontcolor_hex,
+                    margin=dict(t=30, b=30),
+                    xaxis=dict(
+                        range=[min_time_ms_dt, max_time_ms_dt],
+                        mirror=True,
+                        ticks='outside',
+                        showline=True,
+                        linecolor=fontcolor_hex,
+                        showgrid=False
+                        ),
+                    yaxis=dict(
+                        mirror=True,
+                        ticks='outside',
+                        showline=True,
+                        linecolor=fontcolor_hex,
+                        zeroline=False,
+                        showgrid=True, 
+                        gridwidth=1, 
+                        gridcolor=gridcolor_hex, 
+                        ),
+                    legend=dict(
+                        x=0,
+                        y=1,
+                        xanchor='left',
+                        yanchor='top',
+                        orientation='h',
+                        bgcolor='rgba(0, 0, 0, 0)'
+                    )
+                )
+
+                html_buffer11 = io.StringIO()
+                fig.write_html(html_buffer11)
+                html_buffer11.seek(0)
                 
 
     except asyncio.TimeoutError:
@@ -2310,6 +2474,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
             zip_file.writestr('plot8.html', html_buffer8.read())
             zip_file.writestr('plot9.html', html_buffer9.read())
             zip_file.writestr('plot10.html', html_buffer10.read())
+            zip_file.writestr('plot11.html', html_buffer11.read())
         # if MATPLOTLIB_PLOT:
         #     zip_file.writestr(f'plot.png', img_buf.getvalue())
     zip_buffer.seek(0)

@@ -216,6 +216,7 @@
                         document.getElementById('Plot8'),
                         document.getElementById('Plot9'),
                         document.getElementById('Plot10'),
+                        document.getElementById('Plot11'),
                         document.getElementById('PlotPng')
                     ];
                     plotDivs.forEach(div => div.innerHTML = '');
@@ -568,6 +569,7 @@
             const plotsDiv8 = document.getElementById('Plot8');
             const plotsDiv9 = document.getElementById('Plot9');
             const plotsDiv10 = document.getElementById('Plot10');
+            const plotsDiv11 = document.getElementById('Plot11');
             const plotsDivPng = document.getElementById('PlotPng');
             plotsDiv1.innerHTML = '';
             plotsDiv2.innerHTML = '';
@@ -635,7 +637,7 @@
             font-family: 'Montserrat';
         }
 
-        #PlotPng, #Plot1, #Plot2, #Plot3, #Plot4, #Plot5, #Plot6, #Plot7, #Plot8, #Plot9, #Plot10 {
+        #PlotPng, #Plot1, #Plot2, #Plot3, #Plot4, #Plot5, #Plot6, #Plot7, #Plot8, #Plot9, #Plot10, #Plot11 {
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -1197,6 +1199,7 @@
         </div>
         <div id="PlotContainer">
             <div class="draggable" id="Plot1"></div>
+            <div class="draggable" id="Plot11"></div>
             <div class="draggable" id="Plot2"></div>
             <div class="draggable" id="Plot3"></div>
             <div class="draggable" id="Plot4"></div>
