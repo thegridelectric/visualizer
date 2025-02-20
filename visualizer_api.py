@@ -1993,8 +1993,6 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                 request_hours = int((request.end_ms - request.start_ms)/1000 / 3600)
                 price_times_s = [request.start_ms/1000 + x*3600 for x in range(request_hours+2)]
                 price_times = [pendulum.from_timestamp(x, tz='America/New_York') for x in price_times_s]
-                print(price_times[0])
-                print(price_times[-1])
 
                 # Open and read the CSV file
                 csv_times, csv_dist, csv_lmp = [], [], []
