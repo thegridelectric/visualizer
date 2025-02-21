@@ -16,7 +16,7 @@ from datetime import datetime
 import pytz
 import json
 
-HINGE = False
+houses_in_hinge = ['beech']
 
 def download_excel(house_alias, start_ms):
 
@@ -80,7 +80,7 @@ def download_excel(house_alias, start_ms):
     flo_params = FloParamsHouse0(**flo_params_msg.payload)
 
     print("Running Dijkstra and saving analysis to excel...")
-    if HINGE:
+    if house_alias in houses_in_hinge:
         h = FloHinge(flo_params)
         h.export_to_excel()
     else:

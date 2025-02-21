@@ -311,7 +311,7 @@ class FloHinge():
         
         if n.top_temp - self.dg.params.delta_T(n.top_temp) < n.bottom_temp or n.middle_temp is not None:
             flo_params_temporary: FloParamsHouse0 = self.dg.params.config.model_copy()
-            flo_params_temporary.HorizonHours = 2
+            flo_params_temporary.HorizonHours = 24
             flo_params_temporary.InitialTopTempF = n.top_temp if n.top_temp<=175 else 175
             flo_params_temporary.InitialBottomTempF = n.bottom_temp if n.middle_temp is None else n.middle_temp
             flo_params_temporary.InitialThermocline = n.thermocline1 if n.thermocline2 is None else (self.dg.params.num_layers-n.thermocline2+n.thermocline1)
