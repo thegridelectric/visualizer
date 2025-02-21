@@ -1,4 +1,5 @@
 from flo import DGraph
+from hinge import FloHinge
 from named_types import FloParamsHouse0
 import dotenv
 import pendulum
@@ -13,28 +14,57 @@ import base64
 from fastapi.responses import StreamingResponse
 from datetime import datetime 
 import pytz
+import json
+
+houses_in_hinge = ['beech']
 
 def download_excel(house_alias, start_ms):
-    print("Finding latest Dijstra...")
-    settings = Settings(_env_file=dotenv.find_dotenv())
-    engine = create_engine(settings.db_url.get_secret_value())
-    Session = sessionmaker(bind=engine)
-    session = Session()
 
-    flo_params_msg = session.query(MessageSql).filter(
-        MessageSql.message_type_name == "flo.params.house0",
-        MessageSql.from_alias.like(f'%{house_alias}%'),
-        MessageSql.message_persisted_ms >= start_ms - 48*3600*1000,
-        MessageSql.message_persisted_ms <= start_ms,
-    ).order_by(desc(MessageSql.message_persisted_ms)).first()
+    if True:
+        print("Finding latest Dijkstra...")
+        settings = Settings(_env_file=dotenv.find_dotenv())
+        engine = create_engine(settings.db_url.get_secret_value())
+        Session = sessionmaker(bind=engine)
+        session = Session()
 
-    print(f"Found up to time {pendulum.from_timestamp(flo_params_msg.message_persisted_ms/1000, tz='America/New_York')}")
+        flo_params_msg = session.query(MessageSql).filter(
+            MessageSql.message_type_name == "flo.params.house0",
+            MessageSql.from_alias.like(f'%{house_alias}%'),
+            MessageSql.message_persisted_ms >= start_ms - 48*3600*1000,
+            MessageSql.message_persisted_ms <= start_ms,
+        ).order_by(desc(MessageSql.message_persisted_ms)).first()
 
-    if not flo_params_msg:
-        print("No FLO params")
-        if os.path.exists('result.xlsx'):
-            os.remove('result.xlsx')
-        return
+        print(f"Found up to time {pendulum.from_timestamp(flo_params_msg.message_persisted_ms/1000, tz='America/New_York')}")
+
+        if not flo_params_msg:
+            print("No FLO params")
+            if os.path.exists('result.xlsx'):
+                os.remove('result.xlsx')
+            return
+
+    #     # Save as json
+    #     messages_dict = flo_params_msg.to_dict()
+    #     with open('floparams.json', 'w') as file:
+    #         json.dump(messages_dict, file, indent=4)
+    #     print("Saved FloParams to json")
+
+    # def from_dict_msg(data):
+    #     message = MessageSql(
+    #             message_id=data["MessageId"],
+    #             from_alias=data["FromAlias"],
+    #             message_type_name=data["MessageTypeName"],
+    #             message_persisted_ms=data["MessagePersistedMs"],
+    #             payload=data["Payload"],
+    #             message_created_ms=data.get("MessageCreatedMs")
+    #         )
+    #     return message
+
+    # # Load the list of messages from the JSON file
+    # print('Reading json file...')
+    # with open('floparams.json', 'r') as file:
+    #     messages_dict = json.load(file)
+    # flo_params_msg = from_dict_msg(messages_dict)
+    # print("Opened FloParams from json")
 
     # for key, value in flo_params_msg.payload.items():
     #     # print(f'{key}: {value}')
@@ -50,9 +80,13 @@ def download_excel(house_alias, start_ms):
     flo_params = FloParamsHouse0(**flo_params_msg.payload)
 
     print("Running Dijkstra and saving analysis to excel...")
-    g = DGraph(flo_params)
-    g.solve_dijkstra()
-    g.export_to_excel()
+    if house_alias in houses_in_hinge:
+        h = FloHinge(flo_params)
+        h.export_to_excel()
+    else:
+        g = DGraph(flo_params)
+        g.solve_dijkstra()
+        g.export_to_excel()
     print("Done.")
 
 # just_before = pendulum.datetime(2025, 1, 18, 9, 5, tz="America/New_York").timestamp()*1000
@@ -66,7 +100,6 @@ def download_excel(house_alias, start_ms):
 #     print("Done.")
 
 # flo_parameters = FloParamsHouse0(
-
 # )
 
 import zipfile
@@ -120,7 +153,10 @@ def get_bids(house_alias, start_ms, end_ms):
                 plt.scatter(interesection[0], interesection[1])
                 plt.text(interesection[0]+0.25, interesection[1]+15, f'({round(interesection[0],3)}, {round(interesection[1],1)})', fontsize=10, color='tab:orange')
                 plt.xticks(quantities)
-                plt.yticks(prices+[expected_price_usd_mwh])
+                if min([abs(x-expected_price_usd_mwh) for x in prices]) < 5:
+                    plt.yticks(prices)
+                else:
+                    plt.yticks(prices + [expected_price_usd_mwh])
                 plt.ylabel("Price [USD/MWh]")
                 plt.xlabel("Quantity [kWh]")
                 plt.title(datetime.fromtimestamp(g.params.start_time, tz=pytz.timezone("America/New_York")).strftime('%Y-%m-%d %H:%M'))

@@ -15,7 +15,7 @@ ALPHA = 9.8
 BETA = -ALPHA/55
 GAMMA = 0.05
 
-PRINT=False
+PRINT=True
 
 # --------------------------------
 # Get the data
@@ -27,15 +27,17 @@ Session = sessionmaker(bind=engine)
 session = Session()
 
 # CHOOSE DATES FOR TRAINING DATA
-# start_ms_train = pendulum.datetime(2024,12,3).timestamp()*1000
-# end_ms_train = pendulum.datetime(2025,1,18).timestamp()*1000
-# print("Finding data...")
-# MESSAGES = session.query(MessageSql).filter(
-#     MessageSql.message_type_name == "report",
-#     MessageSql.message_persisted_ms >= start_ms_train,
-#     MessageSql.message_persisted_ms <= end_ms_train,
-# ).order_by(asc(MessageSql.message_persisted_ms)).all()
-# print("Done!")
+start_ms_train = pendulum.datetime(2025,2,5,7).timestamp()*1000
+end_ms_train = pendulum.datetime(2026,2,5,12).timestamp()*1000
+print("Finding data...")
+MESSAGES = session.query(MessageSql).filter(
+    MessageSql.from_alias.like(f'%oak%'),
+    MessageSql.message_type_name == "report",
+    MessageSql.message_persisted_ms >= start_ms_train,
+    MessageSql.message_persisted_ms <= end_ms_train,
+).order_by(asc(MessageSql.message_persisted_ms)).all()
+messages_loaded = MESSAGES.copy()
+print("Done!")
 
 # # Save as json
 # messages_dict = [m.to_dict() for m in MESSAGES]
@@ -43,23 +45,23 @@ session = Session()
 #     json.dump(messages_dict, file, indent=4)
 # print("Saved messages to json")
 
-def from_dict_msg(data):
-    message = MessageSql(
-            message_id=data["MessageId"],
-            from_alias=data["FromAlias"],
-            message_type_name=data["MessageTypeName"],
-            message_persisted_ms=data["MessagePersistedMs"],
-            payload=data["Payload"],
-            message_created_ms=data.get("MessageCreatedMs")  # This is optional
-        )
-    return message
+# def from_dict_msg(data):
+#     message = MessageSql(
+#             message_id=data["MessageId"],
+#             from_alias=data["FromAlias"],
+#             message_type_name=data["MessageTypeName"],
+#             message_persisted_ms=data["MessagePersistedMs"],
+#             payload=data["Payload"],
+#             message_created_ms=data.get("MessageCreatedMs")  # This is optional
+#         )
+#     return message
 
-# Load the list of messages from the JSON file
-print('Reading json file...')
-with open('messages.json', 'r') as file:
-    messages_dict = json.load(file)
-messages_loaded = [from_dict_msg(message_data) for message_data in messages_dict]
-print("Opened messages from json")
+# # Load the list of messages from the JSON file
+# print('Reading json file...')
+# with open('messages.json', 'r') as file:
+#     messages_dict = json.load(file)
+# messages_loaded = [from_dict_msg(message_data) for message_data in messages_dict]
+# print("Opened messages from json")
 
 def required_heating_power(oat, ws):
     r = ALPHA + BETA*oat + GAMMA*ws
@@ -118,6 +120,7 @@ def get_weather_data(latitude, longitude, start_time, end_time):
 def energy_used(house_alias, year, month, day, hour=None, onpeak_period=None, above_setpoint=False, thermal_mass=0):
 
     selected_messages = messages_loaded.copy()
+    print(len(selected_messages))
 
     # --------------------------------
     # Get the start and end time
@@ -172,6 +175,8 @@ def energy_used(house_alias, year, month, day, hour=None, onpeak_period=None, ab
         sorted_times, sorted_values = zip(*sorted_times_values)
         channels[key]['values'] = list(sorted_values)
         channels[key]['times'] = list(sorted_times)
+
+    print(len(channels))
 
     # --------------------------------
     # Remove cases where the zone is not at setpoint
@@ -359,9 +364,9 @@ def energy_used(house_alias, year, month, day, hour=None, onpeak_period=None, ab
         store_avg_before = sum(first_values_store)/12
         store_avg_after = sum(last_values_store)/12
         store_energy_used = 3 * 120 * 3.785 * 4.187/3600 * (store_avg_before - store_avg_after)
-        # print(f"Store before: {[to_fahrenheit(x) for x in first_values_store]}")
-        # print(f"Store after: {[to_fahrenheit(x) for x in last_values_store]}")
-        # print(f"Store used: {store_energy_used}")
+        print(f"Store before: {[to_fahrenheit(x) for x in first_values_store]}")
+        print(f"Store after: {[to_fahrenheit(x) for x in last_values_store]}")
+        print(f"Store used: {store_energy_used}")
 
     # --------------------------------
     # Energy stored in house

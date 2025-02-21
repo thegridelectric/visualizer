@@ -24,6 +24,7 @@ class FloParamsHouse0(BaseModel):
     HpTurnOnMinutes: int = 10
     # Initial state
     InitialTopTempF: StrictInt
+    InitialBottomTempF: StrictInt = 0
     InitialThermocline: StrictInt
     HpIsOff: bool = False
     BufferAvailableKwh: float = 0
