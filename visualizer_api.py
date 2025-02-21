@@ -186,7 +186,7 @@ aa_modes_order = [
 
 threshold = {
     'beech': 100,
-    'other': 30,
+    'other': 20,
 }
 
 # ------------------------------
