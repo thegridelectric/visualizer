@@ -1991,7 +1991,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                 fig = go.Figure()
 
                 request_hours = int((request.end_ms - request.start_ms)/1000 / 3600)
-                price_times_s = [request.start_ms/1000 + x*3600 for x in range(request_hours+2)]
+                price_times_s = [request.start_ms/1000 + x*3600 for x in range(request_hours+2+48)]
                 price_times = [pendulum.from_timestamp(x, tz='America/New_York') for x in price_times_s]
 
                 # Open and read the CSV file
@@ -2002,7 +2002,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                     for row in csvreader:
                         csv_times.append(row[0])
                         csv_dist.append(float(row[1]))
-                        csv_lmp.append(float(row[2]))
+                        csv_lmp.append(float(row[2])/10)
                 csv_times = [pendulum.from_format(x, 'M/D/YY H:m', tz='America/New_York').timestamp() for x in csv_times]
 
                 price_values = [
