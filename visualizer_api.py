@@ -37,8 +37,6 @@ MESSAGE_SQL = True
 TIMEOUT_SECONDS = 5*60
 MAX_DAYS_WARNING = 3
 
-HOUSES_RUNNING_ON_NEW_PRICE = ['beech']
-
 settings = Settings(_env_file=dotenv.find_dotenv())
 admin_user_password = settings.visualizer_api_password.get_secret_value()
 engine = create_engine(settings.db_url.get_secret_value())
@@ -185,6 +183,11 @@ aa_modes_colors_hex = {
 aa_modes_order = [
         'HpOffStoreDischarge', 'HpOffStoreOff', 'HpOnStoreOff', 'HpOnStoreCharge', 'StratBoss', 'WaitingNoElec', 'WaitingElec', 'Dormant'
         ]
+
+threshold = {
+    'beech': 100,
+    'other': 30,
+}
 
 # ------------------------------
 # Pull data from journaldb
@@ -1104,7 +1107,20 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
 
                 if 'zone-heat-calls' in request.selected_channels:
                     for zone in zones:
-                        for key in [x for x in zones[zone] if 'state' in x]:
+                        for key in [x for x in zones[zone] if 'whitewire' in x]:
+                            if request.house_alias not in threshold:
+                                house_threshold = threshold['other']
+                            else:
+                                house_threshold = threshold[request.house_alias]
+                            channels[key]['values'] = [1 if abs(x*1000)>house_threshold else 0 for x in channels[key]['values']]
+                            
+                        for key2 in [x for x in zones[zone] if 'state' in x]:
+                            # find the corresponding key in whitewire
+                            key = key2
+                            for cn in [x for x in zones[zone] if 'whitewire' in x]:
+                                if cn.split('-')[0] == key2.split('-')[0]:
+                                    key = cn
+
                             zone_color = zone_colors_hex[int(key[4])-1]
                             last_was_1 = False
                             # TODO: fig.add_trace here to debug fir
@@ -2017,18 +2033,17 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                 price_times2 = [pendulum.from_timestamp(x, tz='America/New_York') for x in csv_times]
                 # print(price_times2)
 
-                if request.house_alias in HOUSES_RUNNING_ON_NEW_PRICE:
-                    fig.add_trace(
-                        go.Scatter(
-                            x=price_times2,
-                            y=price_values,
-                            mode='lines',
-                            line=dict(color=home_alone_line),
-                            opacity=0.8,
-                            showlegend=False,
-                            line_shape='hv',
-                        )
+                fig.add_trace(
+                    go.Scatter(
+                        x=price_times2,
+                        y=price_values,
+                        mode='lines',
+                        line=dict(color=home_alone_line),
+                        opacity=0.8,
+                        showlegend=False,
+                        line_shape='hv',
                     )
+                )
 
                 shapes_list = []
                 for x in price_times2:
