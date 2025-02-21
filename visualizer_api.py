@@ -37,7 +37,7 @@ MESSAGE_SQL = True
 TIMEOUT_SECONDS = 5*60
 MAX_DAYS_WARNING = 3
 
-HOUSES_RUNNING_ON_NEW_PRICE = ['oak']
+HOUSES_RUNNING_ON_NEW_PRICE = ['beech']
 
 settings = Settings(_env_file=dotenv.find_dotenv())
 admin_user_password = settings.visualizer_api_password.get_secret_value()
@@ -2005,30 +2005,30 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                         csv_lmp.append(float(row[2]))
                 csv_times = [pendulum.from_format(x, 'M/D/YY H:m', tz='America/New_York').timestamp() for x in csv_times]
 
-                if request.house_alias in HOUSES_RUNNING_ON_NEW_PRICE:
-                    price_values = [
-                        lmp
-                        for time, dist, lmp in zip(csv_times, csv_dist, csv_lmp)
-                        if time in price_times_s
-                        ]
-                    csv_times = [
-                        time for time in csv_times
-                        if time in price_times_s
+                price_values = [
+                    lmp
+                    for time, dist, lmp in zip(csv_times, csv_dist, csv_lmp)
+                    if time in price_times_s
                     ]
+                csv_times = [
+                    time for time in csv_times
+                    if time in price_times_s
+                ]
                 price_times2 = [pendulum.from_timestamp(x, tz='America/New_York') for x in csv_times]
                 # print(price_times2)
 
-                fig.add_trace(
-                    go.Scatter(
-                        x=price_times2,
-                        y=price_values,
-                        mode='lines',
-                        line=dict(color=home_alone_line),
-                        opacity=0.8,
-                        showlegend=False,
-                        line_shape='hv',
+                if request.house_alias in HOUSES_RUNNING_ON_NEW_PRICE:
+                    fig.add_trace(
+                        go.Scatter(
+                            x=price_times2,
+                            y=price_values,
+                            mode='lines',
+                            line=dict(color=home_alone_line),
+                            opacity=0.8,
+                            showlegend=False,
+                            line_shape='hv',
+                        )
                     )
-                )
 
                 shapes_list = []
                 for x in price_times2:
