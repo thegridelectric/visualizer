@@ -577,6 +577,8 @@ class DGraph():
         ax[1].set_ylabel('Energy in the store [kWh]')
         ax[1].set_ylim([max(-1,min(sp_soc[:plot_hours])-10),101])
         ax[1].set_yticks([])
+        ax[1].set_xticks([x for x in sp_time][:plot_hours])
+        ax[1].set_xticklabels([f'{x.hour}:00' for x in sp_time][:plot_hours])
 
         done_mornings = {}
         done_afternoons = {}
