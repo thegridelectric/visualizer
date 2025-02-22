@@ -140,7 +140,7 @@ class FloHinge():
                     f'{int(sp_bottom_temp[i])}', ha='center', va='center', color='white')
         plt.title(f"{'d-'*self.turn_on_hour}{self.best_combination if combo=='' else combo}-knit")
         plt.savefig('plot_hinge.png', dpi=130)
-        plt.show()
+        # plt.show()
 
     def get_hinge_start_state(self):
         # Find hour at which the HP is turned on (we trust the decisions to discharge)
