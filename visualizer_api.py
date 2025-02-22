@@ -2047,7 +2047,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
 
                 shapes_list = []
                 for x in price_times2:
-                    if x.weekday in [5,6]:
+                    if x.weekday() in [5,6]:
                         continue
                     # Morning onpeak
                     if x==price_times2[0] and x.hour in [8,9,10,11]:
