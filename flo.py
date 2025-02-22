@@ -6,6 +6,7 @@ import pytz
 import pandas as pd
 import matplotlib
 import matplotlib.pyplot as plt
+from matplotlib.dates import DateFormatter
 from matplotlib.colors import Normalize, ListedColormap, BoundaryNorm
 from openpyxl.styles import PatternFill, Alignment, Font
 from openpyxl.drawing.image import Image
@@ -512,6 +513,100 @@ class DGraph():
                     )
         return self.pq_pairs
     
+    def quick_plot(self, show=True):
+        # Walk along the shortest path (sp)
+        sp_top_temp = []
+        sp_middle_temp = []
+        sp_bottom_temp = []
+        sp_thermocline = []
+        sp_thermocline2 = []
+        sp_hp_heat_out = []
+        sp_stored_energy = []
+        node_i = self.initial_node
+        the_end = False
+        while not the_end:
+            if node_i.next_node is None:
+                the_end = True
+                sp_hp_heat_out.append(edge_i.hp_heat_out)
+            else:
+                edge_i = [e for e in self.edges[node_i] if e.head==node_i.next_node][0]
+                sp_hp_heat_out.append(edge_i.hp_heat_out)
+            sp_top_temp.append(node_i.top_temp)
+            sp_bottom_temp.append(node_i.bottom_temp)
+            sp_thermocline.append(node_i.thermocline1)
+            if node_i.middle_temp is not None:
+                sp_middle_temp.append(node_i.middle_temp)
+                sp_thermocline2.append(node_i.thermocline2)
+            else:
+                sp_middle_temp.append(node_i.bottom_temp)
+                sp_thermocline2.append(node_i.thermocline1)
+            sp_stored_energy.append(node_i.energy)
+            node_i = node_i.next_node
+        sp_soc = [(x-self.bottom_node.energy) / (self.top_node.energy-self.bottom_node.energy) * 100 
+                    for x in sp_stored_energy]
+        sp_time = list(range(self.params.horizon+1))
+        start_time = datetime.fromtimestamp(self.params.start_time, tz=pytz.timezone("America/New_York"))
+        sp_time = [(start_time+timedelta(hours=x)) for x in range(len(sp_time))]
+        
+        # Plot the shortest path
+        fig, ax = plt.subplots(2,1, figsize=(12,6), gridspec_kw={'height_ratios':[8,6]})
+        plt.subplots_adjust(hspace=0.3) 
+        start = datetime.fromtimestamp(self.params.start_time, tz=pytz.timezone("America/New_York")).strftime('%Y-%m-%d %H:%M')
+        
+        # Top plot
+        plot_hours = 12
+        ax[0].step(sp_time[:plot_hours], sp_hp_heat_out[:plot_hours], where='post', color='tab:red', alpha=0.6, label='HP')
+        ax[0].step(sp_time[:plot_hours], self.params.load_forecast[:plot_hours], where='post', color='black', linestyle='dashed', alpha=0.4, label='Load')
+        ax[0].legend(loc='upper left')
+        ax[0].set_title(f'{start}', fontsize=10)
+        ax[0].set_ylabel('Heat [kWh]')
+        ax[0].set_ylim([-0.5, 1.5*max(sp_hp_heat_out)])
+        ax2 = ax[0].twinx()
+        ax2.step(sp_time[:plot_hours], self.params.lmp_forecast[:plot_hours], where='post', color='tab:green', alpha=0.8, label='LMP')
+        
+        ax2.set_ylabel('Electricity price [cts/kWh]')
+        yticks = list(set([int(x) for x in self.params.lmp_forecast[:plot_hours]]))
+        yticks = sorted(yticks+[x+0.5 for x in yticks])
+        if len(ax2.get_yticks())>=6 and len(yticks)<=6:
+            ax2.set_yticks(yticks)
+        ax[0].set_xticks([x for x in sp_time][:plot_hours])
+        ax[0].set_xticklabels([f'{x.hour}:00' for x in sp_time][:plot_hours])
+
+        # Bottom plot
+        ax[1].plot(sp_time[:plot_hours], sp_soc[:plot_hours], color='black', alpha=0.4, label='SoC')
+        ax[1].set_ylabel('Energy in the store [kWh]')
+        ax[1].set_ylim([max(-1,min(sp_soc[:plot_hours])-10),101])
+        ax[1].set_yticks([])
+
+        done_mornings = {}
+        done_afternoons = {}
+        not_labeled = True
+        for i, x in enumerate(sp_time[:plot_hours]):
+            if x.hour in [7,8,9,10,11,16,17,18,19] and x.weekday() not in [5,6]:
+                if x.hour in [7,8,9,10,11] and x.date() not in done_mornings:
+                    end_index = i+5-(x.hour-7) if i==0 else min(i+5, plot_hours-1)
+                    done_mornings[x.date()] = True
+                    if not_labeled:
+                        ax2.axvspan(sp_time[i], sp_time[end_index], color='tab:green', alpha=0.05, label='Onpeak')
+                        not_labeled = False
+                    else:
+                        ax2.axvspan(sp_time[i], sp_time[end_index], color='tab:green', alpha=0.05)
+                elif x.hour in [16,17,18,19] and x.date() not in done_afternoons:
+                    end_index = i+4-(x.hour-16) if i==0 else min(i+4, plot_hours-1)
+                    done_afternoons[x.date()] = True
+                    if not_labeled:
+                        ax2.axvspan(sp_time[i], sp_time[end_index], color='tab:green', alpha=0.05, label='Onpeak')
+                        not_labeled = False
+                    else:
+                        ax2.axvspan(sp_time[i], sp_time[end_index], color='tab:green', alpha=0.05)
+        ax2.legend(loc='upper right')
+
+        # plt.tight_layout()
+        plt.savefig('plot_quick.png', dpi=100, bbox_inches='tight')
+        if show:
+            plt.show()
+        plt.close()
+    
     def plot(self, show=True):
         # Walk along the shortest path (sp)
         sp_top_temp = []
@@ -746,6 +841,12 @@ class DGraph():
         # file_path = os.path.join('results', f'result_{start}.xlsx')
         file_path = 'result.xlsx'
         with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
+
+            # Add summary plot
+            self.quick_plot(show=False)
+            quick_plot_sheet = writer.book.create_sheet(title='Quick look')
+            quick_plot_sheet.add_image(Image('plot_quick.png'), 'A1')
+
             results_df.to_excel(writer, index=False, sheet_name='Pathcost')
             results_df.to_excel(writer, index=False, sheet_name='Next node')
             forecast_df.to_excel(writer, index=False, startcol=1, sheet_name='Pathcost')
@@ -755,7 +856,7 @@ class DGraph():
             dijkstra_pathcosts_df.to_excel(writer, index=False, startrow=len(forecast_df)+len(shortestpath_df)+2, sheet_name='Pathcost')
             dijkstra_nextnodes_df.to_excel(writer, index=False, startrow=len(forecast_df)+len(shortestpath_df)+2, sheet_name='Next node')
             parameters_df.to_excel(writer, index=False, sheet_name='Parameters')
-            
+
             # Add plot in a seperate sheet
             self.plot(show=False)
             plot_sheet = writer.book.create_sheet(title='Plot')
@@ -802,4 +903,5 @@ class DGraph():
                 nextnode_sheet.cell(row=row+1, column=col+1).fill = highlight_fill
 
         os.remove('plot.png')        
+        os.remove('plot_quick.png')        
         os.remove('plot_pq.png')
