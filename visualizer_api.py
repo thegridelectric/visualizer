@@ -633,8 +633,8 @@ async def get_csv(request: CsvRequest, apirequest: Request):
 
             if time.time() - request_start > TIMEOUT_SECONDS:
                 raise asyncio.TimeoutError('Timed out')
-            if await apirequest.is_disconnected():
-                raise asyncio.CancelledError("Client disconnected.")
+            # if await apirequest.is_disconnected():
+            #     raise asyncio.CancelledError("Client disconnected.")
 
             if error_msg != '':
                 return error_msg
@@ -687,8 +687,8 @@ async def get_csv(request: CsvRequest, apirequest: Request):
             for channel in channels_to_export:
                 if time.time() - request_start > TIMEOUT_SECONDS:
                     raise asyncio.TimeoutError('Timed out')
-                if await apirequest.is_disconnected():
-                    raise asyncio.CancelledError("Client disconnected.")
+                # if await apirequest.is_disconnected():
+                #     raise asyncio.CancelledError("Client disconnected.")
                 merged = await asyncio.to_thread(pd.merge_asof, 
                                                   pd.DataFrame({'times': csv_times_dt}),
                                                   pd.DataFrame(channels[channel]),
@@ -798,8 +798,8 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
 
                 if time.time() - request_start > TIMEOUT_SECONDS:
                     raise asyncio.TimeoutError('Timed out')
-                if await apirequest.is_disconnected():
-                    raise asyncio.CancelledError("Client disconnected.")
+                # if await apirequest.is_disconnected():
+                #     raise asyncio.CancelledError("Client disconnected.")
 
                 fig = go.Figure()
 
@@ -832,8 +832,8 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                     
                 if time.time() - request_start > TIMEOUT_SECONDS:
                     raise asyncio.TimeoutError('Timed out')
-                if await apirequest.is_disconnected():
-                    raise asyncio.CancelledError("Client disconnected.")
+                # if await apirequest.is_disconnected():
+                #     raise asyncio.CancelledError("Client disconnected.")
 
                 # Secondary yaxis
                 y_axis_power = 'y2' if temp_plot else 'y'
@@ -881,8 +881,8 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                         ) 
                 if time.time() - request_start > TIMEOUT_SECONDS:
                     raise asyncio.TimeoutError('Timed out')
-                if await apirequest.is_disconnected():
-                    raise asyncio.CancelledError("Client disconnected.")
+                # if await apirequest.is_disconnected():
+                #     raise asyncio.CancelledError("Client disconnected.")
                 if 'primary-flow' in request.selected_channels and 'primary-flow' in channels:
                     power_plot = True
                     fig.add_trace(
@@ -973,8 +973,8 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
 
                 if time.time() - request_start > TIMEOUT_SECONDS:
                     raise asyncio.TimeoutError('Timed out')
-                if await apirequest.is_disconnected():
-                    raise asyncio.CancelledError("Client disconnected.")
+                # if await apirequest.is_disconnected():
+                #     raise asyncio.CancelledError("Client disconnected.")
 
                 fig = go.Figure()
 
@@ -1100,8 +1100,8 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
 
                 if time.time() - request_start > TIMEOUT_SECONDS:
                     raise asyncio.TimeoutError('Timed out')
-                if await apirequest.is_disconnected():
-                    raise asyncio.CancelledError("Client disconnected.")
+                # if await apirequest.is_disconnected():
+                #     raise asyncio.CancelledError("Client disconnected.")
 
                 fig = go.Figure()
 
@@ -1244,8 +1244,8 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
 
                 if time.time() - request_start > TIMEOUT_SECONDS:
                     raise asyncio.TimeoutError('Timed out')
-                if await apirequest.is_disconnected():
-                    raise asyncio.CancelledError("Client disconnected.")
+                # if await apirequest.is_disconnected():
+                #     raise asyncio.CancelledError("Client disconnected.")
 
                 fig = go.Figure()
 
@@ -1364,8 +1364,8 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
 
                 if time.time() - request_start > TIMEOUT_SECONDS:
                     raise asyncio.TimeoutError('Timed out')
-                if await apirequest.is_disconnected():
-                    raise asyncio.CancelledError("Client disconnected.")
+                # if await apirequest.is_disconnected():
+                #     raise asyncio.CancelledError("Client disconnected.")
 
                 fig = go.Figure()
 
@@ -1466,8 +1466,8 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
 
                 if time.time() - request_start > TIMEOUT_SECONDS:
                     raise asyncio.TimeoutError('Timed out')
-                if await apirequest.is_disconnected():
-                    raise asyncio.CancelledError("Client disconnected.")
+                # if await apirequest.is_disconnected():
+                #     raise asyncio.CancelledError("Client disconnected.")
 
                 fig = go.Figure()
                 
@@ -1683,8 +1683,8 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
 
                 if time.time() - request_start > TIMEOUT_SECONDS:
                     raise asyncio.TimeoutError('Timed out')
-                if await apirequest.is_disconnected():
-                    raise asyncio.CancelledError("Client disconnected.")
+                # if await apirequest.is_disconnected():
+                #     raise asyncio.CancelledError("Client disconnected.")
 
                 fig = go.Figure()
 
@@ -1762,8 +1762,8 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
 
                 if time.time() - request_start > TIMEOUT_SECONDS:
                     raise asyncio.TimeoutError('Timed out')
-                if await apirequest.is_disconnected():
-                    raise asyncio.CancelledError("Client disconnected.")
+                # if await apirequest.is_disconnected():
+                #     raise asyncio.CancelledError("Client disconnected.")
 
                 fig = go.Figure()
 
@@ -1841,8 +1841,8 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
 
                 if time.time() - request_start > TIMEOUT_SECONDS:
                     raise asyncio.TimeoutError('Timed out')
-                if await apirequest.is_disconnected():
-                    raise asyncio.CancelledError("Client disconnected.")
+                # if await apirequest.is_disconnected():
+                #     raise asyncio.CancelledError("Client disconnected.")
 
                 fig = go.Figure()
 
@@ -1920,8 +1920,8 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
 
                 if time.time() - request_start > TIMEOUT_SECONDS:
                     raise asyncio.TimeoutError('Timed out')
-                if await apirequest.is_disconnected():
-                    raise asyncio.CancelledError("Client disconnected.")
+                # if await apirequest.is_disconnected():
+                #     raise asyncio.CancelledError("Client disconnected.")
 
                 fig = go.Figure()
                 color_scale = pc.diverging.RdBu[::-1]
@@ -2001,8 +2001,8 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
 
                 if time.time() - request_start > TIMEOUT_SECONDS:
                     raise asyncio.TimeoutError('Timed out')
-                if await apirequest.is_disconnected():
-                    raise asyncio.CancelledError("Client disconnected.")
+                # if await apirequest.is_disconnected():
+                #     raise asyncio.CancelledError("Client disconnected.")
 
                 fig = go.Figure()
 
