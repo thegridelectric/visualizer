@@ -29,7 +29,7 @@ import plotly.colors as pc
 import json
 import csv
 
-RUNNING_LOCALLY = True
+RUNNING_LOCALLY = False
 
 PYPLOT_PLOT = True
 MATPLOTLIB_PLOT = False
