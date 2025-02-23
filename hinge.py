@@ -138,21 +138,127 @@ class FloHinge():
         for i, bar in enumerate(bars_bottom):
             plt.text(bar.get_x() + bar.get_width() / 2, bar.get_y() + bar.get_height() / 2, 
                     f'{int(sp_bottom_temp[i])}', ha='center', va='center', color='white')
-        plt.title(f"{'d-'*self.turn_on_hour}{self.best_combination if combo=='' else combo}-knit")
+        plt.title(f"current-{'d-'*self.turn_on_hour}{self.best_combination if combo=='' else combo}-knit")
         plt.savefig('plot_hinge.png', dpi=130)
-        plt.show()
+        plt.close()
+        # plt.show()
+
+    def quick_plot(self, show=True):
+        # Walk along the shortest path (sp) starting from knit
+        sp_top_temp = []
+        sp_middle_temp = []
+        sp_bottom_temp = []
+        sp_thermocline = []
+        sp_thermocline2 = []
+        sp_hp_heat_out = []
+        sp_stored_energy = []
+        node_i: DNode = self.feasible_branches[self.best_combination]['knitted_to']
+        the_end = False
+        while not the_end:
+            if node_i.next_node is None:
+                the_end = True
+                sp_hp_heat_out.append(edge_i.hp_heat_out)
+            else:
+                edge_i = [e for e in self.g.edges[node_i] if e.head==node_i.next_node][0]
+                sp_hp_heat_out.append(edge_i.hp_heat_out)
+            sp_top_temp.append(node_i.top_temp)
+            sp_bottom_temp.append(node_i.bottom_temp)
+            sp_thermocline.append(node_i.thermocline1)
+            if node_i.middle_temp is not None:
+                sp_middle_temp.append(node_i.middle_temp)
+                sp_thermocline2.append(node_i.thermocline2)
+            else:
+                sp_middle_temp.append(node_i.bottom_temp)
+                sp_thermocline2.append(node_i.thermocline1)
+            sp_stored_energy.append(node_i.energy)
+            node_i = node_i.next_node
+        sp_soc = [(x-self.g.bottom_node.energy) / (self.g.top_node.energy-self.g.bottom_node.energy) * 100 
+                    for x in sp_stored_energy]
+        sp_time = list(range(self.g.params.horizon+1))
+        start_time = datetime.fromtimestamp(self.g.params.start_time, tz=pytz.timezone("America/New_York"))+timedelta(hours=self.turn_on_hour+3)
+        sp_time = [(start_time+timedelta(hours=x)) for x in range(len(sp_time))]
+
+        # Add the discharging part and branching
+        sp_time = [
+            datetime.fromtimestamp(self.g.params.start_time, tz=pytz.timezone("America/New_York"))
+            + timedelta(hours=x) for x in range(self.turn_on_hour+3)
+            ] + sp_time
+        sp_hp_heat_out = self.feasible_branches[self.best_combination]['hp_heat_out'] + sp_hp_heat_out
+        sp_soc = [(x.energy-self.g.bottom_node.energy) / (self.g.top_node.energy-self.g.bottom_node.energy) * 100 
+                    for x in self.hinge_steps[:-2]] + sp_soc
+        
+        # Plot the shortest path
+        fig, ax = plt.subplots(2,1, figsize=(12,6), gridspec_kw={'height_ratios':[8,6]})
+        plt.subplots_adjust(hspace=0.3) 
+        start = datetime.fromtimestamp(self.g.params.start_time, tz=pytz.timezone("America/New_York")).strftime('%Y-%m-%d %H:%M')
+        
+        # Top plot
+        plot_hours = 12
+        ax[0].step(sp_time[:plot_hours], sp_hp_heat_out[:plot_hours], where='post', color='tab:red', alpha=0.6, label='HP')
+        ax[0].step(sp_time[:plot_hours], self.g.params.load_forecast[:plot_hours], where='post', color='black', linestyle='dashed', alpha=0.4, label='Load')
+        ax[0].legend(loc='upper left')
+        ax[0].set_title(f'{start}', fontsize=10)
+        ax[0].set_ylabel('Heat [kWh]')
+        ax[0].set_ylim([-0.5, 1.5*max(sp_hp_heat_out)])
+        ax2 = ax[0].twinx()
+        ax2.step(sp_time[:plot_hours], self.g.params.lmp_forecast[:plot_hours], where='post', color='tab:green', alpha=0.8, label='LMP')
+        
+        ax2.set_ylabel('Electricity price [cts/kWh]')
+        yticks = list(set([int(x) for x in self.g.params.lmp_forecast[:plot_hours]]))
+        yticks = sorted(yticks+[x+0.5 for x in yticks])
+        if len(ax2.get_yticks())>=6 and len(yticks)<=6:
+            ax2.set_yticks(yticks)
+        ax[0].set_xticks([x for x in sp_time][:plot_hours])
+        ax[0].set_xticklabels([f'{x.hour}:00' for x in sp_time][:plot_hours])
+
+        # Bottom plot
+        ax[1].plot(sp_time[:plot_hours], sp_soc[:plot_hours], color='black', alpha=0.4, label='SoC')
+        ax[1].set_ylabel('Energy in the store [kWh]')
+        # ax[1].set_ylim([max(-1,min(sp_soc[:plot_hours])-10),101])
+        ax[1].set_yticks([])
+        ax[1].set_xticks([x for x in sp_time][:plot_hours])
+        ax[1].set_xticklabels([f'{x.hour}:00' for x in sp_time][:plot_hours])
+
+        done_mornings = {}
+        done_afternoons = {}
+        not_labeled = True
+        for i, x in enumerate(sp_time[:plot_hours]):
+            if x.hour in [7,8,9,10,11,16,17,18,19] and x.weekday() not in [5,6]:
+                if x.hour in [7,8,9,10,11] and x.date() not in done_mornings:
+                    end_index = i+5-(x.hour-7) if i==0 else min(i+5, plot_hours-1)
+                    done_mornings[x.date()] = True
+                    if not_labeled:
+                        ax2.axvspan(sp_time[i], sp_time[end_index], color='tab:green', alpha=0.05, label='Onpeak')
+                        not_labeled = False
+                    else:
+                        ax2.axvspan(sp_time[i], sp_time[end_index], color='tab:green', alpha=0.05)
+                elif x.hour in [16,17,18,19] and x.date() not in done_afternoons:
+                    end_index = i+4-(x.hour-16) if i==0 else min(i+4, plot_hours-1)
+                    done_afternoons[x.date()] = True
+                    if not_labeled:
+                        ax2.axvspan(sp_time[i], sp_time[end_index], color='tab:green', alpha=0.05, label='Onpeak')
+                        not_labeled = False
+                    else:
+                        ax2.axvspan(sp_time[i], sp_time[end_index], color='tab:green', alpha=0.05)
+        ax2.legend(loc='upper right')
+
+        # plt.tight_layout()
+        plt.savefig('plot_quick.png', dpi=100, bbox_inches='tight')
+        if show:
+            plt.show()
+        plt.close()
 
     def get_hinge_start_state(self):
         # Find hour at which the HP is turned on (we trust the decisions to discharge)
         node_i = self.g.initial_node
         self.initial_node = HingeNode(
-            time_slice = node_i.time_slice,
-            top_temp = node_i.top_temp,
-            middle_temp = node_i.middle_temp,
-            bottom_temp = node_i.bottom_temp,
-            thermocline1 = node_i.thermocline1,
-            thermocline2 = node_i.thermocline2,
-            params = self.g.params
+            time_slice = self.dg.initial_node.time_slice,
+            top_temp = self.dg.initial_node.top_temp,
+            middle_temp = self.dg.initial_node.middle_temp,
+            bottom_temp = self.dg.initial_node.bottom_temp,
+            thermocline1 = self.dg.initial_node.thermocline1,
+            thermocline2 = self.dg.initial_node.thermocline2,
+            params = self.dg.params
             )
         self.hinge_steps.append(self.initial_node)
         for i in range(48):
@@ -180,13 +286,13 @@ class FloHinge():
 
     def evaluate_branches(self):
         self.feasible_branches = {}
-        for branch1_charge in [True, False]:
-            for branch2_charge in [True, False]:
-                for branch3_charge in [True, False]:
-                    combination_name = f"{'C' if branch1_charge else 'D'}-"
-                    combination_name += f"{'C' if branch2_charge else 'D'}-"
-                    combination_name += f"{'C' if branch3_charge else 'D'}"
-                    self.follow_branch(branch1_charge, branch2_charge, branch3_charge, combination_name)
+        for branch1 in ['charge', 'load', 'discharge']:
+            for branch2 in ['charge', 'load', 'discharge']:
+                for branch3 in ['charge', 'load', 'discharge']:
+                    combination_name = f"{'C' if branch1=='charge' else ('D' if branch1=='discharge' else 'L')}-"
+                    combination_name += f"{'C' if branch2=='charge' else ('D' if branch2=='discharge' else 'L')}-"
+                    combination_name += f"{'C' if branch3=='charge' else ('D' if branch3=='discharge' else 'L')}"
+                    self.follow_branch(combination_name)
         self.knit_branches()
 
         for branch in self.feasible_branches:
@@ -256,53 +362,76 @@ class FloHinge():
         for combo in self.feasible_branches:
             if combo != self.best_combination:
                 continue
-            b1, b2, b3 = [True if x=='C' else False for x in combo.split('-')]
             self.hinge_steps = []
             self.get_hinge_start_state()
-            self.follow_branch(b1, b2, b3, combo, final=True)
+            self.follow_branch(combo, final=True)
             self.hinge_steps.append(self.feasible_branches[combo]['knitted_to'])
             self.plot_hinge(combo=combo)
+            self.quick_plot(show=False)
 
 
-    def follow_branch(self, branch1_charge, branch2_charge, branch3_charge, combination_name, final=False):
+    def follow_branch(self, combination_name, final=False):
+        branch1, branch2, branch3 = combination_name.split('-')
         node0 = self.turn_on_node
         total_hinge_cost_usd = 0
         # First hour
-        node1 = self.charge_from(node0) if branch1_charge else self.discharge_from(node0)
-        if final:
-            self.hinge_steps.append(node1)
         h = self.turn_on_node.time_slice
-        if branch1_charge:
+        if branch1=='C':
+            node1 = self.charge_from(node0)
             total_hinge_cost_usd += self.g.params.elec_price_forecast[h] * self.g.params.max_hp_elec_in / 100
-        else:
+            b1_hp = self.g.params.max_hp_elec_in * self.g.params.COP(self.g.params.oat_forecast[h],0)
+        elif branch1=='L':
+            node1 = self.stay_at(node0)
+            b1_hp = self.g.params.load_forecast[h]
+        elif branch1=='D':
+            node1 = self.discharge_from(node0)
+            b1_hp = 0
             RSWT = self.g.params.rswt_forecast[h]
             if node0.top_temp < RSWT or node1.top_temp < RSWT - self.g.params.delta_T(RSWT):
                 return
-        # Second hour
-        node2 = self.charge_from(node1) if branch2_charge else self.discharge_from(node1)
         if final:
-            self.hinge_steps.append(node2)
+            self.hinge_steps.append(node1)
+        # Second hour
         h += 1
-        if branch2_charge:
+        if branch2=='C':
+            node2 = self.charge_from(node1)
             total_hinge_cost_usd += self.g.params.elec_price_forecast[h] * self.g.params.max_hp_elec_in / 100
-        else:
+            b2_hp = self.g.params.max_hp_elec_in * self.g.params.COP(self.g.params.oat_forecast[h],0)
+        elif branch2=='L':
+            node2 = self.stay_at(node1)
+            b2_hp = self.g.params.load_forecast[h]
+        elif branch2=='D':
+            node2 = self.discharge_from(node1)
+            b2_hp = 0
             RSWT = self.g.params.rswt_forecast[h]
             if node1.top_temp < RSWT or node2.top_temp < RSWT - self.g.params.delta_T(RSWT):
                 return
-        # Third hour
-        node3 = self.charge_from(node2) if branch3_charge else self.discharge_from(node2)
         if final:
-            self.hinge_steps.append(node3)
+            self.hinge_steps.append(node2)
+        # Third hour
         h += 1
-        if branch3_charge:
+        if branch3=='C':
+            node3 = self.charge_from(node2)
             total_hinge_cost_usd += self.g.params.elec_price_forecast[h] * self.g.params.max_hp_elec_in / 100
-        else:
+            b3_hp = self.g.params.max_hp_elec_in * self.g.params.COP(self.g.params.oat_forecast[h],0)
+        elif branch3=='L':
+            node3 = self.stay_at(node2)
+            b3_hp = self.g.params.load_forecast[h]
+        elif branch3=='D':
+            node3 = self.discharge_from(node2)
             RSWT = self.g.params.rswt_forecast[h]
+            b3_hp = 0
             if node2.top_temp < RSWT or node3.top_temp < RSWT - self.g.params.delta_T(RSWT):
                 return
+        if final:
+            self.hinge_steps.append(node3)
         # Add to feasible branches
         if not final:
-            self.feasible_branches[combination_name] = {'hinge_cost': total_hinge_cost_usd, 'final_state': node3}
+            self.feasible_branches[combination_name] = {
+                'hinge_cost': total_hinge_cost_usd, 
+                'hp_heat_out': [0]*self.turn_on_hour + [round(x,2) for x in [b1_hp, b2_hp, b3_hp]],
+                'final_state': node3
+                }
 
 
     def discharge_from(self, n: HingeNode):
@@ -392,6 +521,17 @@ class FloHinge():
             params = self.g.params
         )
         return next_node
+    
+    def stay_at(self, n: HingeNode):
+        return HingeNode(
+            time_slice = n.time_slice+1,
+            top_temp = n.top_temp,
+            middle_temp = n.middle_temp,
+            bottom_temp = n.bottom_temp,
+            thermocline1 = n.thermocline1,
+            thermocline2 = n.thermocline2,
+            params = n.params
+        )
 
     def knit_branches(self):
         for branch in self.feasible_branches:
@@ -541,8 +681,6 @@ class FloHinge():
 
         # Add the PQ pairs to a seperate sheet and plot the curve
         pq_pairs = self.generate_bid()
-        print(pq_pairs)
-        print(len(pq_pairs))
         prices = [x.PriceTimes1000 for x in pq_pairs]
         quantities = [x.QuantityTimes1000/1000 for x in pq_pairs]
         pqpairs_df = pd.DataFrame({'price':[x/1000 for x in prices], 'quantity':quantities})
@@ -582,6 +720,11 @@ class FloHinge():
         # file_path = os.path.join('results', f'result_{start}.xlsx')
         file_path = 'result.xlsx'
         with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
+
+            # Add summary plot
+            quick_plot_sheet = writer.book.create_sheet(title='Quick look')
+            quick_plot_sheet.add_image(Image('plot_quick.png'), 'A1')
+
             results_df.to_excel(writer, index=False, sheet_name='Pathcost')
             results_df.to_excel(writer, index=False, sheet_name='Next node')
             forecast_df.to_excel(writer, index=False, startcol=1, sheet_name='Pathcost')
@@ -640,6 +783,7 @@ class FloHinge():
 
         os.remove('plot.png')        
         os.remove('plot_pq.png')
+        os.remove('plot_quick.png')
         os.remove('plot_hinge.png')
 
 
@@ -664,12 +808,5 @@ if __name__ == '__main__':
     # ----------------------------------
     
     f = FloHinge(flo_params)
-
-    print('\n')
-    print(f"Initial state: {f.initial_node}")
-    print(f"Charging gives: {f.charge1_node}")
-    print(f"Discharging gives: {f.discharge1_node}")
-    print('\n')
-
     f.generate_bid()
     f.export_to_excel()
