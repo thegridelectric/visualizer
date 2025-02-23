@@ -312,6 +312,12 @@ class FloHinge():
                     [x for x in self.feasible_branches if x.split('-')[0]=='C'], 
                     key=lambda k: self.feasible_branches[k]['total_pathcost']
                     )
+            best_combination_starting_with_stay = None                 
+            if [x for x in self.feasible_branches if x.split('-')[0]=='L']:
+                best_combination_starting_with_stay = min(
+                    [x for x in self.feasible_branches if x.split('-')[0]=='L'], 
+                    key=lambda k: self.feasible_branches[k]['total_pathcost']
+                    )
             best_combination_starting_with_discharge = None                 
             if [x for x in self.feasible_branches if x.split('-')[0]=='D']:
                 best_combination_starting_with_discharge = min(
@@ -322,16 +328,24 @@ class FloHinge():
             cost_of_hour_1 = self.g.params.elec_price_forecast[0] * self.g.params.max_hp_elec_in / 100
             charge1_pathcost = self.feasible_branches[best_combination_starting_with_charge]['total_pathcost'] - cost_of_hour_1
             charge1_node = self.charge_from(self.turn_on_node)
+            # Meet load pathcost
+            cost_of_hour_1 = (
+                self.g.params.elec_price_forecast[0]/100 * self.g.params.load_forecast[0] / self.g.params.COP(self.g.params.oat_forecast[0],0) 
+                )
+            stay1_pathcost = self.feasible_branches[best_combination_starting_with_stay]['total_pathcost'] - cost_of_hour_1
+            stay1_node = self.stay_at(self.turn_on_node)
             # Discharging pathcost
             discharge1_pathcost = self.feasible_branches[best_combination_starting_with_discharge]['total_pathcost']
             discharge1_node = self.discharge_from(self.turn_on_node)
         else:
             charge1_pathcost = None
             charge1_node = None
+            stay1_pathcost = None
+            stay1_node = None
             discharge1_pathcost = self.feasible_branches[self.best_combination]['total_pathcost']
             discharge1_node = self.dg.edges[self.dg.initial_node][0].head
         
-        if charge1_node:
+        if self.turn_on_hour == 0:
             self.charge1_node = DNode(
                 time_slice = 0, 
                 top_temp=charge1_node.top_temp,
@@ -344,8 +358,21 @@ class FloHinge():
                     'pathcost': charge1_pathcost,
                     }
                 )
+            self.stay1_node = DNode(
+                time_slice = 0, 
+                top_temp=stay1_node.top_temp,
+                thermocline1=stay1_node.top_temp,
+                parameters=stay1_node.params,
+                hinge_node = {
+                    'middle_temp': stay1_node.middle_temp,
+                    'bottom_temp': stay1_node.bottom_temp,
+                    'thermocline2': stay1_node.thermocline2,
+                    'pathcost': stay1_pathcost,
+                    }
+                )
         else:
             self.charge1_node = None
+            self.stay1_node = None
         self.discharge1_node = DNode(
             time_slice = 0, 
             top_temp=discharge1_node.top_temp,
@@ -543,12 +570,17 @@ class FloHinge():
     def generate_bid(self):
         # add new nodes and edges
         if self.charge1_node:
-            self.g.nodes[0].extend([self.charge1_node, self.discharge1_node])
+            self.g.nodes[0].extend([self.charge1_node, self.stay1_node, self.discharge1_node])
             # Charge edge
             charge1_cost = self.g.params.elec_price_forecast[0] * self.g.params.max_hp_elec_in / 100
             charge1_hp_heat_out = self.g.params.max_hp_elec_in * self.g.params.COP(self.g.params.oat_forecast[0], 0) 
             charge1_edge = DEdge(self.g.initial_node, self.charge1_node, charge1_cost, charge1_hp_heat_out)
             self.g.edges[self.g.initial_node].append(charge1_edge)
+            # Load edge
+            stay1_cost = self.g.params.elec_price_forecast[0]/100 * self.g.params.load_forecast[0] / self.g.params.COP(self.g.params.oat_forecast[0],0)
+            stay1_hp_heat_out = self.g.params.load_forecast[0]
+            stay1_edge = DEdge(self.g.initial_node, self.stay1_node, stay1_cost, stay1_hp_heat_out)
+            self.g.edges[self.g.initial_node].append(stay1_edge)
             # Discharge edge
             discharge1_edge = DEdge(self.g.initial_node, self.discharge1_node, 0, 0)
             self.g.edges[self.g.initial_node].append(discharge1_edge)
@@ -599,7 +631,9 @@ class FloHinge():
         # remove new nodes and edges
         if self.charge1_node:
             self.g.nodes[0].remove(self.charge1_node)
+            self.g.nodes[0].remove(self.stay1_node)
             self.g.edges[self.g.initial_node].remove(charge1_edge)
+            self.g.edges[self.g.initial_node].remove(stay1_edge)
         self.g.nodes[0].remove(self.discharge1_node)
         self.g.edges[self.g.initial_node].remove(discharge1_edge)
 
