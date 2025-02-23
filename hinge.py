@@ -146,13 +146,13 @@ class FloHinge():
         # Find hour at which the HP is turned on (we trust the decisions to discharge)
         node_i = self.g.initial_node
         self.initial_node = HingeNode(
-            time_slice = node_i.time_slice,
-            top_temp = node_i.top_temp,
-            middle_temp = node_i.middle_temp,
-            bottom_temp = node_i.bottom_temp,
-            thermocline1 = node_i.thermocline1,
-            thermocline2 = node_i.thermocline2,
-            params = self.g.params
+            time_slice = self.dg.initial_node.time_slice,
+            top_temp = self.dg.initial_node.top_temp,
+            middle_temp = self.dg.initial_node.middle_temp,
+            bottom_temp = self.dg.initial_node.bottom_temp,
+            thermocline1 = self.dg.initial_node.thermocline1,
+            thermocline2 = self.dg.initial_node.thermocline2,
+            params = self.dg.params
             )
         self.hinge_steps.append(self.initial_node)
         for i in range(48):
