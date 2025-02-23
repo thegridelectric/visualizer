@@ -16,7 +16,7 @@ from datetime import datetime
 import pytz
 import json
 
-houses_in_hinge = []
+houses_in_hinge = ['beech']
 
 def download_excel(house_alias, start_ms):
 
