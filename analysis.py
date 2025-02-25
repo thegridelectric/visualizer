@@ -81,7 +81,7 @@ def download_excel(house_alias, start_ms):
 
     print("Running Dijkstra and saving analysis to excel...")
     if house_alias in houses_in_hinge:
-        h = FloHinge(flo_params)
+        h = FloHinge(flo_params, hinge_hours=5, num_nodes=[10,3,3,3,3])
         h.export_to_excel()
     else:
         g = DGraph(flo_params)

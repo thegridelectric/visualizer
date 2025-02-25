@@ -2,7 +2,7 @@ from flo import DGraph, DParams, DNode, DEdge, to_kelvin
 from named_types import FloParamsHouse0, PriceQuantityUnitless
 from fake_models import MessageSql
 import json
-from typing import List
+from typing import List, Union
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
@@ -14,9 +14,12 @@ from openpyxl.styles import PatternFill, Alignment, Font
 from openpyxl.drawing.image import Image
 import os
 
+PRINT = False
+
+
 class HingeNode():
-    def __init__(self, time_slice:int, params: DParams,
-                 top_temp:float, middle_temp:float, bottom_temp:float, thermocline1:float, thermocline2: float):
+    def __init__(self, time_slice:int, params: DParams, top_temp:float, middle_temp:float, bottom_temp:float, 
+                 thermocline1:float, thermocline2: float, pathcost: float=None):
         self.time_slice = time_slice
         self.top_temp = top_temp
         self.middle_temp = middle_temp
@@ -24,6 +27,7 @@ class HingeNode():
         self.thermocline1 = thermocline1
         self.thermocline2 = thermocline2
         self.params = params
+        self.pathcost = pathcost
         self.energy = self.get_energy()
 
     def __repr__(self):
@@ -75,24 +79,256 @@ class HingeNode():
 
 class FloHinge():
 
-    def __init__(self, flo_params: FloParamsHouse0):
-        # Graph in which charging is accurate
+    def __init__(self, flo_params: FloParamsHouse0, hinge_hours: int, num_nodes: List[int]):
+        self.flo_params = flo_params
+        self.hinge_hours = hinge_hours
+        self.num_nodes = num_nodes
         self.g = DGraph(flo_params)
         self.g.solve_dijkstra()
-        # Graph in which discharging is accurate
-        flo_params.DdDeltaTF = 45
+        flo_params.DdDeltaTF = flo_params.DischargingDdDeltaTF
         self.dg = DGraph(flo_params)
-        self.dg.solve_dijkstra()
-        self.hinge_steps: List[HingeNode] = []
+        self.num_layers = self.g.params.num_layers
         self.start()
 
     def start(self):
-        self.get_hinge_start_state()
-        self.evaluate_branches()
+        self.initial_node = self.to_hingenode(self.dg.initial_node)
+        self.hinge_steps: List[HingeNode] = [self.initial_node]
+        print(f"Estimated storage at the start: {self.initial_node}")
 
-    def plot_hinge(self, combo=''):
-        # Want to show initial, discharging, and the result of the 3 branches
-        sp_time = list(range(self.turn_on_hour+3+2))
+        # Find the HP max thermal output for every hour in the hinge
+        hp_max_kwh_th = [
+            round(self.flo_params.HpMaxElecKw * self.g.params.COP(self.g.params.oat_forecast[x]),2)
+            for x in range(self.hinge_hours)
+            ]
+        # Create a list of all available HP thermal outputs for every hour in the hinge
+        step_size_kwh = [hp_max_kwh_th[x] / (self.num_nodes[x]-1) for x in range(self.hinge_hours)]
+        available_paths_kwh = [[round(i * step_size_kwh[x],2) for i in range(self.num_nodes[x])] for x in range(self.hinge_hours)]   
+        # Remove the non-zero element that is closest to the load and add the load
+        for i in range(self.hinge_hours):
+            if self.num_nodes[i] > 2:
+                load = round(self.g.params.load_forecast[i],2)
+                closest_to_load = min([x for x in available_paths_kwh[i] if x>0], key=lambda x: abs(x-load))
+                available_paths_kwh[i].remove(closest_to_load)
+                available_paths_kwh[i] = sorted(available_paths_kwh[i] + [load])
+        self.available_paths_kwh = available_paths_kwh
+
+        # Check the number of available possibilities
+        num_combinations = 1
+        for h in range(self.hinge_hours):
+            num_combinations *= len(available_paths_kwh[h])
+            print(f"Hour {h} options: {available_paths_kwh[h]} kWh_th")
+        print(f"There are {num_combinations} possible combinations")
+
+        # Explore all possibilities
+        self.feasible_branches = {}
+        from itertools import product
+        for combination in product(*available_paths_kwh):
+            self.create_branch(list(combination))
+        self.knit_branches()
+
+        if PRINT:
+            for branch in self.feasible_branches:
+                print(f"\nCombination: {branch}")
+                print(f"- Ends at {self.feasible_branches[branch]['final_state']}")
+                print(f"- Knitted to {self.feasible_branches[branch]['knitted_to']}")
+                print(f"- Total pathcost: {self.feasible_branches[branch]['total_pathcost']}")
+
+        # Best combination
+        self.best_combination = min(self.feasible_branches, key=lambda k: self.feasible_branches[k]['total_pathcost'])
+        print(f"\nThe best path forward is {self.best_combination}")
+        self.hinge_steps = [self.initial_node]
+        self.create_branch(self.best_combination, best_combination=True)
+        self.hinge_steps.append(self.feasible_branches[self.best_combination]['knitted_to'])
+        self.plot_hinge()
+        self.quick_plot()
+
+    def create_branch(self, combination, best_combination=False):
+        node = self.initial_node
+        load = [round(x,2) for x in self.g.params.load_forecast]
+        cop = [self.g.params.COP(self.g.params.oat_forecast[x]) for x in range(self.hinge_hours)]
+        elec_price = [x/100 for x in self.g.params.elec_price_forecast]
+        branch_cost = 0
+        for h in range(self.hinge_hours):
+            branch_cost += combination[h] / cop[h] * elec_price[h]
+            heat_to_store = combination[h]-load[h]
+            if heat_to_store > 0:
+                node = self.charge(node, heat_to_store)
+                if node.top_temp > 175:
+                    return
+            elif heat_to_store < 0:
+                node_before = node
+                node = self.discharge(node, -heat_to_store)
+                rswt = self.g.params.rswt_forecast[h]
+                if node_before.top_temp < rswt or node.top_temp < rswt - self.g.params.delta_T(rswt):
+                    return
+            else:
+                node = self.to_hingenode(node, time_slice=node.time_slice+1)
+            if best_combination:
+                self.hinge_steps.append(node)
+        if not best_combination:
+            self.feasible_branches[tuple(combination)] = {
+                'branch_cost': round(branch_cost,3), 
+                'final_state': node
+                }
+
+    def discharge(self, n: HingeNode, discharge_kwh: float):
+        next_node_energy = n.energy - discharge_kwh
+        if n.top_temp - self.dg.params.delta_T(n.top_temp) < n.bottom_temp or n.middle_temp is not None:
+            # Build a new discharging graph from current node and find the node that matches the next node energy
+            flo_params_temporary: FloParamsHouse0 = self.dg.params.config.model_copy()
+            flo_params_temporary.HorizonHours = 1
+            flo_params_temporary.InitialTopTempF = n.top_temp if n.top_temp<=175 else 175
+            flo_params_temporary.InitialBottomTempF = n.bottom_temp if n.middle_temp is None else n.middle_temp
+            flo_params_temporary.InitialBottomTempF = flo_params_temporary.InitialBottomTempF if flo_params_temporary.InitialBottomTempF<=170 else 170
+            flo_params_temporary.InitialThermocline = n.thermocline1 if n.thermocline2 is None else (self.dg.params.num_layers-n.thermocline2+n.thermocline1)
+            temporary_g = DGraph(flo_params_temporary)
+            node_after = min(temporary_g.nodes[0], key=lambda x: abs(x.energy-next_node_energy))
+            return self.to_hingenode(node_after, time_slice=n.time_slice+1)
+        else:
+            # Starting with current top and bottom, find the thermocline position that matches the next node energy
+            next_node_top_temp = n.top_temp
+            next_node_bottom_temp = n.bottom_temp
+            next_node_thermocline = self.find_thermocline(next_node_top_temp, next_node_bottom_temp, next_node_energy)
+            while next_node_thermocline < 1:
+                next_node_top_temp = next_node_bottom_temp
+                next_node_bottom_temp = round(next_node_bottom_temp - self.g.params.delta_T(next_node_bottom_temp))
+                next_node_thermocline = self.find_thermocline(next_node_top_temp, next_node_bottom_temp, next_node_energy)
+            return HingeNode(
+                time_slice = n.time_slice+1,
+                top_temp = next_node_top_temp,
+                middle_temp = None,
+                bottom_temp = next_node_bottom_temp,
+                thermocline1 = next_node_thermocline,
+                thermocline2 = None,
+                params = self.g.params
+            )
+    
+    def charge(self, n: HingeNode, charge_kwh: float):
+        next_node_energy = n.energy + charge_kwh
+        if n.bottom_temp + self.g.params.delta_T(n.bottom_temp) < n.top_temp:
+            # The next top temperature will be a mix of the current top and bottom+deltaT
+            if n.middle_temp is not None:
+                top_mixed = (n.top_temp*n.thermocline1 + n.middle_temp*(n.thermocline2-n.thermocline1))/n.thermocline2
+                next_node_top_temp = round(
+                    (top_mixed*n.thermocline2 
+                     + (n.bottom_temp+self.g.params.delta_T(n.bottom_temp))*(self.num_layers-n.thermocline2))/self.num_layers
+                    )
+            else:
+                next_node_top_temp = round(
+                    (n.top_temp*n.thermocline1
+                     + (n.bottom_temp+self.g.params.delta_T(n.bottom_temp))*(self.num_layers-n.thermocline1))/self.num_layers
+                    )
+        else:
+            next_node_top_temp = n.top_temp
+        # Starting with that top and current bottom, find the thermocline position that matches the next node energy
+        next_node_bottom_temp = n.bottom_temp
+        next_node_thermocline = self.find_thermocline(next_node_top_temp, next_node_bottom_temp, next_node_energy)
+        while next_node_thermocline > self.num_layers:
+            next_node_bottom_temp = next_node_top_temp
+            next_node_top_temp = round(next_node_top_temp + self.g.params.delta_T(next_node_top_temp))
+            next_node_thermocline = self.find_thermocline(next_node_top_temp, next_node_bottom_temp, next_node_energy)
+        return HingeNode(
+            time_slice = n.time_slice+1,
+            top_temp = next_node_top_temp,
+            middle_temp = None,
+            bottom_temp = next_node_bottom_temp,
+            thermocline1 = next_node_thermocline,
+            thermocline2 = None,
+            params = self.g.params
+        )
+        
+    def find_thermocline(self, top_temp, bottom_temp, energy):
+        top, bottom = to_kelvin(top_temp), to_kelvin(bottom_temp)
+        m_layer_kg = self.g.params.storage_volume*3.785 / self.g.params.num_layers      
+        return int(1/(top-bottom)*(energy/(m_layer_kg*4.187/3600)-(-0.5*top+(self.num_layers+0.5)*bottom)))
+
+    def knit_branches(self):
+        for branch in self.feasible_branches:
+            n: HingeNode = self.feasible_branches[branch]['final_state']
+            knitted_node = [min(self.g.nodes[n.time_slice], key= lambda x: abs(x.energy-n.energy))][0]            
+            self.feasible_branches[branch]['knitted_to'] = knitted_node
+            self.feasible_branches[branch]['total_pathcost'] = round(knitted_node.pathcost + self.feasible_branches[branch]['branch_cost'],2)
+
+    def generate_bid(self):
+        # Add new nodes and edges
+        hinge_hour0_edges: List[DEdge] = []
+        for hour0_kwh in self.available_paths_kwh[0]:
+            load0_kwh = self.g.params.load_forecast[0]
+            heat_to_store = hour0_kwh-load0_kwh
+            if heat_to_store > 0:
+                node = self.charge(self.initial_node, heat_to_store)
+                if node.top_temp > 175:
+                    continue
+            elif heat_to_store < 0:
+                node = self.discharge(self.initial_node, -heat_to_store)
+                rswt = self.g.params.rswt_forecast[0]
+                if self.initial_node.top_temp < rswt or node.top_temp < rswt - self.g.params.delta_T(rswt):
+                    continue
+            else:
+                node = self.to_hingenode(node, time_slice=node.time_slice+1)
+            hour0_cost = hour0_kwh / self.g.params.COP(self.g.params.oat_forecast[0]) * self.g.params.elec_price_forecast[0]/100
+            if [x for x in self.feasible_branches if x[0]==hour0_kwh]:
+                best_branch_from_hour1 = min(
+                    [x for x in self.feasible_branches if x[0]==hour0_kwh],
+                    key=lambda k: self.feasible_branches[k]['total_pathcost']
+                    )
+                pathcost = self.feasible_branches[best_branch_from_hour1]['total_pathcost'] - hour0_cost
+                node.pathcost = pathcost
+                hinge_hour0_edges.append(DEdge(self.g.initial_node, node, hour0_cost, hour0_kwh))
+        # Find the PQ pairs
+        self.pq_pairs: List[PriceQuantityUnitless] = []
+        forecasted_price_usd_mwh = self.g.params.elec_price_forecast[0] * 10
+        # For every possible price
+        min_elec_ctskwh, max_elec_ctskwh = -10, 200
+        for elec_price_usd_mwh in sorted(list(range(min_elec_ctskwh*10, max_elec_ctskwh*10))+[forecasted_price_usd_mwh]):
+            # Update the fake cost of initial node edges with the selected price
+            for edge in hinge_hour0_edges:
+                if edge.cost >= 1e4: # penalized node
+                    edge.fake_cost = edge.cost
+                elif edge.rswt_minus_edge_elec is not None: # penalized node
+                    edge.fake_cost = edge.rswt_minus_edge_elec * elec_price_usd_mwh/1000
+                else:
+                    cop = self.g.params.COP(oat=self.g.params.oat_forecast[0], lwt=edge.head.top_temp)
+                    edge.fake_cost = edge.hp_heat_out / cop * elec_price_usd_mwh/1000
+            # Find the best edge with the given price
+            best_edge: DEdge = min(hinge_hour0_edges, key=lambda e: e.head.pathcost + e.fake_cost)
+            if best_edge.hp_heat_out < 0: 
+                best_edge_neg = max([e for e in hinge_hour0_edges if e.hp_heat_out<0], key=lambda e: e.hp_heat_out)
+                best_edge_pos = min([e for e in hinge_hour0_edges if e.hp_heat_out>=0], key=lambda e: e.hp_heat_out)
+                best_edge = best_edge_pos if (-best_edge_neg.hp_heat_out >= best_edge_pos.hp_heat_out) else best_edge_neg
+            # Find the associated quantity
+            cop = self.g.params.COP(oat=self.g.params.oat_forecast[0], lwt=best_edge.head.top_temp)
+            best_quantity_kwh = best_edge.hp_heat_out / cop
+            best_quantity_kwh = 0 if best_quantity_kwh<0 else best_quantity_kwh
+            if not self.pq_pairs:
+                self.pq_pairs.append(
+                    PriceQuantityUnitless(
+                        PriceTimes1000 = int(elec_price_usd_mwh * 1000),
+                        QuantityTimes1000 = int(best_quantity_kwh * 1000))
+                )
+            else:
+                # Record a new pair if at least 0.01 kWh of difference in quantity with the previous one
+                if self.pq_pairs[-1].QuantityTimes1000 - int(best_quantity_kwh * 1000) > 10:
+                    self.pq_pairs.append(
+                        PriceQuantityUnitless(
+                            PriceTimes1000 = int(elec_price_usd_mwh * 1000),
+                            QuantityTimes1000 = int(best_quantity_kwh * 1000))
+                    )
+        return self.pq_pairs
+    
+    def to_hingenode(self, node: Union[DNode, HingeNode], time_slice=None):
+        return HingeNode(
+            time_slice = node.time_slice if time_slice is None else time_slice,
+            top_temp = node.top_temp,
+            middle_temp = node.middle_temp,
+            bottom_temp = node.bottom_temp,
+            thermocline1 = node.thermocline1,
+            thermocline2 = node.thermocline2,
+            params = node.params
+        )
+    
+    def plot_hinge(self):
+        sp_time = list(range(self.hinge_hours+2))
         sp_top_temp = []
         sp_middle_temp = []
         sp_bottom_temp = []
@@ -108,24 +344,20 @@ class FloHinge():
             else:
                 sp_middle_temp.append(step.bottom_temp)
                 sp_thermocline2.append(step.thermocline1)
-        # Bottom plot
         norm = Normalize(vmin=self.g.params.available_top_temps[0]-20, vmax=self.g.params.available_top_temps[-1]+20)
         cmap = matplotlib.colormaps['Reds']
         tank_top_colors = [cmap(norm(x)) for x in sp_top_temp]
         tank_middle_colors = [cmap(norm(x)) for x in sp_middle_temp]
         tank_bottom_colors = [cmap(norm(x)) for x in sp_bottom_temp]
-
-        # Reversing thermocline positions
         sp_thermocline_reversed1 = [self.g.params.num_layers - x + 1 for x in sp_thermocline]
         sp_thermocline_reversed2 = [self.g.params.num_layers - x + 1 for x in sp_thermocline2]
-
-        # Stacking the temperatures and thermoclines
         bars_top = plt.bar(sp_time, sp_thermocline, bottom=sp_thermocline_reversed1, color=tank_top_colors, alpha=0.7, width=0.9)
         bars_middle = plt.bar(sp_time, [y-x for x,y in zip(sp_thermocline, sp_thermocline2)], 
                               bottom=sp_thermocline_reversed2, color=tank_middle_colors, alpha=0.7, width=0.9)
         bars_bottom = plt.bar(sp_time, sp_thermocline_reversed2, bottom=0, color=tank_bottom_colors, alpha=0.7, width=0.9)
         plt.xlabel('Time [hours]')
         plt.ylabel('Storage state')
+        plt.xticks(list(range(self.hinge_hours+2)), labels=list(range(self.hinge_hours+1))+['knit'])
         plt.ylim([0, self.g.params.num_layers])
         plt.yticks([])
         for i, bar in enumerate(bars_top):
@@ -138,12 +370,12 @@ class FloHinge():
         for i, bar in enumerate(bars_bottom):
             plt.text(bar.get_x() + bar.get_width() / 2, bar.get_y() + bar.get_height() / 2, 
                     f'{int(sp_bottom_temp[i])}', ha='center', va='center', color='white')
-        plt.title(f"current-{'d-'*self.turn_on_hour}{self.best_combination if combo=='' else combo}-knit")
+        kwh_el = f"{tuple([round(x/self.g.params.COP(self.g.params.oat_forecast[0]),2) for x in self.best_combination])} kWh_el"
+        plt.title(f"{self.best_combination} kWh_th\n{kwh_el}")
         plt.savefig('plot_hinge.png', dpi=130)
         plt.close()
-        # plt.show()
 
-    def quick_plot(self, show=True):
+    def quick_plot(self, show=False):
         # Walk along the shortest path (sp) starting from knit
         sp_top_temp = []
         sp_middle_temp = []
@@ -175,15 +407,15 @@ class FloHinge():
         sp_soc = [(x-self.g.bottom_node.energy) / (self.g.top_node.energy-self.g.bottom_node.energy) * 100 
                     for x in sp_stored_energy]
         sp_time = list(range(self.g.params.horizon+1))
-        start_time = datetime.fromtimestamp(self.g.params.start_time, tz=pytz.timezone("America/New_York"))+timedelta(hours=self.turn_on_hour+3)
+        start_time = datetime.fromtimestamp(self.g.params.start_time, tz=pytz.timezone("America/New_York"))+timedelta(hours=self.hinge_hours)
         sp_time = [(start_time+timedelta(hours=x)) for x in range(len(sp_time))]
 
         # Add the discharging part and branching
         sp_time = [
             datetime.fromtimestamp(self.g.params.start_time, tz=pytz.timezone("America/New_York"))
-            + timedelta(hours=x) for x in range(self.turn_on_hour+3)
+            + timedelta(hours=x) for x in range(self.hinge_hours)
             ] + sp_time
-        sp_hp_heat_out = self.feasible_branches[self.best_combination]['hp_heat_out'] + sp_hp_heat_out
+        sp_hp_heat_out = list(self.best_combination) + sp_hp_heat_out
         sp_soc = [(x.energy-self.g.bottom_node.energy) / (self.g.top_node.energy-self.g.bottom_node.energy) * 100 
                     for x in self.hinge_steps[:-2]] + sp_soc
         
@@ -247,397 +479,6 @@ class FloHinge():
         if show:
             plt.show()
         plt.close()
-
-    def get_hinge_start_state(self):
-        # Find hour at which the HP is turned on (we trust the decisions to discharge)
-        node_i = self.g.initial_node
-        self.initial_node = HingeNode(
-            time_slice = self.dg.initial_node.time_slice,
-            top_temp = self.dg.initial_node.top_temp,
-            middle_temp = self.dg.initial_node.middle_temp,
-            bottom_temp = self.dg.initial_node.bottom_temp,
-            thermocline1 = self.dg.initial_node.thermocline1,
-            thermocline2 = self.dg.initial_node.thermocline2,
-            params = self.dg.params
-            )
-        self.hinge_steps.append(self.initial_node)
-        for i in range(48):
-            heat_out = [e.hp_heat_out for e in self.g.edges[node_i] if e.head==node_i.next_node][0]
-            if heat_out > 2:
-                self.turn_on_hour = i
-                break
-            node_i = node_i.next_node
-        print(f"FLO turns on HP at hour {self.turn_on_hour}")
-        # Find what the storage would look like if we discharged until then
-        node_i = self.dg.initial_node
-        for i in range(self.turn_on_hour):
-            node_i = self.dg.edges[node_i][0].head
-            self.hinge_steps.append(node_i)
-        self.turn_on_node = HingeNode(
-            time_slice = node_i.time_slice,
-            top_temp = node_i.top_temp,
-            middle_temp = node_i.middle_temp,
-            bottom_temp = node_i.bottom_temp,
-            thermocline1 = node_i.thermocline1,
-            thermocline2 = node_i.thermocline2,
-            params = self.g.params
-            )
-        print(f"Estimated storage at the start of hour {self.turn_on_hour}: {self.turn_on_node}")
-
-    def evaluate_branches(self):
-        self.feasible_branches = {}
-        for branch1 in ['charge', 'load', 'discharge']:
-            for branch2 in ['charge', 'load', 'discharge']:
-                for branch3 in ['charge', 'load', 'discharge']:
-                    combination_name = f"{'C' if branch1=='charge' else ('D' if branch1=='discharge' else 'L')}-"
-                    combination_name += f"{'C' if branch2=='charge' else ('D' if branch2=='discharge' else 'L')}-"
-                    combination_name += f"{'C' if branch3=='charge' else ('D' if branch3=='discharge' else 'L')}"
-                    self.follow_branch(combination_name)
-        self.knit_branches()
-
-        for branch in self.feasible_branches:
-            print(f"\nCombination: {branch}")
-            print(f"- Ends at {self.feasible_branches[branch]['final_state']}")
-            print(f"- Knitted to {self.feasible_branches[branch]['knitted_to']}")
-            print(f"- Total pathcost: {self.feasible_branches[branch]['total_pathcost']}")
-
-        self.best_combination = min(self.feasible_branches, key=lambda k: self.feasible_branches[k]['total_pathcost'])
-        print(f"\nThe best path forward is {self.best_combination}")
-
-        # Find the nodes and pathcosts for hour 1
-        if self.turn_on_hour == 0:
-            best_combination_starting_with_charge = None
-            if [x for x in self.feasible_branches if x.split('-')[0]=='C']:
-                best_combination_starting_with_charge = min(
-                    [x for x in self.feasible_branches if x.split('-')[0]=='C'], 
-                    key=lambda k: self.feasible_branches[k]['total_pathcost']
-                    )
-            best_combination_starting_with_stay = None                 
-            if [x for x in self.feasible_branches if x.split('-')[0]=='L']:
-                best_combination_starting_with_stay = min(
-                    [x for x in self.feasible_branches if x.split('-')[0]=='L'], 
-                    key=lambda k: self.feasible_branches[k]['total_pathcost']
-                    )
-            best_combination_starting_with_discharge = None                 
-            if [x for x in self.feasible_branches if x.split('-')[0]=='D']:
-                best_combination_starting_with_discharge = min(
-                    [x for x in self.feasible_branches if x.split('-')[0]=='D'], 
-                    key=lambda k: self.feasible_branches[k]['total_pathcost']
-                    )
-            # Charging pathcost
-            cost_of_hour_1 = self.g.params.elec_price_forecast[0] * self.g.params.max_hp_elec_in / 100
-            charge1_pathcost = self.feasible_branches[best_combination_starting_with_charge]['total_pathcost'] - cost_of_hour_1
-            charge1_node = self.charge_from(self.turn_on_node)
-            # Meet load pathcost
-            cost_of_hour_1 = (
-                self.g.params.elec_price_forecast[0]/100 * self.g.params.load_forecast[0] / self.g.params.COP(self.g.params.oat_forecast[0],0) 
-                )
-            stay1_pathcost = self.feasible_branches[best_combination_starting_with_stay]['total_pathcost'] - cost_of_hour_1
-            stay1_node = self.stay_at(self.turn_on_node)
-            # Discharging pathcost
-            discharge1_pathcost = self.feasible_branches[best_combination_starting_with_discharge]['total_pathcost']
-            discharge1_node = self.discharge_from(self.turn_on_node)
-        else:
-            charge1_pathcost = None
-            charge1_node = None
-            stay1_pathcost = None
-            stay1_node = None
-            discharge1_pathcost = self.feasible_branches[self.best_combination]['total_pathcost']
-            discharge1_node = self.dg.edges[self.dg.initial_node][0].head
-        
-        if self.turn_on_hour == 0:
-            self.charge1_node = DNode(
-                time_slice = 0, 
-                top_temp=charge1_node.top_temp,
-                thermocline1=charge1_node.top_temp,
-                parameters=charge1_node.params,
-                hinge_node = {
-                    'middle_temp': charge1_node.middle_temp,
-                    'bottom_temp': charge1_node.bottom_temp,
-                    'thermocline2': charge1_node.thermocline2,
-                    'pathcost': charge1_pathcost,
-                    }
-                )
-            self.stay1_node = DNode(
-                time_slice = 0, 
-                top_temp=stay1_node.top_temp,
-                thermocline1=stay1_node.top_temp,
-                parameters=stay1_node.params,
-                hinge_node = {
-                    'middle_temp': stay1_node.middle_temp,
-                    'bottom_temp': stay1_node.bottom_temp,
-                    'thermocline2': stay1_node.thermocline2,
-                    'pathcost': stay1_pathcost,
-                    }
-                )
-        else:
-            self.charge1_node = None
-            self.stay1_node = None
-        self.discharge1_node = DNode(
-            time_slice = 0, 
-            top_temp=discharge1_node.top_temp,
-            thermocline1=discharge1_node.top_temp,
-            parameters=discharge1_node.params,
-            hinge_node = {
-                'middle_temp': discharge1_node.middle_temp,
-                'bottom_temp': discharge1_node.bottom_temp,
-                'thermocline2': discharge1_node.thermocline2,
-                'pathcost': discharge1_pathcost,
-                }
-            )
-
-        for combo in self.feasible_branches:
-            if combo != self.best_combination:
-                continue
-            self.hinge_steps = []
-            self.get_hinge_start_state()
-            self.follow_branch(combo, final=True)
-            self.hinge_steps.append(self.feasible_branches[combo]['knitted_to'])
-            self.plot_hinge(combo=combo)
-            self.quick_plot(show=False)
-
-
-    def follow_branch(self, combination_name, final=False):
-        branch1, branch2, branch3 = combination_name.split('-')
-        node0 = self.turn_on_node
-        total_hinge_cost_usd = 0
-        # First hour
-        h = self.turn_on_node.time_slice
-        if branch1=='C':
-            node1 = self.charge_from(node0)
-            total_hinge_cost_usd += self.g.params.elec_price_forecast[h] * self.g.params.max_hp_elec_in / 100
-            b1_hp = self.g.params.max_hp_elec_in * self.g.params.COP(self.g.params.oat_forecast[h],0)
-        elif branch1=='L':
-            node1 = self.stay_at(node0)
-            b1_hp = self.g.params.load_forecast[h]
-        elif branch1=='D':
-            node1 = self.discharge_from(node0)
-            b1_hp = 0
-            RSWT = self.g.params.rswt_forecast[h]
-            if node0.top_temp < RSWT or node1.top_temp < RSWT - self.g.params.delta_T(RSWT):
-                return
-        if final:
-            self.hinge_steps.append(node1)
-        # Second hour
-        h += 1
-        if branch2=='C':
-            node2 = self.charge_from(node1)
-            total_hinge_cost_usd += self.g.params.elec_price_forecast[h] * self.g.params.max_hp_elec_in / 100
-            b2_hp = self.g.params.max_hp_elec_in * self.g.params.COP(self.g.params.oat_forecast[h],0)
-        elif branch2=='L':
-            node2 = self.stay_at(node1)
-            b2_hp = self.g.params.load_forecast[h]
-        elif branch2=='D':
-            node2 = self.discharge_from(node1)
-            b2_hp = 0
-            RSWT = self.g.params.rswt_forecast[h]
-            if node1.top_temp < RSWT or node2.top_temp < RSWT - self.g.params.delta_T(RSWT):
-                return
-        if final:
-            self.hinge_steps.append(node2)
-        # Third hour
-        h += 1
-        if branch3=='C':
-            node3 = self.charge_from(node2)
-            total_hinge_cost_usd += self.g.params.elec_price_forecast[h] * self.g.params.max_hp_elec_in / 100
-            b3_hp = self.g.params.max_hp_elec_in * self.g.params.COP(self.g.params.oat_forecast[h],0)
-        elif branch3=='L':
-            node3 = self.stay_at(node2)
-            b3_hp = self.g.params.load_forecast[h]
-        elif branch3=='D':
-            node3 = self.discharge_from(node2)
-            RSWT = self.g.params.rswt_forecast[h]
-            b3_hp = 0
-            if node2.top_temp < RSWT or node3.top_temp < RSWT - self.g.params.delta_T(RSWT):
-                return
-        if final:
-            self.hinge_steps.append(node3)
-        # Add to feasible branches
-        if not final:
-            self.feasible_branches[combination_name] = {
-                'hinge_cost': total_hinge_cost_usd, 
-                'hp_heat_out': [0]*self.turn_on_hour + [round(x,2) for x in [b1_hp, b2_hp, b3_hp]],
-                'final_state': node3
-                }
-
-
-    def discharge_from(self, n: HingeNode):
-        next_node_top_temp = n.top_temp
-        next_node_energy = n.energy - self.g.params.load_forecast[n.time_slice]
-        
-        if n.top_temp - self.dg.params.delta_T(n.top_temp) < n.bottom_temp or n.middle_temp is not None:
-            flo_params_temporary: FloParamsHouse0 = self.dg.params.config.model_copy()
-            flo_params_temporary.HorizonHours = 24
-            flo_params_temporary.InitialTopTempF = n.top_temp if n.top_temp<=175 else 175
-            flo_params_temporary.InitialBottomTempF = n.bottom_temp if n.middle_temp is None else n.middle_temp
-            flo_params_temporary.InitialThermocline = n.thermocline1 if n.thermocline2 is None else (self.dg.params.num_layers-n.thermocline2+n.thermocline1)
-            temporary_g = DGraph(flo_params_temporary)
-            node_after = min(temporary_g.nodes[0], key=lambda x: abs(x.energy-next_node_energy))
-            next_node_top_temp = node_after.top_temp
-            next_node_middle_temp = node_after.middle_temp
-            next_node_bottom_temp = node_after.bottom_temp
-            next_node_thermocline = node_after.thermocline1
-            next_node_thermocline2 = node_after.thermocline2
-        else:
-            temporary_g = None
-            next_node_middle_temp = None
-            next_node_bottom_temp = n.bottom_temp
-            next_node_thermocline2 = None
-            # Find thermocline position such that kWh_top + kWh_bottom = next_node_energy
-            m_layer_kg = self.g.params.storage_volume*3.785 / self.g.params.num_layers       
-            top, bottom = to_kelvin(next_node_top_temp), to_kelvin(next_node_bottom_temp)
-            A = m_layer_kg * 4.187/3600
-            next_node_thermocline = int(1/(top-bottom) * (next_node_energy/A - (-0.5*top + (self.g.params.num_layers+0.5)*bottom)))
-            while next_node_thermocline < 1:
-                next_node_top_temp = next_node_bottom_temp
-                next_node_bottom_temp = round(next_node_bottom_temp - self.g.params.delta_T(next_node_bottom_temp))
-                top, bottom = to_kelvin(next_node_top_temp), to_kelvin(next_node_bottom_temp)
-                next_node_thermocline = int(1/(top-bottom) * (next_node_energy/A - (-0.5*top + (self.g.params.num_layers+0.5)*bottom)))
-
-        next_node = HingeNode(
-            time_slice = n.time_slice+1,
-            top_temp = next_node_top_temp,
-            middle_temp = next_node_middle_temp,
-            bottom_temp = next_node_bottom_temp,
-            thermocline1 = next_node_thermocline,
-            thermocline2 = next_node_thermocline2,
-            params = self.g.params
-        )
-        return next_node
-
-    def charge_from(self, n: HingeNode):
-        next_node_bottom_temp = n.bottom_temp
-        load = self.g.params.load_forecast[n.time_slice]
-        hp = self.g.params.max_hp_elec_in * self.g.params.COP(self.g.params.oat_forecast[n.time_slice], 0)
-        heat_to_store = hp - load
-        next_node_energy = n.energy + heat_to_store
-
-        if n.bottom_temp + self.g.params.delta_T(n.bottom_temp) < n.top_temp:
-            if n.middle_temp is not None:
-                top_mixed = (n.top_temp*n.thermocline1 + n.middle_temp*(n.thermocline2-n.thermocline1))/n.thermocline2
-                next_node_top_temp = round(
-                    (top_mixed*n.thermocline2 + (n.bottom_temp+self.g.params.delta_T(n.bottom_temp))*(self.g.params.num_layers-n.thermocline2))/self.g.params.num_layers
-                    )
-            else:
-                next_node_top_temp = round(
-                    n.thermocline1/self.g.params.num_layers * n.top_temp 
-                    + (self.g.params.num_layers-n.thermocline1)/self.g.params.num_layers * (n.bottom_temp + self.g.params.delta_T(n.bottom_temp))
-                    )
-        else:
-            next_node_top_temp = n.top_temp
-
-        # Find thermocline position such that kWh_top + kWh_bottom = next_node_energy
-        m_layer_kg = self.g.params.storage_volume*3.785 / self.g.params.num_layers       
-        top, bottom = to_kelvin(next_node_top_temp), to_kelvin(next_node_bottom_temp)
-        A = m_layer_kg * 4.187/3600
-        next_node_thermocline = int(1/(top-bottom) * (next_node_energy/A - (-0.5*top + (self.g.params.num_layers+0.5)*bottom)))
-
-        while next_node_thermocline > self.g.params.num_layers:
-            next_node_bottom_temp = next_node_top_temp
-            next_node_top_temp = round(next_node_top_temp + self.g.params.delta_T(next_node_top_temp))
-            top, bottom = to_kelvin(next_node_top_temp), to_kelvin(next_node_bottom_temp)
-            next_node_thermocline = int(1/(top-bottom) * (next_node_energy/A - (-0.5*top + (self.g.params.num_layers+0.5)*bottom)))
-
-        next_node = HingeNode(
-            time_slice = n.time_slice+1,
-            top_temp = next_node_top_temp,
-            middle_temp = None,
-            bottom_temp = next_node_bottom_temp,
-            thermocline1 = next_node_thermocline,
-            thermocline2 = None,
-            params = self.g.params
-        )
-        return next_node
-    
-    def stay_at(self, n: HingeNode):
-        return HingeNode(
-            time_slice = n.time_slice+1,
-            top_temp = n.top_temp,
-            middle_temp = n.middle_temp,
-            bottom_temp = n.bottom_temp,
-            thermocline1 = n.thermocline1,
-            thermocline2 = n.thermocline2,
-            params = n.params
-        )
-
-    def knit_branches(self):
-        for branch in self.feasible_branches:
-            n: HingeNode = self.feasible_branches[branch]['final_state']
-            knitted_node = [min(self.g.nodes[n.time_slice], key= lambda x: abs(x.energy-n.energy))][0]            
-            self.feasible_branches[branch]['knitted_to'] = knitted_node
-            self.feasible_branches[branch]['total_pathcost'] = round(knitted_node.pathcost + self.feasible_branches[branch]['hinge_cost'],2)
-
-    def generate_bid(self):
-        # add new nodes and edges
-        if self.charge1_node:
-            self.g.nodes[0].extend([self.charge1_node, self.stay1_node, self.discharge1_node])
-            # Charge edge
-            charge1_cost = self.g.params.elec_price_forecast[0] * self.g.params.max_hp_elec_in / 100
-            charge1_hp_heat_out = self.g.params.max_hp_elec_in * self.g.params.COP(self.g.params.oat_forecast[0], 0) 
-            charge1_edge = DEdge(self.g.initial_node, self.charge1_node, charge1_cost, charge1_hp_heat_out)
-            self.g.edges[self.g.initial_node].append(charge1_edge)
-            # Load edge
-            stay1_cost = self.g.params.elec_price_forecast[0]/100 * self.g.params.load_forecast[0] / self.g.params.COP(self.g.params.oat_forecast[0],0)
-            stay1_hp_heat_out = self.g.params.load_forecast[0]
-            stay1_edge = DEdge(self.g.initial_node, self.stay1_node, stay1_cost, stay1_hp_heat_out)
-            self.g.edges[self.g.initial_node].append(stay1_edge)
-            # Discharge edge
-            discharge1_edge = DEdge(self.g.initial_node, self.discharge1_node, 0, 0)
-            self.g.edges[self.g.initial_node].append(discharge1_edge)
-        else:
-            self.g.nodes[0].extend([self.discharge1_node])
-            # Discharge edge
-            discharge1_edge = DEdge(self.g.initial_node, self.discharge1_node, 0, 0)
-            self.g.edges[self.g.initial_node].append(discharge1_edge)
-
-        self.pq_pairs: List[PriceQuantityUnitless] = []
-        forecasted_price_usd_mwh = self.g.params.elec_price_forecast[0] * 10
-        # For every possible price
-        min_elec_ctskwh, max_elec_ctskwh = -10, 200
-        for elec_price_usd_mwh in sorted(list(range(min_elec_ctskwh*10, max_elec_ctskwh*10))+[forecasted_price_usd_mwh]):
-            # Update the fake cost of initial node edges with the selected price
-            for edge in self.g.edges[self.g.initial_node]:
-                if edge.cost >= 1e4: # penalized node
-                    edge.fake_cost = edge.cost
-                elif edge.rswt_minus_edge_elec is not None: # penalized node
-                    edge.fake_cost = edge.rswt_minus_edge_elec * elec_price_usd_mwh/1000
-                else:
-                    cop = self.g.params.COP(oat=self.g.params.oat_forecast[0], lwt=edge.head.top_temp)
-                    edge.fake_cost = edge.hp_heat_out / cop * elec_price_usd_mwh/1000
-            # Find the best edge with the given price
-            best_edge: DEdge = min(self.g.edges[self.g.initial_node], key=lambda e: e.head.pathcost + e.fake_cost)
-            if best_edge.hp_heat_out < 0: 
-                best_edge_neg = max([e for e in self.g.edges[self.g.initial_node] if e.hp_heat_out<0], key=lambda e: e.hp_heat_out)
-                best_edge_pos = min([e for e in self.g.edges[self.g.initial_node] if e.hp_heat_out>=0], key=lambda e: e.hp_heat_out)
-                best_edge = best_edge_pos if (-best_edge_neg.hp_heat_out >= best_edge_pos.hp_heat_out) else best_edge_neg
-            # Find the associated quantity
-            cop = self.g.params.COP(oat=self.g.params.oat_forecast[0], lwt=best_edge.head.top_temp)
-            best_quantity_kwh = best_edge.hp_heat_out / cop
-            best_quantity_kwh = 0 if best_quantity_kwh<0 else best_quantity_kwh
-            if not self.pq_pairs:
-                self.pq_pairs.append(
-                    PriceQuantityUnitless(
-                        PriceTimes1000 = int(elec_price_usd_mwh * 1000),
-                        QuantityTimes1000 = int(best_quantity_kwh * 1000))
-                )
-            else:
-                # Record a new pair if at least 0.01 kWh of difference in quantity with the previous one
-                if self.pq_pairs[-1].QuantityTimes1000 - int(best_quantity_kwh * 1000) > 10:
-                    self.pq_pairs.append(
-                        PriceQuantityUnitless(
-                            PriceTimes1000 = int(elec_price_usd_mwh * 1000),
-                            QuantityTimes1000 = int(best_quantity_kwh * 1000))
-                    )
-        # remove new nodes and edges
-        if self.charge1_node:
-            self.g.nodes[0].remove(self.charge1_node)
-            self.g.nodes[0].remove(self.stay1_node)
-            self.g.edges[self.g.initial_node].remove(charge1_edge)
-            self.g.edges[self.g.initial_node].remove(stay1_edge)
-        self.g.nodes[0].remove(self.discharge1_node)
-        self.g.edges[self.g.initial_node].remove(discharge1_edge)
-
-        return self.pq_pairs
     
     def export_to_excel(self):
         # Sort nodes by energy and assign an index
@@ -841,6 +682,6 @@ if __name__ == '__main__':
     flo_params = FloParamsHouse0(**message_loaded.payload)
     # ----------------------------------
     
-    f = FloHinge(flo_params)
-    f.generate_bid()
-    f.export_to_excel()
+    f = FloHinge(flo_params, hinge_hours=5, num_nodes=[10,3,3,3,3])
+    # f.generate_bid()
+    # f.export_to_excel()
