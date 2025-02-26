@@ -257,7 +257,7 @@ def get_data(request: Union[DataRequest, CsvRequest, DijkstraRequest]):
         session = Session()
 
         messages = session.query(MessageSql).filter(
-            MessageSql.from_alias.like(f'%{request.house_alias}%'),
+            MessageSql.from_alias.like(f'%.{request.house_alias}.%'),
             or_(
                 MessageSql.message_type_name == "batched.readings",
                 MessageSql.message_type_name == "report"
@@ -326,7 +326,7 @@ def get_data(request: Union[DataRequest, CsvRequest, DijkstraRequest]):
 
     # Add snapshots
     snapshots = session.query(MessageSql).filter(
-        MessageSql.from_alias.like(f'%{request.house_alias}%'),
+        MessageSql.from_alias.like(f'%.{request.house_alias}.%'),
         MessageSql.message_type_name == "snapshot.spaceheat",
         MessageSql.message_persisted_ms >= max_time_ms,
         MessageSql.message_persisted_ms <= request.end_ms,
@@ -478,7 +478,7 @@ def get_data(request: Union[DataRequest, CsvRequest, DijkstraRequest]):
     if isinstance(request, DataRequest):
         try:
             weather_messages = session.query(MessageSql).filter(
-                MessageSql.from_alias.like(f'%{request.house_alias}%'),
+                MessageSql.from_alias.like(f'%.{request.house_alias}.%'),
                 MessageSql.message_type_name == "weather.forecast",
                 MessageSql.message_persisted_ms >= request.start_ms - 24*60*60*1000,
                 MessageSql.message_persisted_ms <= request.end_ms,
@@ -506,7 +506,7 @@ def get_requested_messages(request: MessagesRequest, running_locally:bool=False)
     session = Session()
 
     messages: List[MessageSql] = session.query(MessageSql).filter(
-        MessageSql.from_alias.like(f'%{request.house_alias}%'),
+        MessageSql.from_alias.like(f'%.{request.house_alias}.%'),
         MessageSql.message_type_name.in_(request.selected_message_types),
         MessageSql.message_persisted_ms >= request.start_ms,
         MessageSql.message_persisted_ms <=request.end_ms,
