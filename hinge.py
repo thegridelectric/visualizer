@@ -423,8 +423,12 @@ class FloHinge():
         fig, ax = plt.subplots(2,1, figsize=(12,6), gridspec_kw={'height_ratios':[8,6]})
         plt.subplots_adjust(hspace=0.3) 
         start = datetime.fromtimestamp(self.g.params.start_time, tz=pytz.timezone("America/New_York")).strftime('%Y-%m-%d %H:%M')
-        
+
         # Top plot
+        self.plot_time = sp_time[:48]
+        self.plot_hp = sp_hp_heat_out[:48]
+        self.plot_lmp = self.g.params.lmp_forecast[:48]
+        self.plot_energy = [x.energy for x in self.hinge_steps[:-2]] + sp_stored_energy
         plot_hours = 12
         ax[0].step(sp_time[:plot_hours], sp_hp_heat_out[:plot_hours], where='post', color='tab:red', alpha=0.6, label='HP')
         ax[0].step(sp_time[:plot_hours], self.g.params.load_forecast[:plot_hours], where='post', color='black', linestyle='dashed', alpha=0.4, label='Load')
@@ -683,5 +687,5 @@ if __name__ == '__main__':
     # ----------------------------------
     
     f = FloHinge(flo_params, hinge_hours=5, num_nodes=[10,3,3,3,3])
-    # f.generate_bid()
-    # f.export_to_excel()
+    f.generate_bid()
+    f.export_to_excel()
