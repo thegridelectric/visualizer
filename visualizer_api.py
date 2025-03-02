@@ -13,7 +13,7 @@ import dotenv
 import pendulum
 from datetime import timedelta
 from pydantic import BaseModel
-from sqlalchemy import create_engine, asc, or_
+from sqlalchemy import create_engine, asc, or_, and_
 from sqlalchemy.orm import sessionmaker
 from fake_config import Settings
 from fake_models import MessageSql
@@ -29,7 +29,7 @@ import plotly.colors as pc
 import json
 import csv
 
-RUNNING_LOCALLY = False
+RUNNING_LOCALLY = True
 
 PYPLOT_PLOT = True
 MATPLOTLIB_PLOT = False
@@ -256,15 +256,29 @@ def get_data(request: Union[DataRequest, CsvRequest, DijkstraRequest]):
 
         session = Session()
 
-        messages = session.query(MessageSql).filter(
-            MessageSql.from_alias.like(f'%{request.house_alias}%'),
+        all_messages = session.query(MessageSql).filter(
+            MessageSql.from_alias.like(f'%.{request.house_alias}.%'),
+            MessageSql.message_persisted_ms <= request.end_ms,
             or_(
-                MessageSql.message_type_name == "batched.readings",
-                MessageSql.message_type_name == "report"
+                and_(
+                    or_(
+                        MessageSql.message_type_name == "batched.readings",
+                        MessageSql.message_type_name == "report",
+                        MessageSql.message_type_name == "snapshot.spaceheat",
+                    ),
+                    MessageSql.message_persisted_ms >= request.start_ms,
                 ),
-            MessageSql.message_persisted_ms >= request.start_ms,
-            MessageSql.message_persisted_ms <=request.end_ms,
+                and_(
+                    MessageSql.message_type_name == "weather.forecast",
+                    MessageSql.message_persisted_ms >= request.start_ms - 24*3600*1000,
+                )
+            )
         ).order_by(asc(MessageSql.message_persisted_ms)).all()
+
+        messages = sorted(
+            [x for x in all_messages if x.message_type_name in ['report', 'batched.readings']],
+            key = lambda x: x.message_persisted_ms
+            )
 
         if not messages:
             return {
@@ -325,12 +339,11 @@ def get_data(request: Union[DataRequest, CsvRequest, DijkstraRequest]):
         del channels[key]
 
     # Add snapshots
-    snapshots = session.query(MessageSql).filter(
-        MessageSql.from_alias.like(f'%{request.house_alias}%'),
-        MessageSql.message_type_name == "snapshot.spaceheat",
-        MessageSql.message_persisted_ms >= max_time_ms,
-        MessageSql.message_persisted_ms <= request.end_ms,
-    ).order_by(asc(MessageSql.message_persisted_ms)).all()
+    snapshots = sorted(
+            [x for x in all_messages if x.message_type_name=='snapshot.spaceheat'
+             and x.message_persisted_ms >= max_time_ms], 
+             key = lambda x: x.message_persisted_ms
+             )
     for snapshot in snapshots:
         for snap in snapshot.payload['LatestReadingList']:
             if snap['ChannelName'] in channels:
@@ -476,15 +489,10 @@ def get_data(request: Union[DataRequest, CsvRequest, DijkstraRequest]):
     # Weather forecasts
     weather_messages = None
     if isinstance(request, DataRequest):
-        try:
-            weather_messages = session.query(MessageSql).filter(
-                MessageSql.from_alias.like(f'%{request.house_alias}%'),
-                MessageSql.message_type_name == "weather.forecast",
-                MessageSql.message_persisted_ms >= request.start_ms - 24*60*60*1000,
-                MessageSql.message_persisted_ms <= request.end_ms,
-            ).order_by(asc(MessageSql.message_persisted_ms)).all()
-        except:
-            print("Could not get weather messages")
+        weather_messages = sorted(
+            [x for x in all_messages if x.message_type_name=='weather.forecast'], 
+            key = lambda x: x.message_persisted_ms
+            )
 
     return "", channels, zones, modes, top_modes, aa_modes, weather_messages, min_time_ms_dt, max_time_ms_dt
 
@@ -506,7 +514,7 @@ def get_requested_messages(request: MessagesRequest, running_locally:bool=False)
     session = Session()
 
     messages: List[MessageSql] = session.query(MessageSql).filter(
-        MessageSql.from_alias.like(f'%{request.house_alias}%'),
+        MessageSql.from_alias.like(f'%.{request.house_alias}.%'),
         MessageSql.message_type_name.in_(request.selected_message_types),
         MessageSql.message_persisted_ms >= request.start_ms,
         MessageSql.message_persisted_ms <=request.end_ms,
@@ -604,13 +612,6 @@ async def get_messages(request: MessagesRequest):
             "message": "The data request timed out. Please try loading a smaller amount of data at a time.", 
             "reload": False
         }
-    except asyncio.CancelledError:
-        print("Request cancelled or client disconnected.")
-        return {
-            "success": False, 
-            "message": "The request was cancelled because the client disconnected.", 
-            "reload": False
-        }
     except Exception as e:
         return {
             "success": False, 
@@ -633,8 +634,6 @@ async def get_csv(request: CsvRequest, apirequest: Request):
 
             if time.time() - request_start > TIMEOUT_SECONDS:
                 raise asyncio.TimeoutError('Timed out')
-            # if await apirequest.is_disconnected():
-            #     raise asyncio.CancelledError("Client disconnected.")
 
             if error_msg != '':
                 return error_msg
@@ -687,8 +686,7 @@ async def get_csv(request: CsvRequest, apirequest: Request):
             for channel in channels_to_export:
                 if time.time() - request_start > TIMEOUT_SECONDS:
                     raise asyncio.TimeoutError('Timed out')
-                # if await apirequest.is_disconnected():
-                #     raise asyncio.CancelledError("Client disconnected.")
+
                 merged = await asyncio.to_thread(pd.merge_asof, 
                                                   pd.DataFrame({'times': csv_times_dt}),
                                                   pd.DataFrame(channels[channel]),
@@ -722,13 +720,6 @@ async def get_csv(request: CsvRequest, apirequest: Request):
         return {
             "success": False, 
             "message": "The data request timed out. Please try loading a smaller amount of data at a time.", 
-            "reload": False
-        }
-    except asyncio.CancelledError:
-        print("Request cancelled or client disconnected.")
-        return {
-            "success": False, 
-            "message": "The request was cancelled because the client disconnected.", 
             "reload": False
         }
     except Exception as e:
@@ -765,6 +756,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
             
             error_msg, channels, zones, modes, top_modes, aa_modes, weather, min_time_ms_dt, max_time_ms_dt = await asyncio.to_thread(get_data, request)
             print(f"Time to fetch data: {round(time.time() - request_start,2)} sec")
+            request_start = time.time()
 
             if request.selected_channels == ['bids']:
                 zip_bids = get_bids(request.house_alias, request.start_ms, request.end_ms)
@@ -798,8 +790,6 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
 
                 if time.time() - request_start > TIMEOUT_SECONDS:
                     raise asyncio.TimeoutError('Timed out')
-                # if await apirequest.is_disconnected():
-                #     raise asyncio.CancelledError("Client disconnected.")
 
                 fig = go.Figure()
 
@@ -832,8 +822,6 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                     
                 if time.time() - request_start > TIMEOUT_SECONDS:
                     raise asyncio.TimeoutError('Timed out')
-                # if await apirequest.is_disconnected():
-                #     raise asyncio.CancelledError("Client disconnected.")
 
                 # Secondary yaxis
                 y_axis_power = 'y2' if temp_plot else 'y'
@@ -881,8 +869,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                         ) 
                 if time.time() - request_start > TIMEOUT_SECONDS:
                     raise asyncio.TimeoutError('Timed out')
-                # if await apirequest.is_disconnected():
-                #     raise asyncio.CancelledError("Client disconnected.")
+
                 if 'primary-flow' in request.selected_channels and 'primary-flow' in channels:
                     power_plot = True
                     fig.add_trace(
@@ -967,14 +954,15 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                 fig.write_html(html_buffer1)
                 html_buffer1.seek(0)
 
+                print(f"Plot 1 (heat pump) done in {round(time.time()-request_start,1)} seconds")
+                request_start = time.time()
+
                 # --------------------------------------
                 # PLOT 2: Distribution
                 # --------------------------------------
 
                 if time.time() - request_start > TIMEOUT_SECONDS:
                     raise asyncio.TimeoutError('Timed out')
-                # if await apirequest.is_disconnected():
-                #     raise asyncio.CancelledError("Client disconnected.")
 
                 fig = go.Figure()
 
@@ -1094,19 +1082,21 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                 fig.write_html(html_buffer2)
                 html_buffer2.seek(0) 
 
+                print(f"Plot 2 (distribution) done in {round(time.time()-request_start,1)} seconds")
+                request_start = time.time()
+
                 # --------------------------------------
                 # PLOT 3: Heat calls
                 # --------------------------------------
 
                 if time.time() - request_start > TIMEOUT_SECONDS:
                     raise asyncio.TimeoutError('Timed out')
-                # if await apirequest.is_disconnected():
-                #     raise asyncio.CancelledError("Client disconnected.")
 
                 fig = go.Figure()
 
                 if 'zone-heat-calls' in request.selected_channels:
                     for zone in zones:
+                        shape_start = None
                         for key in [x for x in zones[zone] if 'whitewire' in x]:
                             if request.house_alias not in threshold:
                                 house_threshold = threshold['other']
@@ -1123,7 +1113,6 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
 
                             zone_color = zone_colors_hex[int(key[4])-1]
                             last_was_1 = False
-                            # TODO: fig.add_trace here to debug fir
                             fig.add_trace(
                                 go.Scatter(
                                     x=[channels[key]['times'][0], channels[key]['times'][0]],
@@ -1137,20 +1126,6 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                             )
                             for i in range(len(channels[key]['values'])):
                                 if channels[key]['values'][i] == 1:
-                                    # if last_was_1: 
-                                    if i<len(channels[key]['values'])-1:
-                                        if channels[key]['values'][i+1] != 1:
-                                            fig.add_trace(
-                                                go.Scatter(
-                                                    x=[channels[key]['times'][i+1], channels[key]['times'][i+1]],
-                                                    y=[int(key[4])-1, int(key[4])],
-                                                    mode='lines',
-                                                    line=dict(color=zone_color, width=2),
-                                                    opacity=0.7,
-                                                    name=key.replace('-state',''),
-                                                    showlegend=False,
-                                                )
-                                            )
                                     if not last_was_1 or 'show-points' in request.selected_channels:
                                         if i>0: 
                                             fig.add_trace(
@@ -1165,20 +1140,36 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                                                 )
                                             )
                                     if i<len(channels[key]['values'])-1:
-                                        # if channels[key]['values'][i+1] == 1:
                                         last_was_1 = True
-                                        fig.add_shape(
-                                            type='rect',
-                                            x0=channels[key]['times'][i],
-                                            y0=int(key[4]) - 1,
-                                            x1=channels[key]['times'][i+1],
-                                            y1=int(key[4]),
-                                            line=dict(color=zone_color, width=0),
-                                            fillcolor=zone_color,
-                                            opacity=0.2,
-                                            name=key.replace('-state', ''),
-                                        )
-
+                                        if not shape_start:
+                                            shape_start = channels[key]['times'][i]
+                                        if channels[key]['values'][i+1] != 1:
+                                            fig.add_trace(
+                                                go.Scatter(
+                                                    x=[channels[key]['times'][i+1], channels[key]['times'][i+1]],
+                                                    y=[int(key[4])-1, int(key[4])],
+                                                    mode='lines',
+                                                    line=dict(color=zone_color, width=2),
+                                                    opacity=0.7,
+                                                    name=key.replace('-state',''),
+                                                    showlegend=False,
+                                                )
+                                            )
+                                            if shape_start:
+                                                fig.add_shape(
+                                                    type='rect',
+                                                    x0=shape_start,
+                                                    y0=int(key[4]) - 1,
+                                                    x1=channels[key]['times'][i+1],
+                                                    y1=int(key[4]),
+                                                    line=dict(color=zone_color, width=0),
+                                                    fillcolor=zone_color,
+                                                    opacity=0.2,
+                                                    name=key.replace('-state', ''),
+                                                )
+                                                shape_start = None
+                                            
+                                
                                 else:
                                     last_was_1 = False
                             fig.add_trace(
@@ -1238,14 +1229,15 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                 fig.write_html(html_buffer3)
                 html_buffer3.seek(0)
 
+                print(f"Plot 3 (heat calls) done in {round(time.time()-request_start,1)} seconds")
+                request_start = time.time()
+
                 # --------------------------------------
                 # PLOT 4: Zones
                 # --------------------------------------
 
                 if time.time() - request_start > TIMEOUT_SECONDS:
                     raise asyncio.TimeoutError('Timed out')
-                # if await apirequest.is_disconnected():
-                #     raise asyncio.CancelledError("Client disconnected.")
 
                 fig = go.Figure()
 
@@ -1358,14 +1350,15 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                 fig.write_html(html_buffer4)
                 html_buffer4.seek(0)
 
+                print(f"Plot 4 (zones) done in {round(time.time()-request_start,1)} seconds")
+                request_start = time.time()
+
                 # --------------------------------------
                 # PLOT 5: Buffer
                 # --------------------------------------
 
                 if time.time() - request_start > TIMEOUT_SECONDS:
                     raise asyncio.TimeoutError('Timed out')
-                # if await apirequest.is_disconnected():
-                #     raise asyncio.CancelledError("Client disconnected.")
 
                 fig = go.Figure()
 
@@ -1460,14 +1453,15 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                 fig.write_html(html_buffer5)
                 html_buffer5.seek(0)
 
+                print(f"Plot 5 (buffer) done in {round(time.time()-request_start,1)} seconds")
+                request_start = time.time()
+
                 # --------------------------------------
                 # PLOT 6: Storage
                 # --------------------------------------
 
                 if time.time() - request_start > TIMEOUT_SECONDS:
                     raise asyncio.TimeoutError('Timed out')
-                # if await apirequest.is_disconnected():
-                #     raise asyncio.CancelledError("Client disconnected.")
 
                 fig = go.Figure()
                 
@@ -1677,14 +1671,15 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                 fig.write_html(html_buffer6)
                 html_buffer6.seek(0)
 
+                print(f"Plot 6 (storage) done in {round(time.time()-request_start,1)} seconds")
+                request_start = time.time()
+
                 # --------------------------------------
                 # PLOT 7: Top State
                 # --------------------------------------
 
                 if time.time() - request_start > TIMEOUT_SECONDS:
                     raise asyncio.TimeoutError('Timed out')
-                # if await apirequest.is_disconnected():
-                #     raise asyncio.CancelledError("Client disconnected.")
 
                 fig = go.Figure()
 
@@ -1756,14 +1751,15 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                 fig.write_html(html_buffer7)
                 html_buffer7.seek(0)
 
+                print(f"Plot 7 (top state) done in {round(time.time()-request_start,1)} seconds")
+                request_start = time.time()
+
                 # --------------------------------------
                 # PLOT 8: HomeAlone
                 # --------------------------------------
 
                 if time.time() - request_start > TIMEOUT_SECONDS:
                     raise asyncio.TimeoutError('Timed out')
-                # if await apirequest.is_disconnected():
-                #     raise asyncio.CancelledError("Client disconnected.")
 
                 fig = go.Figure()
 
@@ -1835,14 +1831,15 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                 fig.write_html(html_buffer8)
                 html_buffer8.seek(0)
 
+                print(f"Plot 8 (HA state) done in {round(time.time()-request_start,1)} seconds")
+                request_start = time.time()
+
                 # --------------------------------------
                 # PLOT 9: Atomic Ally
                 # --------------------------------------
 
                 if time.time() - request_start > TIMEOUT_SECONDS:
                     raise asyncio.TimeoutError('Timed out')
-                # if await apirequest.is_disconnected():
-                #     raise asyncio.CancelledError("Client disconnected.")
 
                 fig = go.Figure()
 
@@ -1914,14 +1911,15 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                 fig.write_html(html_buffer9)
                 html_buffer9.seek(0)
 
+                print(f"Plot 9 (AA state) done in {round(time.time()-request_start,1)} seconds")
+                request_start = time.time()
+
                 # --------------------------------------
                 # PLOT 10: Weather forecasts
                 # --------------------------------------
 
                 if time.time() - request_start > TIMEOUT_SECONDS:
                     raise asyncio.TimeoutError('Timed out')
-                # if await apirequest.is_disconnected():
-                #     raise asyncio.CancelledError("Client disconnected.")
 
                 fig = go.Figure()
                 color_scale = pc.diverging.RdBu[::-1]
@@ -1995,14 +1993,15 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                 fig.write_html(html_buffer10)
                 html_buffer10.seek(0)
 
+                print(f"Plot 10 (weather) done in {round(time.time()-request_start,1)} seconds")
+                request_start = time.time()
+
                 # --------------------------------------
                 # PLOT 11: Price
                 # --------------------------------------
 
                 if time.time() - request_start > TIMEOUT_SECONDS:
                     raise asyncio.TimeoutError('Timed out')
-                # if await apirequest.is_disconnected():
-                #     raise asyncio.CancelledError("Client disconnected.")
 
                 fig = go.Figure()
 
@@ -2031,7 +2030,6 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                     if time in price_times_s
                 ]
                 price_times2 = [pendulum.from_timestamp(x, tz='America/New_York') for x in csv_times]
-                # print(price_times2)
 
                 fig.add_trace(
                     go.Scatter(
@@ -2153,22 +2151,16 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                 html_buffer11 = io.StringIO()
                 fig.write_html(html_buffer11)
                 html_buffer11.seek(0)
-                
+
+                print(f"Plot 11 (prices) done in {round(time.time()-request_start,1)} seconds")                
 
     except asyncio.TimeoutError:
-        print("Request timed out.")
+        print("Request timed out!")
         return {
                 "success": False, 
                 "message": f"The data request timed out. Please try loading a smaller amount of data at a time.", 
                 "reload": False
                 }
-    except asyncio.CancelledError:
-        print("Request cancelled or client disconnected.")
-        return {
-            "success": False, 
-            "message": "The request was cancelled because the client disconnected.", 
-            "reload": False
-        }
     except Exception as e:
         return {
             "success": False, 
