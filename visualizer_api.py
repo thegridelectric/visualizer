@@ -686,6 +686,7 @@ async def get_csv(request: CsvRequest, apirequest: Request):
             for channel in channels_to_export:
                 if time.time() - request_start > TIMEOUT_SECONDS:
                     raise asyncio.TimeoutError('Timed out')
+
                 merged = await asyncio.to_thread(pd.merge_asof, 
                                                   pd.DataFrame({'times': csv_times_dt}),
                                                   pd.DataFrame(channels[channel]),
@@ -868,6 +869,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                         ) 
                 if time.time() - request_start > TIMEOUT_SECONDS:
                     raise asyncio.TimeoutError('Timed out')
+
                 if 'primary-flow' in request.selected_channels and 'primary-flow' in channels:
                     power_plot = True
                     fig.add_trace(
