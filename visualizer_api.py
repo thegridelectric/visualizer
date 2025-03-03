@@ -1143,18 +1143,19 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                                         last_was_1 = True
                                         if not shape_start:
                                             shape_start = channels[key]['times'][i]
-                                        if channels[key]['values'][i+1] != 1:
-                                            fig.add_trace(
-                                                go.Scatter(
-                                                    x=[channels[key]['times'][i+1], channels[key]['times'][i+1]],
-                                                    y=[int(key[4])-1, int(key[4])],
-                                                    mode='lines',
-                                                    line=dict(color=zone_color, width=2),
-                                                    opacity=0.7,
-                                                    name=key.replace('-state',''),
-                                                    showlegend=False,
+                                        if channels[key]['values'][i+1] != 1 or i+1==len(channels[key]['values'])-1:
+                                            if channels[key]['values'][i+1] != 1:
+                                                fig.add_trace(
+                                                    go.Scatter(
+                                                        x=[channels[key]['times'][i+1], channels[key]['times'][i+1]],
+                                                        y=[int(key[4])-1, int(key[4])],
+                                                        mode='lines',
+                                                        line=dict(color=zone_color, width=2),
+                                                        opacity=0.7,
+                                                        name=key.replace('-state',''),
+                                                        showlegend=False,
+                                                    )
                                                 )
-                                            )
                                             if shape_start:
                                                 fig.add_shape(
                                                     type='rect',
