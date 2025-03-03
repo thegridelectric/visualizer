@@ -654,8 +654,10 @@
         window.matchMedia("(prefers-color-scheme: dark)").addEventListener('change', (e) => {
             if (e.matches) {
                 document.body.classList.add('dark-mode');
+                darkmode_tf = true
             } else {
                 document.body.classList.remove('dark-mode');
+                darkmode_tf = false
             }
             const plotDivs = [
                 document.getElementById('Plot1'),
