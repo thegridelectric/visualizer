@@ -26,47 +26,7 @@ from fastapi.responses import FileResponse
 from typing import Union
 import plotly.colors as pc
 import csv
-
-RUNNING_LOCALLY = True
-TIMEOUT_SECONDS = 5*60
-MAX_DAYS_WARNING = 3
-
-settings = Settings(_env_file=dotenv.find_dotenv())
-admin_user_password = settings.visualizer_api_password.get_secret_value()
-engine = create_engine(settings.db_url.get_secret_value())
-Session = sessionmaker(bind=engine)
-
-def valid_password(house_alias, password):
-    if password == admin_user_password:
-        return True
-    house_owner_password = getattr(settings, f"{house_alias}_owner_password").get_secret_value()
-    if password == house_owner_password:
-        return True
-    return False
-
-app = FastAPI()
-
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"], # TODO: change to ["https://thegridelectric.github.io"] when ready
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-tank_temperatures = [
-        'tank1-depth1', 'tank1-depth2', 'tank1-depth3', 'tank1-depth4', 
-        'tank2-depth1', 'tank2-depth2', 'tank2-depth3', 'tank2-depth4', 
-        'tank3-depth1', 'tank3-depth2', 'tank3-depth3', 'tank3-depth4'
-        ]
-
-def to_fahrenheit(t):
-    return t*9/5+32
-
-# ------------------------------
-# Request types
-# ------------------------------
+import uvicorn
 
 class DataRequest(BaseModel):
     house_alias: str
@@ -102,507 +62,368 @@ class MessagesRequest(BaseModel):
     end_ms: int
     darkmode: Optional[bool] = False
 
-# ------------------------------
-# Plot colors
-# ------------------------------
 
-def to_hex(rgba):
-    r, g, b, a = (int(c * 255) for c in rgba)
-    return f'#{r:02x}{g:02x}{b:02x}'
 
-gradient = plt.get_cmap('coolwarm', 4)
-buffer_colors = {
-    'buffer-depth1': gradient(3),
-    'buffer-depth2': gradient(2),
-    'buffer-depth3': gradient(1),
-    'buffer-depth4': gradient(0)
-    }
-buffer_colors_hex = {key: to_hex(value) for key, value in buffer_colors.items()}
+class VisualizerApi():
+    def __init__(self, running_locally):
+        self.running_locally = running_locally
+        self.get_parameters()
+        # Start sqlalchemy session
+        self.settings = Settings(_env_file=dotenv.find_dotenv())
+        engine = create_engine(self.settings.db_url.get_secret_value())
+        self.Session = sessionmaker(bind=engine)
+        self.admin_user_password = self.settings.visualizer_api_password.get_secret_value()
+        # Start API
+        self.app = FastAPI()
+        self.app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"], # TODO: change to ["https://thegridelectric.github.io"] when ready
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+        self.app.post("/plots")(self.get_plots)
+        self.app.post("/csvs")(self.get_csv)
+        self.app.post("/messages")(self.get_messages) 
 
-gradient = plt.get_cmap('coolwarm', 12)
-storage_colors = {
-    'tank1-depth1': gradient(11),
-    'tank1-depth2': gradient(10),
-    'tank1-depth3': gradient(9),
-    'tank1-depth4': gradient(8),
-    'tank2-depth1': gradient(7),
-    'tank2-depth2': gradient(6),
-    'tank2-depth3': gradient(5),
-    'tank2-depth4': gradient(4),
-    'tank3-depth1': gradient(3),
-    'tank3-depth2': gradient(2),
-    'tank3-depth3': gradient(1),
-    'tank3-depth4': gradient(0),
-    }
-storage_colors_hex = {key: to_hex(value) for key, value in storage_colors.items()}
+    def run(self):
+        uvicorn.run(self.app, host="0.0.0.0", port=8000)       
+        
+    def get_parameters(self):
+        self.timezone_str = 'America/New_York'
+        self.timeout_seconds = 5*60
+        self.max_days_warning = 3
+        self.tank_temperatures = [
+            'tank1-depth1', 'tank1-depth2', 'tank1-depth3', 'tank1-depth4', 
+            'tank2-depth1', 'tank2-depth2', 'tank2-depth3', 'tank2-depth4', 
+            'tank3-depth1', 'tank3-depth2', 'tank3-depth3', 'tank3-depth4'
+            ]
+        self.top_states_order = ['HomeAlone', 'Atn', 'Dormant']
+        self.ha_states_order = ['HpOffStoreDischarge', 'HpOffStoreOff', 'HpOnStoreOff', 
+                               'HpOnStoreCharge', 'StratBoss', 'Initializing', 'Dormant']
+        self.aa_states_order = self.ha_states_order.copy()
+        self.whitewire_threshold_watts = {
+            'beech': 100,
+            'other': 20,
+        }
+        gradient = plt.get_cmap('coolwarm', 4)
+        buffer_colors = {
+            'buffer-depth1': gradient(3),
+            'buffer-depth2': gradient(2),
+            'buffer-depth3': gradient(1),
+            'buffer-depth4': gradient(0)
+            }
+        self.buffer_layer_colors = {key: self.to_hex(value) for key, value in buffer_colors.items()}
+        gradient = plt.get_cmap('coolwarm', 12)
+        storage_colors = {
+            'tank1-depth1': gradient(11),
+            'tank1-depth2': gradient(10),
+            'tank1-depth3': gradient(9),
+            'tank1-depth4': gradient(8),
+            'tank2-depth1': gradient(7),
+            'tank2-depth2': gradient(6),
+            'tank2-depth3': gradient(5),
+            'tank2-depth4': gradient(4),
+            'tank3-depth1': gradient(3),
+            'tank3-depth2': gradient(2),
+            'tank3-depth3': gradient(1),
+            'tank3-depth4': gradient(0),
+            }
+        self.storage_layer_colors = {key: self.to_hex(value) for key, value in storage_colors.items()}
+        self.zone_color = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']*3
+        self.top_state_color = {
+            'HomeAlone': '#EF553B',
+            'Atn': '#00CC96',
+            'Admin': '#636EFA'
+        }
+        self.ha_state_color = {
+            'HpOffStoreDischarge': '#EF553B',
+            'HpOffStoreOff': '#00CC96',
+            'HpOnStoreOff': '#636EFA',
+            'HpOnStoreCharge': '#feca52',
+            'Initializing': '#a3a3a3',
+            'StratBoss': '#ee93fa',
+            'Dormant': '#4f4f4f'
+        }
 
-zone_colors_hex = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
+    def ms_to_datetime(self, time_ms):
+        return pendulum.from_timestamp(time_ms/1000, tz=self.timezone_str)
 
-modes_colors_hex = {
-    'HpOffStoreDischarge': '#EF553B',
-    'HpOffStoreOff': '#00CC96',
-    'HpOnStoreOff': '#636EFA',
-    'HpOnStoreCharge': '#feca52',
-    'Initializing': '#a3a3a3',
-    'StratBoss': '#ee93fa',
-    'WaitingForTemperaturesOnPeak': '#a3a3a3',
-    'WaitingForTemperaturesOffPeak': '#4f4f4f',
-    'Dormant': '#4f4f4f'
-}
-modes_order = [
-    'HpOffStoreDischarge', 'HpOffStoreOff', 'HpOnStoreOff', 'HpOnStoreCharge', 'StratBoss', 'Initializing', 'Dormant']
-
-top_modes_colors_hex = {
-    'HomeAlone': '#EF553B',
-    'Atn': '#00CC96',
-    'Admin': '#636EFA'
-}
-top_modes_order = ['HomeAlone', 'Atn', 'Dormant']
-
-aa_modes_colors_hex = {
-    'HpOffStoreDischarge': '#EF553B',
-    'HpOffStoreOff': '#00CC96',
-    'HpOnStoreOff': '#636EFA',
-    'HpOnStoreCharge': '#feca52',
-    'StratBoss': '#ee93fa',
-    'WaitingNoElec': '#a3a3a3',
-    'WaitingElec': '#4f4f4f',
-    'Dormant': '#4f4f4f'
-}
-aa_modes_order = [
-        'HpOffStoreDischarge', 'HpOffStoreOff', 'HpOnStoreOff', 'HpOnStoreCharge', 'StratBoss', 'WaitingNoElec', 'WaitingElec', 'Dormant'
-        ]
-
-threshold = {
-    'beech': 100,
-    'other': 20,
-}
-
-# ------------------------------
-# Pull data from journaldb
-# ------------------------------
-
-def get_data(request: Union[DataRequest, CsvRequest, DijkstraRequest]):
-
-    import time
-    request_start = time.time()
-
-    if not valid_password(request.house_alias, request.password):
-        with open('failed_logins.log', 'a') as log_file:
-            log_entry = f"{pendulum.now()} - Failed login from {request.ip_address} with password: {request.password}\n"
-            log_entry += f"Timezone '{request.timezone}', device: {request.user_agent}\n\n"
-            log_file.write(log_entry)
-        return {
-            "success": False, 
-            "message": "Wrong password.", 
-            "reload":True
-            }, 0, 0, 0, 0, 0, 0, 0, 0
+    def to_fahrenheit(self, t):
+        return t*9/5+32
     
-    if request.house_alias == '':
-        return {
-            "success": False, 
-            "message": "Please enter a house alias.", 
-            "reload": True
-            }, 0, 0, 0, 0, 0, 0, 0, 0
-    
-    if not request.continue_option:
-        if (request.end_ms - request.start_ms)/1000/60/60/24 > MAX_DAYS_WARNING:
-            warning_message = f"That's a lot of data! This could take a while, "
-            warning_message += f"and eventually trigger a timeout (after {int(TIMEOUT_SECONDS/60)} minutes). "
-            warning_message += f"It might be best to get this data in several smaller requests.\n\nAre you sure you would like to continue?"
-            return {
-                "success": False,
-                "message": warning_message, 
-                "reload":False,
-                "continue_option": True,
-                }, 0, 0, 0, 0, 0, 0, 0, 0
+    def to_hex(self, rgba):
+        r, g, b, a = (int(c * 255) for c in rgba)
+        return f'#{r:02x}{g:02x}{b:02x}'
 
-    if not RUNNING_LOCALLY: 
-        if (request.end_ms - request.start_ms)/1000/60/60/24 > 5 and isinstance(request, DataRequest):
-            return {
-                "success": False,
-                "message": "That's too many days to plot.", 
-                "reload": False,
-                }, 0, 0, 0, 0, 0, 0, 0, 0
+    def check_password(self, house_alias, password):
+        if password == self.admin_user_password:
+            return True
+        house_owner_password = getattr(self.settings, f"{house_alias}_owner_password").get_secret_value()
+        if password == house_owner_password:
+            return True
+        return False
+    
+    def check_request(self, request: Union[DataRequest, CsvRequest, DijkstraRequest, MessagesRequest]):
+        if not self.check_password(request.house_alias, request.password):
+            return {"success": False, "message": "Wrong password.", "reload": True}
+        if not isinstance(request, MessagesRequest) and request.house_alias == '':
+            return {"success": False, "message": "Please enter a house alias.", "reload": True}
+        if isinstance(request, Union[DataRequest, CsvRequest]) and not request.continue_option:
+            if (request.end_ms - request.start_ms)/1000/60/60/24 > self.max_days_warning:
+                warning_message = f"That's a lot of data! Are you sure you want to proceed?"
+                return {"success": False, "message": warning_message, "reload": False, "continue_option": True}
+        if not self.running_locally: 
+            if (request.end_ms-request.start_ms)/1000/60/60/24 > 5 and isinstance(request, isinstance(request, DataRequest, MessagesRequest)):
+                warning_message = "Plotting data for this many days is not permitted. Please reduce the range and try again."
+                return {"success": False, "message": warning_message, "reload": False}
+            if (request.end_ms - request.start_ms)/1000/60/60/24 > 21 and isinstance(request, CsvRequest):
+                warning_message = "Downloading data for this many days is not permitted. Please reduce the range and try again."
+                return {"success": False, "message": warning_message, "reload": False}
+        return {"success": True, "message": "", "reload": False}
+    
+    def get_data(self, request: Union[DataRequest, CsvRequest, DijkstraRequest]):
+        success_status = self.check_request(request)
+        if not success_status['success'] or request.selected_channels==['bids']:
+            return success_status
         
-        if (request.end_ms - request.start_ms)/1000/60/60/24 > 21 and isinstance(request, CsvRequest):
-            return {
-                "success": False,
-                "message": "That's too many days of data to download.", 
-                "reload": False,
-                }, 0, 0, 0, 0, 0, 0, 0, 0
-        
-    if request.selected_channels == ['bids']:
-        print("Looking for bids only")
-        return {
-                "success": True,
-                "message": "Getting bids, not plots", 
-                "reload": False,
-                }, 0, 0, 0, 0, 0, 0, 0, 0
-        # call a new function that gets the bids
-        
-    session = Session()
-    all_messages = session.query(MessageSql).filter(
-        MessageSql.from_alias.like(f'%.{request.house_alias}.%'),
-        MessageSql.message_persisted_ms <= request.end_ms,
-        or_(
-            and_(
-                or_(
-                    MessageSql.message_type_name == "batched.readings",
-                    MessageSql.message_type_name == "report",
-                    MessageSql.message_type_name == "snapshot.spaceheat",
+        session = self.Session()
+        self.all_raw_messages = session.query(MessageSql).filter(
+            MessageSql.from_alias.like(f'%.{request.house_alias}.%'),
+            MessageSql.message_persisted_ms <= request.end_ms,
+            or_(
+                and_(
+                    or_(
+                        MessageSql.message_type_name == "batched.readings",
+                        MessageSql.message_type_name == "report",
+                        MessageSql.message_type_name == "snapshot.spaceheat",
+                    ),
+                    MessageSql.message_persisted_ms >= request.start_ms,
                 ),
-                MessageSql.message_persisted_ms >= request.start_ms,
-            ),
-            and_(
-                MessageSql.message_type_name == "weather.forecast",
-                MessageSql.message_persisted_ms >= request.start_ms - 24*3600*1000,
+                and_(
+                    MessageSql.message_type_name == "weather.forecast",
+                    MessageSql.message_persisted_ms >= request.start_ms - 24*3600*1000,
+                )
             )
-        )
-    ).order_by(asc(MessageSql.message_persisted_ms)).all()
+        ).order_by(asc(MessageSql.message_persisted_ms)).all()
 
-    messages = sorted(
-        [x for x in all_messages if x.message_type_name in ['report', 'batched.readings']],
-        key = lambda x: x.message_persisted_ms
-        )
-
-    if not messages:
-        return {
-            "success": False, 
-            "message": f"No data found for house '{request.house_alias}' in the selected timeframe.", 
-            "reload":False
-            }, 0, 0, 0, 0, 0, 0, 0, 0
-    
-    channels = {}
-    for message in messages:
-        if time.time() - request_start > TIMEOUT_SECONDS:
-            return {
-                "success": False, 
-                "message": f"Timeout: getting the data took too much time.", 
-                "reload":False
-                }, 0, 0, 0, 0, 0, 0, 0, 0
-        for channel in message.payload['ChannelReadingList']:
-            # Find the channel name
-            if message.message_type_name == 'report':
-                channel_name = channel['ChannelName']
-            elif message.message_type_name == 'batched.readings':
-                for dc in message.payload['DataChannelList']:
-                    if dc['Id'] == channel['ChannelId']:
-                        channel_name = dc['Name']
-            # Store the values and times for the channel
-            if not (channel_name=='oat' and 'oak' in request.house_alias):
-                if channel_name not in channels:
-                    channels[channel_name] = {
-                        'values': channel['ValueList'],
-                        'times': channel['ScadaReadTimeUnixMsList']
-                    }
-                else:
-                    channels[channel_name]['values'].extend(channel['ValueList'])
-                    channels[channel_name]['times'].extend(channel['ScadaReadTimeUnixMsList'])
-
-    # Sort values according to time and find min/max
-    min_time_ms, max_time_ms = 1e20, 0
-    keys_to_delete = []
-    for key in channels.keys():
-        # Check the length
-        if (len(channels[key]['times']) != len(channels[key]['values']) 
-            or not channels[key]['times']):
-            print(f"Warning: channel data is empty or has length mismatch: {key}")
-            keys_to_delete.append(key)
-            continue
-        sorted_times_values = sorted(zip(channels[key]['times'], channels[key]['values']))
-        sorted_times, sorted_values = zip(*sorted_times_values)
-        if list(sorted_times)[0] < min_time_ms:
-            min_time_ms = list(sorted_times)[0]
-        if list(sorted_times)[-1] > max_time_ms:
-            max_time_ms = list(sorted_times)[-1]
-        channels[key]['values'] = list(sorted_values)
-        channels[key]['times'] = list(sorted_times)
-        # channels[key]['times'] = pd.to_datetime(list(sorted_times), unit='ms', utc=True)
-        # channels[key]['times'] = channels[key]['times'].tz_convert('America/New_York')
-        # channels[key]['times'] = [x.replace(tzinfo=None) for x in channels[key]['times']]
-    for key in keys_to_delete:
-        del channels[key]
-
-    # Add snapshots
-    snapshots = sorted(
-            [x for x in all_messages if x.message_type_name=='snapshot.spaceheat'
-             and x.message_persisted_ms >= max_time_ms], 
-             key = lambda x: x.message_persisted_ms
-             )
-    for snapshot in snapshots:
-        for snap in snapshot.payload['LatestReadingList']:
-            if snap['ChannelName'] in channels:
-                channels[snap['ChannelName']]['times'].append(snap['ScadaReadTimeUnixMs'])
-                channels[snap['ChannelName']]['values'].append(snap['Value'])
-
-    # Sort values according to time and find new max
-    max_time_ms = 0
-    for key in channels:
-        sorted_times_values = sorted(zip(channels[key]['times'], channels[key]['values']))
-        sorted_times, sorted_values = zip(*sorted_times_values)
-        if list(sorted_times)[-1] > max_time_ms:
-            max_time_ms = list(sorted_times)[-1]
-        channels[key]['values'] = list(sorted_values)
-        channels[key]['times'] = pd.to_datetime(list(sorted_times), unit='ms', utc=True)
-        channels[key]['times'] = channels[key]['times'].tz_convert('America/New_York')
-        channels[key]['times'] = [x.replace(tzinfo=None) for x in channels[key]['times']]
-
-    # Find all zone channels
-    zones = {}
-    for channel_name in channels.keys():
-        if 'zone' in channel_name and 'gw-temp' not in channel_name:
-            if 'state' not in channel_name:
-                channels[channel_name]['values'] = [x/1000 for x in channels[channel_name]['values']]
-            zone_name = channel_name.split('-')[0]
-            if zone_name not in zones:
-                zones[zone_name] = [channel_name]
-            else:
-                zones[zone_name].append(channel_name)
-
-    # HomeAlone state
-    relays = {}
-    for message in messages:
-        if 'StateList' in message.payload:
-            for state in message.payload['StateList']:
-                if state['MachineHandle'] not in relays:
-                    relays[state['MachineHandle']] = {}
-                    relays[state['MachineHandle']]['times'] = []
-                    relays[state['MachineHandle']]['values'] = []
-                relays[state['MachineHandle']]['times'].extend(state['UnixMsList'])
-                relays[state['MachineHandle']]['values'].extend(state['StateList'])
-    modes = {}
-    if 'auto.h.n' in relays:   
-        modes['all'] = {}
-        modes['all']['times'] = []
-        modes['all']['values'] = []
-        formatted_times = [pendulum.from_timestamp(x/1000, tz='America/New_York') for x in relays['auto.h.n']['times']]
-        # print(set(relays['auto.h.n']['values']))
-        for state in [x for x in modes_order if x in list(set(relays['auto.h.n']['values']))]:
-            modes[state] = {}
-            modes[state]['times'] = []
-            modes[state]['values'] = []
-
-        final_states = []
-        for time, state in zip(formatted_times, relays['auto.h.n']['values']):
-            if state not in modes_order:
-                final_states.append(state)
-            else:
-                modes['all']['times'].append(time)
-                modes['all']['values'].append(4 if 'Waiting' in state else modes_order.index(state))
-                modes[state]['times'].append(time)
-                modes[state]['values'].append(4 if 'Waiting' in state else modes_order.index(state))
-        idx = len(modes_order)+1
-        final_states = list(set(final_states))
-        for time, state in zip(formatted_times, relays['auto.h.n']['values']):
-            if state in final_states:
-                if state not in modes:
-                    modes[state] = {}
-                    modes[state]['times'] = []
-                    modes[state]['values'] = []
-                modes['all']['times'].append(time)
-                modes['all']['values'].append(idx)
-                modes[state]['times'].append(time)
-                modes[state]['values'].append(idx)
-    if not modes:
-        modes = {}
-        if 'auto.h' in relays:   
-            modes['all'] = {}
-            modes['all']['times'] = []
-            modes['all']['values'] = []
-            formatted_times = [pendulum.from_timestamp(x/1000, tz='America/New_York') for x in relays['auto.h']['times']]
-            # print(set(relays['auto.h']['values']))
-            for state in list(set(relays['auto.h']['values'])):
-                modes[state] = {}
-                modes[state]['times'] = []
-                modes[state]['values'] = []
-            for time, state in zip(formatted_times, relays['auto.h']['values']):
-                position = len(modes_order) if state not in modes_order else modes_order.index(state)
-                modes['all']['times'].append(time)
-                modes['all']['values'].append(position)
-                modes[state]['times'].append(time)
-                modes[state]['values'].append(position)
-            idx = len(modes_order)+1
-    
-    top_modes = {}
-    if 'auto' in relays:         
-        top_modes['all'] = {}
-        top_modes['all']['times'] = []
-        top_modes['all']['values'] = []
-        formatted_times = [pendulum.from_timestamp(x/1000, tz='America/New_York') for x in relays['auto']['times']]
-        # print(set(relays['auto']['values']))
-        for state in list(set(relays['auto']['values'])):
-            top_modes[state] = {}
-            top_modes[state]['times'] = []
-            top_modes[state]['values'] = []
-
-        for time, state in zip(formatted_times, relays['auto']['values']):
-            if state in top_modes_order:
-                top_modes['all']['times'].append(time)
-                top_modes['all']['values'].append(top_modes_order.index(state))
-                top_modes[state]['times'].append(time)
-                top_modes[state]['values'].append(top_modes_order.index(state))
-    aa_modes = {}
-    if 'a.aa' in relays:         
-        aa_modes['all'] = {}
-        aa_modes['all']['times'] = []
-        aa_modes['all']['values'] = []
-        formatted_times = [pendulum.from_timestamp(x/1000, tz='America/New_York') for x in relays['a.aa']['times']]
-        for state in [x for x in aa_modes_order if x in list(set(relays['a.aa']['values']))]:
-            aa_modes[state] = {}
-            aa_modes[state]['times'] = []
-            aa_modes[state]['values'] = []
-
-        for time, state in zip(formatted_times, relays['a.aa']['values']):
-            if state in aa_modes_order:
-                aa_modes['all']['times'].append(time)
-                aa_modes['all']['values'].append(aa_modes_order.index(state))
-                aa_modes[state]['times'].append(time)
-                aa_modes[state]['values'].append(aa_modes_order.index(state))
-    
-    if "Dormant" in top_modes:
-        top_modes['Admin'] = top_modes['Dormant']
-        del top_modes['Dormant']
-    
-    # Start and end times on plots
-    min_time_ms += -(max_time_ms-min_time_ms)*0.05
-    max_time_ms += (max_time_ms-min_time_ms)*0.05
-    min_time_ms_dt = pd.to_datetime(min_time_ms, unit='ms', utc=True)
-    max_time_ms_dt = pd.to_datetime(max_time_ms, unit='ms', utc=True)
-    min_time_ms_dt = min_time_ms_dt.tz_convert('America/New_York').replace(tzinfo=None)
-    max_time_ms_dt = max_time_ms_dt.tz_convert('America/New_York').replace(tzinfo=None)
-
-    # Weather forecasts
-    weather_messages = None
-    if isinstance(request, DataRequest):
-        weather_messages = sorted(
-            [x for x in all_messages if x.message_type_name=='weather.forecast'], 
+        if not self.all_raw_messages:
+            warning_message = f"No data found for house '{request.house_alias}' in the selected timeframe."
+            return {"success": False, "message": warning_message, "reload": False}
+        
+        # Process reports
+        reports: List[MessageSql] = sorted(
+            [x for x in self.all_raw_messages if x.message_type_name in ['report', 'batched.readings']],
             key = lambda x: x.message_persisted_ms
             )
+        self.channels = {}
+        for message in reports:
+            for channel in message.payload['ChannelReadingList']:
+                if message.message_type_name == 'report':
+                    channel_name = channel['ChannelName']
+                elif message.message_type_name == 'batched.readings':
+                    for dc in message.payload['DataChannelList']:
+                        if dc['Id'] == channel['ChannelId']:
+                            channel_name = dc['Name']
+                if channel_name=='oat' and 'oak' in request.house_alias: #TODO: remove?
+                    continue
+                if not channel['ValueList'] or not channel['ScadaReadTimeUnixMsList']:
+                    continue
+                if len(channel['ValueList'])!=len(channel['ScadaReadTimeUnixMsList']):
+                    continue
+                if channel_name not in self.channels:
+                    self.channels[channel_name] = {'values': [], 'times': []}
+                self.channels[channel_name]['values'].extend(channel['ValueList'])
+                self.channels[channel_name]['times'].extend(channel['ScadaReadTimeUnixMsList'])
+            
+        # Process snapshots
+        max_timestamp = max(max(self.channels[channel_name]['times']) for channel_name in self.channels)
+        snapshots = sorted(
+                [x for x in self.all_raw_messages if x.message_type_name=='snapshot.spaceheat'
+                and x.message_persisted_ms >= max_timestamp], 
+                key = lambda x: x.message_persisted_ms
+                )
+        for snapshot in snapshots:
+            for snap in snapshot.payload['LatestReadingList']:
+                if snap['ChannelName'] in self.channels:
+                    self.channels[snap['ChannelName']]['times'].append(snap['ScadaReadTimeUnixMs'])
+                    self.channels[snap['ChannelName']]['values'].append(snap['Value'])
 
-    return "", channels, zones, modes, top_modes, aa_modes, weather_messages, min_time_ms_dt, max_time_ms_dt
+        # Get minimum and maximum timestamp for plots
+        max_timestamp = max(max(self.channels[x]['times']) for x in self.channels)
+        min_timestamp = min(min(self.channels[x]['times']) for x in self.channels)
+        min_timestamp += -(max_timestamp-min_timestamp)*0.05
+        max_timestamp += (max_timestamp-min_timestamp)*0.05
+        self.min_timestamp = self.ms_to_datetime(min_timestamp)
+        self.max_timestamp = self.ms_to_datetime(max_timestamp)
 
-# ------------------------------
-# Get messages for message tracker
-# ------------------------------
+        # Sort values according to time and convert to datetime
+        for channel_name in self.channels.keys():
+            sorted_times_values = sorted(zip(self.channels[channel_name]['times'], self.channels[channel_name]['values']))
+            sorted_times, sorted_values = zip(*sorted_times_values)
+            self.channels[channel_name]['values'] = list(sorted_values)
+            self.channels[channel_name]['times'] = pd.to_datetime(list(sorted_times), unit='ms', utc=True)
+            self.channels[channel_name]['times'] = self.channels[channel_name]['times'].tz_convert(self.timezone_str)
+            self.channels[channel_name]['times'] = [x.replace(tzinfo=None) for x in self.channels[channel_name]['times']]        
 
-def get_requested_messages(request: MessagesRequest, running_locally:bool=False):
+        # Find all zone channels
+        self.channels_by_zone = {}
+        for channel_name in self.channels.keys():
+            if 'zone' in channel_name and 'gw-temp' not in channel_name:
+                zone_name = channel_name.split('-')[0]
+                if zone_name not in self.channels_by_zone:
+                    self.channels_by_zone[zone_name] = [channel_name]
+                else:
+                    self.channels_by_zone[zone_name].append(channel_name)
+                if 'state' not in channel_name: # TODO: delete and have a convert function, gets self.channels to the right units
+                    self.channels[channel_name]['values'] = [x/1000 for x in self.channels[channel_name]['values']]
 
-    if not running_locally and (request.end_ms - request.start_ms)/1000/60/60/24 > 5:
-        return {
-            "success": False,
-            "message": "That's too many days of messages to load.", 
-            "reload": False,
-            }
-    
-    session = Session()
+        # Relays
+        relays = {}
+        for message in reports:
+            if 'StateList' not in message.payload:
+                continue
+            for state in message.payload['StateList']:
+                if state['MachineHandle'] not in relays:
+                    relays[state['MachineHandle']] = {'times': [], 'values': []}
+                relays[state['MachineHandle']]['times'].extend([self.ms_to_datetime(x) for x in state['UnixMsList']])
+                relays[state['MachineHandle']]['values'].extend(state['StateList'])
 
-    messages: List[MessageSql] = session.query(MessageSql).filter(
-        MessageSql.from_alias.like(f'%.{request.house_alias}.%'),
-        MessageSql.message_type_name.in_(request.selected_message_types),
-        MessageSql.message_persisted_ms >= request.start_ms,
-        MessageSql.message_persisted_ms <=request.end_ms,
-    ).order_by(asc(MessageSql.message_persisted_ms)).all()
+        # Top state
+        self.top_states = {'all': {'times':[], 'values':[]}}
+        if 'auto' in relays:
+            for time, state in zip(relays['auto']['times'], relays['auto']['values']):
+                if state not in self.top_states_order:
+                    print(f"Warning: {state} is not a known top state")
+                    continue
+                if state not in self.top_states:
+                    self.top_states[state] = {'time':[], 'values':[]}
+                self.top_states['all']['time'].append(time)
+                self.top_states['all']['values'].append(self.top_states_order.index(state))
+                self.top_states[state]['time'].append(time)
+                self.top_states[state]['values'].append(self.top_states_order.index(state))
+        if "Dormant" in self.top_states:
+            self.top_states['Admin'] = self.top_states['Dormant']
+            del self.top_states['Dormant']
+        
+        # HomeAlone state
+        self.ha_states = {'all': {'times':[], 'values':[]}}
+        if 'auto.h.n' in relays or 'auto.h' in relays:
+            ha_handle = 'auto.h.n' if 'auto.h.n' in relays else 'auto.h'
+            for time, state in zip(relays[ha_handle]['times'], relays[ha_handle]['values']):
+                if state not in self.ha_states_order:
+                    print(f"Warning: {state} is not a known HA state")
+                    continue
+                if state not in self.ha_states:
+                    self.ha_states[state] = {'time':[], 'values':[]}
+                self.ha_states['all']['time'].append(time)
+                self.ha_states['all']['values'].append(self.ha_states_order.index(state))
+                self.ha_states[state]['time'].append(time)
+                self.ha_states[state]['values'].append(self.ha_states_order.index(state))
 
-    if not messages:
-        return {
-            "success": False, 
-            "message": f"No data found.", 
-            "reload":False
-            }
-    
-    levels = {
-        'critical': 1,
-        'error': 2,
-        'warning': 3,
-        'info': 4,
-        'debug': 5,
-        'trace': 6
-    }
-    
-    sources = []
-    pb_types = []
-    summaries = []
-    details = []
-    times_created = []
-    sorted_problem_types = sorted(
-        [m for m in messages if m.message_type_name == 'gridworks.event.problem'],
-        key=lambda x: (levels[x.payload['ProblemType']], x.payload['TimeCreatedMs'])
-    )
-    sorted_glitches = sorted(
-        [m for m in messages if m.message_type_name == 'glitch'],
-        key=lambda x: (levels[str(x.payload['Type']).lower()], x.payload['CreatedMs'])
-    )
+        # AtomicAlly state
+        self.aa_states = {'all': {'times':[], 'values':[]}}
+        if 'a.aa' in relays:
+            for time, state in zip(relays['a.aa']['times'], relays['a.aa']['values']):
+                if state not in self.aa_states_order:
+                    print(f"Warning: {state} is not a known AA state")
+                    continue
+                if state not in self.aa_states:
+                    self.aa_states[state] = {'time':[], 'values':[]}
+                self.aa_states['all']['time'].append(time)
+                self.aa_states['all']['values'].append(self.aa_states_order.index(state))
+                self.aa_states[state]['time'].append(time)
+                self.aa_states[state]['values'].append(self.aa_states_order.index(state))
 
-    for message in sorted_problem_types:
-        source = message.payload['Src']
-        if ".scada" in source and source.split('.')[-1] in ['scada', 's2']:
-            source = source.split('.scada')[0].split('.')[-1]
-        sources.append(source)
-        pb_types.append(message.payload['ProblemType'])
-        summaries.append(message.payload['Summary'])
-        details.append(message.payload['Details'].replace('<','').replace('>','').replace('\n','<br>'))
-        times_created.append(str(pendulum.from_timestamp(message.payload['TimeCreatedMs']/1000, tz='America/New_York').replace(microsecond=0)))
-    
-    for message in sorted_glitches:
-        source = message.payload['FromGNodeAlias']
-        if ".scada" in source and source.split('.')[-1] in ['scada', 's2']:
-            source = source.split('.scada')[0].split('.')[-1]
-        sources.append(source)
-        pb_types.append(str(message.payload['Type']).lower())
-        summaries.append(message.payload['Summary'])
-        details.append(message.payload['Details'].replace('<','').replace('>','').replace('\n','<br>'))
-        times_created.append(str(pendulum.from_timestamp(message.payload['CreatedMs']/1000, tz='America/New_York').replace(microsecond=0)))
+        # Weather forecasts
+        self.weather_forecasts = None
+        if isinstance(request, DataRequest):
+            self.weather_forecasts = sorted(
+                [x for x in self.all_raw_messages if x.message_type_name=='weather.forecast'], 
+                key = lambda x: x.message_persisted_ms
+                )
+            
+    async def get_messages(self, request: MessagesRequest):
+        success_status = self.check_request(request)
+        if not success_status['success']:
+            return success_status
+        try:
+            async with async_timeout.timeout(self.timeout_seconds):
+                print(request.selected_message_types)
+                session = self.Session()
+                messages: List[MessageSql] = session.query(MessageSql).filter(
+                    MessageSql.from_alias.like(f'%.{request.house_alias}.%'),
+                    MessageSql.message_type_name.in_(request.selected_message_types),
+                    MessageSql.message_persisted_ms >= request.start_ms,
+                    MessageSql.message_persisted_ms <=request.end_ms,
+                ).order_by(asc(MessageSql.message_persisted_ms)).all()
+                if not messages:
+                    return {"success": False, "message": f"No data found.", "reload":False}
+                # Collecting all messages
+                levels = {'critical': 1, 'error': 2, 'warning': 3, 'info': 4, 'debug': 5, 'trace': 6}
+                sources, pb_types, summaries, details, times_created = [], [], [], [], []
+                # Problem Events
+                sorted_problem_types = sorted(
+                    [m for m in messages if m.message_type_name == 'gridworks.event.problem'],
+                    key=lambda x: (levels[x.payload['ProblemType']], x.payload['TimeCreatedMs'])
+                )
+                for message in sorted_problem_types:
+                    source = message.payload['Src']
+                    if ".scada" in source and source.split('.')[-1] in ['scada', 's2']:
+                        source = source.split('.scada')[0].split('.')[-1]
+                    sources.append(source)
+                    pb_types.append(message.payload['ProblemType'])
+                    summaries.append(message.payload['Summary'])
+                    details.append(message.payload['Details'].replace('<','').replace('>','').replace('\n','<br>'))
+                    times_created.append(str(pendulum.from_timestamp(message.payload['TimeCreatedMs']/1000, tz='America/New_York').replace(microsecond=0)))
+                # Glitches
+                sorted_glitches = sorted(
+                    [m for m in messages if m.message_type_name == 'glitch'],
+                    key=lambda x: (levels[str(x.payload['Type']).lower()], x.payload['CreatedMs'])
+                )
+                for message in sorted_glitches:
+                    source = message.payload['FromGNodeAlias']
+                    if ".scada" in source and source.split('.')[-1] in ['scada', 's2']:
+                        source = source.split('.scada')[0].split('.')[-1]
+                    sources.append(source)
+                    pb_types.append(str(message.payload['Type']).lower())
+                    summaries.append(message.payload['Summary'])
+                    details.append(message.payload['Details'].replace('<','').replace('>','').replace('\n','<br>'))
+                    times_created.append(str(pendulum.from_timestamp(message.payload['CreatedMs']/1000, tz='America/New_York').replace(microsecond=0)))
+                # Summary table: count of each message type
+                summary_table = {
+                    'critical': str(len([x for x in pb_types if x=='critical'])),
+                    'error': str(len([x for x in pb_types if x=='error'])),
+                    'warning': str(len([x for x in pb_types if x=='warning'])),
+                    'info': str(len([x for x in pb_types if x=='info'])),
+                    'debug': str(len([x for x in pb_types if x=='debug'])),
+                    'trace': str(len([x for x in pb_types if x=='trace'])),
+                }
+                for key in summary_table.keys():
+                    if summary_table[key]=='0':
+                        summary_table[key]=''
+                return {
+                    "Log level": pb_types,
+                    "From node": sources,
+                    "Summary": summaries,
+                    "Details": details,
+                    "Time created": times_created,
+                    "SummaryTable": summary_table
+                }
+        except asyncio.TimeoutError:
+            warning_message = "The data request timed out. Please try loading a smaller amount of data at a time."
+            print(warning_message)
+            return {"success": False, "message": warning_message, "reload": False}
+        except Exception as e:
+            return {"success": False, "message": f"An error occurred: {str(e)}", "reload": False}
+        
+    async def get_plots(self):
+        ...
 
-    summary_table = {
-        'critical': str(len([x for x in pb_types if x=='critical'])),
-        'error': str(len([x for x in pb_types if x=='error'])),
-        'warning': str(len([x for x in pb_types if x=='warning'])),
-        'info': str(len([x for x in pb_types if x=='info'])),
-        'debug': str(len([x for x in pb_types if x=='debug'])),
-        'trace': str(len([x for x in pb_types if x=='trace'])),
-    }
+    async def get_csv(self):
+        ...
 
-    for key in summary_table.keys():
-        if summary_table[key]=='0':
-            summary_table[key]=''
-
-    table_data_columns = {
-        "Log level": pb_types,
-        "From node": sources,
-        "Summary": summaries,
-        "Details": details,
-        "Time created": times_created,
-        "SummaryTable": summary_table
-    }
-    return table_data_columns
-
-@app.post('/messages')
-async def get_messages(request: MessagesRequest):
-    if not valid_password(request.house_alias, request.password):
-        return {
-            "success": False, 
-            "message": "Wrong password.", 
-            "reload":True
-            }
-    try:
-        async with async_timeout.timeout(TIMEOUT_SECONDS):
-            response = await asyncio.to_thread(get_requested_messages, request, RUNNING_LOCALLY)
-            return response
-    except asyncio.TimeoutError:
-        print("Request timed out.")
-        return {
-            "success": False, 
-            "message": "The data request timed out. Please try loading a smaller amount of data at a time.", 
-            "reload": False
-        }
-    except Exception as e:
-        return {
-            "success": False, 
-            "message": f"An error occurred: {str(e)}", 
-            "reload": False
-        }
-
+'''
 # ------------------------------
 # Export as CSV
 # ------------------------------
@@ -611,12 +432,12 @@ async def get_messages(request: MessagesRequest):
 async def get_csv(request: CsvRequest, apirequest: Request):
     request_start = time.time()
     try:
-        async with async_timeout.timeout(TIMEOUT_SECONDS):
+        async with async_timeout.timeout(self.timeout_seconds):
             
             error_msg, channels, _, __, ___, ____, _____, ______, _______ = await asyncio.to_thread(get_data, request)
             print(f"Time to fetch data: {round(time.time() - request_start,2)} sec")
 
-            if time.time() - request_start > TIMEOUT_SECONDS:
+            if time.time() - request_start > self.timeout_seconds:
                 raise asyncio.TimeoutError('Timed out')
 
             if error_msg != '':
@@ -668,7 +489,7 @@ async def get_csv(request: CsvRequest, apirequest: Request):
             
             csv_values = {}
             for channel in channels_to_export:
-                if time.time() - request_start > TIMEOUT_SECONDS:
+                if time.time() - request_start > self.timeout_seconds:
                     raise asyncio.TimeoutError('Timed out')
 
                 merged = await asyncio.to_thread(pd.merge_asof, 
@@ -736,9 +557,9 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
 
     request_start = time.time()
     try:
-        async with async_timeout.timeout(TIMEOUT_SECONDS):
+        async with async_timeout.timeout(self.timeout_seconds):
             
-            error_msg, channels, zones, modes, top_modes, aa_modes, weather, min_time_ms_dt, max_time_ms_dt = await asyncio.to_thread(get_data, request)
+            error_msg, channels, zones, self.ha_states, self.top_states, aa_modes, weather, self.min_timestamp, self.max_timestamp = await asyncio.to_thread(get_data, request)
             print(f"Time to fetch data: {round(time.time() - request_start,2)} sec")
             request_start = time.time()
 
@@ -749,8 +570,6 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
             if error_msg != '':
                 return error_msg
             
-            zone_colors_hex = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']*200
-
             if request.darkmode:
                 plot_background_hex = '#222222'
                 gridcolor_hex = '#424242'
@@ -770,7 +589,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
             # PLOT 1: Heat pump
             # --------------------------------------
 
-            if time.time() - request_start > TIMEOUT_SECONDS:
+            if time.time() - request_start > self.timeout_seconds:
                 raise asyncio.TimeoutError('Timed out')
 
             fig = go.Figure()
@@ -802,7 +621,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                         )
                     )
                 
-            if time.time() - request_start > TIMEOUT_SECONDS:
+            if time.time() - request_start > self.timeout_seconds:
                 raise asyncio.TimeoutError('Timed out')
 
             # Secondary yaxis
@@ -849,7 +668,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                         yaxis=y_axis_power
                         )
                     ) 
-            if time.time() - request_start > TIMEOUT_SECONDS:
+            if time.time() - request_start > self.timeout_seconds:
                 raise asyncio.TimeoutError('Timed out')
 
             if 'primary-flow' in request.selected_channels and 'primary-flow' in channels:
@@ -896,7 +715,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                 font_color=fontcolor_hex,
                 title_font_color=fontcolor_hex,
                 xaxis=dict(
-                    range=[min_time_ms_dt, max_time_ms_dt],
+                    range=[self.min_timestamp, self.max_timestamp],
                     mirror=True,
                     ticks='outside',
                     showline=True,
@@ -943,7 +762,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
             # PLOT 2: Distribution
             # --------------------------------------
 
-            if time.time() - request_start > TIMEOUT_SECONDS:
+            if time.time() - request_start > self.timeout_seconds:
                 raise asyncio.TimeoutError('Timed out')
 
             fig = go.Figure()
@@ -1024,7 +843,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                 title_font_color=fontcolor_hex,
                 margin=dict(t=30, b=30),
                 xaxis=dict(
-                    range=[min_time_ms_dt, max_time_ms_dt],
+                    range=[self.min_timestamp, self.max_timestamp],
                     mirror=True,
                     ticks='outside',
                     showline=True,
@@ -1071,7 +890,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
             # PLOT 3: Heat calls
             # --------------------------------------
 
-            if time.time() - request_start > TIMEOUT_SECONDS:
+            if time.time() - request_start > self.timeout_seconds:
                 raise asyncio.TimeoutError('Timed out')
 
             fig = go.Figure()
@@ -1080,10 +899,10 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                 for zone in zones:
                     shape_start = None
                     for key in [x for x in zones[zone] if 'whitewire' in x]:
-                        if request.house_alias not in threshold:
-                            house_threshold = threshold['other']
+                        if request.house_alias not in self.whitewire_threshold_watts:
+                            house_threshold = self.whitewire_threshold_watts['other']
                         else:
-                            house_threshold = threshold[request.house_alias]
+                            house_threshold = self.whitewire_threshold_watts[request.house_alias]
                         channels[key]['values'] = [1 if abs(x*1000)>house_threshold else 0 for x in channels[key]['values']]
                         
                     for key2 in [x for x in zones[zone] if 'state' in x]:
@@ -1093,7 +912,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                             if cn.split('-')[0] == key2.split('-')[0]:
                                 key = cn
 
-                        zone_color = zone_colors_hex[int(key[4])-1]
+                        zone_color = self.zone_color[int(key[4])-1]
                         last_was_1 = False
                         fig.add_trace(
                             go.Scatter(
@@ -1173,7 +992,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                 title_font_color=fontcolor_hex,
                 margin=dict(t=30, b=30),
                 xaxis=dict(
-                    range=[min_time_ms_dt, max_time_ms_dt],
+                    range=[self.min_timestamp, self.max_timestamp],
                     mirror=True,
                     ticks='outside',
                     showline=True,
@@ -1219,7 +1038,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
             # PLOT 4: Zones
             # --------------------------------------
 
-            if time.time() - request_start > TIMEOUT_SECONDS:
+            if time.time() - request_start > self.timeout_seconds:
                 raise asyncio.TimeoutError('Timed out')
 
             fig = go.Figure()
@@ -1234,7 +1053,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                                 y=channels[key]['values'], 
                                 mode=line_style, 
                                 opacity=0.7,
-                                line=dict(color=zone_colors_hex[int(key[4])-1], dash='solid'),
+                                line=dict(color=self.zone_color[int(key[4])-1], dash='solid'),
                                 name=key.replace('-temp','')
                                 )
                             )
@@ -1251,7 +1070,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                                 y=channels[key]['values'], 
                                 mode=line_style, 
                                 opacity=0.7,
-                                line=dict(color=zone_colors_hex[int(key[4])-1], dash='dash'),
+                                line=dict(color=self.zone_color[int(key[4])-1], dash='dash'),
                                 name=key.replace('-set',''),
                                 showlegend=False
                                 )
@@ -1290,7 +1109,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                 title_font_color=fontcolor_hex,
                 margin=dict(t=30, b=30),
                 xaxis=dict(
-                    range=[min_time_ms_dt, max_time_ms_dt],
+                    range=[self.min_timestamp, self.max_timestamp],
                     mirror=True,
                     ticks='outside',
                     showline=True,
@@ -1340,7 +1159,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
             # PLOT 5: Buffer
             # --------------------------------------
 
-            if time.time() - request_start > TIMEOUT_SECONDS:
+            if time.time() - request_start > self.timeout_seconds:
                 raise asyncio.TimeoutError('Timed out')
 
             fig = go.Figure()
@@ -1362,7 +1181,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                             mode=line_style, 
                             opacity=0.7,
                             name=buffer_channel.replace('buffer-',''),
-                            line=dict(color=buffer_colors_hex[buffer_channel], dash='solid')
+                            line=dict(color=self.buffer_layer_colors[buffer_channel], dash='solid')
                             )
                         )
             
@@ -1403,7 +1222,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                 title_font_color=fontcolor_hex,
                 margin=dict(t=30, b=30),
                 xaxis=dict(
-                    range=[min_time_ms_dt, max_time_ms_dt],
+                    range=[self.min_timestamp, self.max_timestamp],
                     mirror=True,
                     ticks='outside',
                     showline=True,
@@ -1443,7 +1262,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
             # PLOT 6: Storage
             # --------------------------------------
 
-            if time.time() - request_start > TIMEOUT_SECONDS:
+            if time.time() - request_start > self.timeout_seconds:
                 raise asyncio.TimeoutError('Timed out')
 
             fig = go.Figure()
@@ -1465,7 +1284,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                         go.Scatter(x=channels[tank_channel]['times'], y=yf, 
                         mode=line_style, opacity=0.7,
                         name=tank_channel.replace('storage-',''),
-                        line=dict(color=storage_colors_hex[tank_channel], dash='solid'))
+                        line=dict(color=self.storage_layer_colors[tank_channel], dash='solid'))
                         )
 
             if ('thermocline' in request.selected_channels 
@@ -1613,7 +1432,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                 title_font_color=fontcolor_hex,
                 margin=dict(t=30, b=30),
                 xaxis=dict(
-                    range=[min_time_ms_dt, max_time_ms_dt],
+                    range=[self.min_timestamp, self.max_timestamp],
                     mirror=True,
                     ticks='outside',
                     showline=True,
@@ -1661,17 +1480,17 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
             # PLOT 7: Top State
             # --------------------------------------
 
-            if time.time() - request_start > TIMEOUT_SECONDS:
+            if time.time() - request_start > self.timeout_seconds:
                 raise asyncio.TimeoutError('Timed out')
 
             fig = go.Figure()
 
-            if top_modes!={}:
+            if self.top_states!={}:
 
                 fig.add_trace(
                     go.Scatter(
-                        x=top_modes['all']['times'],
-                        y=top_modes['all']['values'],
+                        x=self.top_states['all']['times'],
+                        y=self.top_states['all']['values'],
                         mode='lines',
                         line=dict(color=home_alone_line, width=2),
                         opacity=0.3,
@@ -1680,14 +1499,14 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                     )
                 )
 
-                for state in top_modes.keys():
-                    if state != 'all' and state in top_modes_colors_hex:
+                for state in self.top_states.keys():
+                    if state != 'all' and state in self.top_state_color:
                         fig.add_trace(
                             go.Scatter(
-                                x=top_modes[state]['times'],
-                                y=top_modes[state]['values'],
+                                x=self.top_states[state]['times'],
+                                y=self.top_states[state]['values'],
                                 mode='markers',
-                                marker=dict(color=top_modes_colors_hex[state], size=10),
+                                marker=dict(color=self.top_state_color[state], size=10),
                                 opacity=0.8,
                                 name=state,
                             )
@@ -1701,7 +1520,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                 title_font_color=fontcolor_hex,
                 margin=dict(t=30, b=30),
                 xaxis=dict(
-                    range=[min_time_ms_dt, max_time_ms_dt],
+                    range=[self.min_timestamp, self.max_timestamp],
                     mirror=True,
                     ticks='outside',
                     showline=True,
@@ -1709,7 +1528,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                     showgrid=False
                     ),
                 yaxis=dict(
-                    range = [-0.6, len(top_modes)-1+0.2],
+                    range = [-0.6, len(self.top_states)-1+0.2],
                     mirror=True,
                     ticks='outside',
                     showline=True,
@@ -1718,7 +1537,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                     showgrid=True, 
                     gridwidth=1, 
                     gridcolor=gridcolor_hex, 
-                    tickvals=list(range(len(top_modes)-1)),
+                    tickvals=list(range(len(self.top_states)-1)),
                     ),
                 legend=dict(
                     x=0,
@@ -1741,17 +1560,17 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
             # PLOT 8: HomeAlone
             # --------------------------------------
 
-            if time.time() - request_start > TIMEOUT_SECONDS:
+            if time.time() - request_start > self.timeout_seconds:
                 raise asyncio.TimeoutError('Timed out')
 
             fig = go.Figure()
 
-            if modes!={}:
+            if self.ha_states!={}:
 
                 fig.add_trace(
                     go.Scatter(
-                        x=modes['all']['times'],
-                        y=modes['all']['values'],
+                        x=self.ha_states['all']['times'],
+                        y=self.ha_states['all']['values'],
                         mode='lines',
                         line=dict(color=home_alone_line, width=2),
                         opacity=0.3,
@@ -1760,14 +1579,14 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                     )
                 )
 
-                for state in modes.keys():
-                    if state != 'all' and state in modes_colors_hex:
+                for state in self.ha_states.keys():
+                    if state != 'all' and state in self.ha_state_color:
                         fig.add_trace(
                             go.Scatter(
-                                x=modes[state]['times'],
-                                y=modes[state]['values'],
+                                x=self.ha_states[state]['times'],
+                                y=self.ha_states[state]['values'],
                                 mode='markers',
-                                marker=dict(color=modes_colors_hex[state], size=10),
+                                marker=dict(color=self.ha_state_color[state], size=10),
                                 opacity=0.8,
                                 name=state,
                             )
@@ -1781,7 +1600,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                 title_font_color=fontcolor_hex,
                 margin=dict(t=30, b=30),
                 xaxis=dict(
-                    range=[min_time_ms_dt, max_time_ms_dt],
+                    range=[self.min_timestamp, self.max_timestamp],
                     mirror=True,
                     ticks='outside',
                     showline=True,
@@ -1821,7 +1640,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
             # PLOT 9: Atomic Ally
             # --------------------------------------
 
-            if time.time() - request_start > TIMEOUT_SECONDS:
+            if time.time() - request_start > self.timeout_seconds:
                 raise asyncio.TimeoutError('Timed out')
 
             fig = go.Figure()
@@ -1841,13 +1660,13 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                 )
 
                 for state in aa_modes.keys():
-                    if state != 'all' and state in aa_modes_colors_hex:
+                    if state != 'all' and state in self.ha_state_color:
                         fig.add_trace(
                             go.Scatter(
                                 x=aa_modes[state]['times'],
                                 y=aa_modes[state]['values'],
                                 mode='markers',
-                                marker=dict(color=aa_modes_colors_hex[state], size=10),
+                                marker=dict(color=self.ha_state_color[state], size=10),
                                 opacity=0.8,
                                 name=state,
                             )
@@ -1861,7 +1680,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                 title_font_color=fontcolor_hex,
                 margin=dict(t=30, b=30),
                 xaxis=dict(
-                    range=[min_time_ms_dt, max_time_ms_dt],
+                    range=[self.min_timestamp, self.max_timestamp],
                     mirror=True,
                     ticks='outside',
                     showline=True,
@@ -1901,7 +1720,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
             # PLOT 10: Weather forecasts
             # --------------------------------------
 
-            if time.time() - request_start > TIMEOUT_SECONDS:
+            if time.time() - request_start > self.timeout_seconds:
                 raise asyncio.TimeoutError('Timed out')
 
             fig = go.Figure()
@@ -1945,7 +1764,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                 title_font_color=fontcolor_hex,
                 margin=dict(t=30, b=30),
                 xaxis=dict(
-                    range=[min_time_ms_dt, max_time_ms_dt],
+                    range=[self.min_timestamp, self.max_timestamp],
                     mirror=True,
                     ticks='outside',
                     showline=True,
@@ -1983,7 +1802,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
             # PLOT 11: Price
             # --------------------------------------
 
-            if time.time() - request_start > TIMEOUT_SECONDS:
+            if time.time() - request_start > self.timeout_seconds:
                 raise asyncio.TimeoutError('Timed out')
 
             fig = go.Figure()
@@ -2104,7 +1923,7 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
                 title_font_color=fontcolor_hex,
                 margin=dict(t=30, b=30),
                 xaxis=dict(
-                    range=[min_time_ms_dt, max_time_ms_dt],
+                    range=[self.min_timestamp, self.max_timestamp],
                     mirror=True,
                     ticks='outside',
                     showline=True,
@@ -2169,8 +1988,8 @@ async def get_plots(request: Union[DataRequest, DijkstraRequest], apirequest: Re
     return StreamingResponse(zip_buffer, 
                              media_type='application/zip', 
                              headers={"Content-Disposition": "attachment; filename=plots.zip"})
-
+'''
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    a = VisualizerApi(running_locally=True)
+    a.run()
