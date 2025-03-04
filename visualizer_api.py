@@ -67,86 +67,36 @@ class MessagesRequest(BaseModel):
 class VisualizerApi():
     def __init__(self, running_locally):
         self.running_locally = running_locally
-        self.get_parameters()
-        # Start sqlalchemy session
         self.settings = Settings(_env_file=dotenv.find_dotenv())
         engine = create_engine(self.settings.db_url.get_secret_value())
         self.Session = sessionmaker(bind=engine)
         self.admin_user_password = self.settings.visualizer_api_password.get_secret_value()
-        # Start API
+        self.timezone_str = self.timezone_str
+        self.timeout_seconds = 5*60
+        self.max_days_warning = 3
+        self.top_states_order = ['HomeAlone', 'Atn', 'Dormant']
+        self.ha_states_order = [
+            'HpOffStoreDischarge', 'HpOffStoreOff', 'HpOnStoreOff', 
+            'HpOnStoreCharge', 'StratBoss', 'Initializing', 'Dormant'
+            ]
+        self.aa_states_order = self.ha_states_order.copy()
+        self.whitewire_threshold_watts = {'beech': 100, 'default': 20}
+        self.zone_color = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']*3
+
+    def start(self):
         self.app = FastAPI()
         self.app.add_middleware(
             CORSMiddleware,
             allow_origins=["*"], # TODO: change to ["https://thegridelectric.github.io"] when ready
             allow_credentials=True,
             allow_methods=["*"],
-            allow_headers=["*"],
         )
         self.app.post("/plots")(self.get_plots)
         self.app.post("/csvs")(self.get_csv)
-        self.app.post("/messages")(self.get_messages) 
+        self.app.post("/messages")(self.get_messages)
+        uvicorn.run(self.app, host="0.0.0.0", port=8000)
 
-    def run(self):
-        uvicorn.run(self.app, host="0.0.0.0", port=8000)       
-        
-    def get_parameters(self):
-        self.timezone_str = self.timezone_str
-        self.timeout_seconds = 5*60
-        self.max_days_warning = 3
-        self.tank_temperatures = [
-            'tank1-depth1', 'tank1-depth2', 'tank1-depth3', 'tank1-depth4', 
-            'tank2-depth1', 'tank2-depth2', 'tank2-depth3', 'tank2-depth4', 
-            'tank3-depth1', 'tank3-depth2', 'tank3-depth3', 'tank3-depth4'
-            ]
-        self.top_states_order = ['HomeAlone', 'Atn', 'Dormant']
-        self.ha_states_order = ['HpOffStoreDischarge', 'HpOffStoreOff', 'HpOnStoreOff', 
-                               'HpOnStoreCharge', 'StratBoss', 'Initializing', 'Dormant']
-        self.aa_states_order = self.ha_states_order.copy()
-        self.whitewire_threshold_watts = {
-            'beech': 100,
-            'default': 20,
-        }
-        gradient = plt.get_cmap('coolwarm', 4)
-        buffer_colors = {
-            'buffer-depth1': gradient(3),
-            'buffer-depth2': gradient(2),
-            'buffer-depth3': gradient(1),
-            'buffer-depth4': gradient(0)
-            }
-        self.buffer_layer_colors = {key: self.to_hex(value) for key, value in buffer_colors.items()}
-        gradient = plt.get_cmap('coolwarm', 12)
-        storage_colors = {
-            'tank1-depth1': gradient(11),
-            'tank1-depth2': gradient(10),
-            'tank1-depth3': gradient(9),
-            'tank1-depth4': gradient(8),
-            'tank2-depth1': gradient(7),
-            'tank2-depth2': gradient(6),
-            'tank2-depth3': gradient(5),
-            'tank2-depth4': gradient(4),
-            'tank3-depth1': gradient(3),
-            'tank3-depth2': gradient(2),
-            'tank3-depth3': gradient(1),
-            'tank3-depth4': gradient(0),
-            }
-        self.storage_layer_colors = {key: self.to_hex(value) for key, value in storage_colors.items()}
-        self.zone_color = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']*3
-        self.top_state_color = {
-            'HomeAlone': '#EF553B',
-            'Atn': '#00CC96',
-            'Admin': '#636EFA'
-        }
-        self.ha_state_color = {
-            'HpOffStoreDischarge': '#EF553B',
-            'HpOffStoreOff': '#00CC96',
-            'HpOnStoreOff': '#636EFA',
-            'HpOnStoreCharge': '#feca52',
-            'Initializing': '#a3a3a3',
-            'StratBoss': '#ee93fa',
-            'Dormant': '#4f4f4f'
-        }
-
-    def ms_to_datetime(self, time_ms):
+    def to_datetime(self, time_ms):
         return pendulum.from_timestamp(time_ms/1000, tz=self.timezone_str)
 
     def to_fahrenheit(self, t):
@@ -258,8 +208,8 @@ class VisualizerApi():
         min_timestamp = min(min(self.channels[x]['times']) for x in self.channels)
         min_timestamp += -(max_timestamp-min_timestamp)*0.05
         max_timestamp += (max_timestamp-min_timestamp)*0.05
-        self.min_timestamp = self.ms_to_datetime(min_timestamp)
-        self.max_timestamp = self.ms_to_datetime(max_timestamp)
+        self.min_timestamp = self.to_datetime(min_timestamp)
+        self.max_timestamp = self.to_datetime(max_timestamp)
 
         # Sort values according to time and convert to datetime
         for channel_name in self.channels.keys():
@@ -283,6 +233,8 @@ class VisualizerApi():
                     self.channels_by_zone[zone_number]['whitewire'] = channel_name
                 elif 'temp' in channel_name:
                     self.channels_by_zone[zone_number]['temp'] = channel_name
+                elif 'set' in channel_name:
+                    self.channels_by_zone[zone_number]['set'] = channel_name
                 # TODO: delete and have a convert function, gets self.channels to the right units
                 if 'state' not in channel_name and 'whitewire' not in channel_name: 
                     self.channels[channel_name]['values'] = [x/1000 for x in self.channels[channel_name]['values']]
@@ -295,7 +247,7 @@ class VisualizerApi():
             for state in message.payload['StateList']:
                 if state['MachineHandle'] not in relays:
                     relays[state['MachineHandle']] = {'times': [], 'values': []}
-                relays[state['MachineHandle']]['times'].extend([self.ms_to_datetime(x) for x in state['UnixMsList']])
+                relays[state['MachineHandle']]['times'].extend([self.to_datetime(x) for x in state['UnixMsList']])
                 relays[state['MachineHandle']]['values'].extend(state['StateList'])
 
         # Top state
@@ -345,7 +297,7 @@ class VisualizerApi():
                 self.aa_states[state]['values'].append(self.aa_states_order.index(state))
 
         # Weather forecasts
-        self.weather_forecasts = None
+        self.weather_forecasts: List[MessageSql] = []
         if isinstance(request, DataRequest):
             self.weather_forecasts = sorted(
                 [x for x in self.all_raw_messages if x.message_type_name=='weather.forecast'], 
@@ -359,7 +311,7 @@ class VisualizerApi():
             return success_status
         try:
             async with async_timeout.timeout(self.timeout_seconds):
-                print(request.selected_message_types)
+                
                 with self.Session() as session:
                     messages: List[MessageSql] = session.query(MessageSql).filter(
                         MessageSql.from_alias.like(f'%.{request.house_alias}.%'),
@@ -369,9 +321,11 @@ class VisualizerApi():
                     ).order_by(asc(MessageSql.message_persisted_ms)).all()
                 if not messages:
                     return {"success": False, "message": f"No data found.", "reload":False}
+                
                 # Collecting all messages
                 levels = {'critical': 1, 'error': 2, 'warning': 3, 'info': 4, 'debug': 5, 'trace': 6}
                 sources, pb_types, summaries, details, times_created = [], [], [], [], []
+                
                 # Problem Events
                 sorted_problem_types = sorted(
                     [m for m in messages if m.message_type_name == 'gridworks.event.problem'],
@@ -385,7 +339,8 @@ class VisualizerApi():
                     pb_types.append(message.payload['ProblemType'])
                     summaries.append(message.payload['Summary'])
                     details.append(message.payload['Details'].replace('<','').replace('>','').replace('\n','<br>'))
-                    times_created.append(str(pendulum.from_timestamp(message.payload['TimeCreatedMs']/1000, tz=self.timezone_str).replace(microsecond=0)))
+                    times_created.append(str(self.to_datetime(message.payload['TimeCreatedMs']).replace(microsecond=0)))
+                
                 # Glitches
                 sorted_glitches = sorted(
                     [m for m in messages if m.message_type_name == 'glitch'],
@@ -399,8 +354,8 @@ class VisualizerApi():
                     pb_types.append(str(message.payload['Type']).lower())
                     summaries.append(message.payload['Summary'])
                     details.append(message.payload['Details'].replace('<','').replace('>','').replace('\n','<br>'))
-                    times_created.append(str(pendulum.from_timestamp(message.payload['CreatedMs']/1000, tz=self.timezone_str).replace(microsecond=0)))
-                # Summary table: count of each message type
+                    times_created.append(str(self.to_datetime(message.payload['CreatedMs']/1000).replace(microsecond=0)))
+                
                 summary_table = {
                     'critical': str(len([x for x in pb_types if x=='critical'])),
                     'error': str(len([x for x in pb_types if x=='error'])),
@@ -412,6 +367,7 @@ class VisualizerApi():
                 for key in summary_table.keys():
                     if summary_table[key]=='0':
                         summary_table[key]=''
+
                 return {
                     "Log level": pb_types,
                     "From node": sources,
@@ -499,8 +455,8 @@ class VisualizerApi():
                 df = pd.DataFrame(csv_data)
 
                 # Build file name
-                start_date = pendulum.from_timestamp(request.start_ms / 1000) 
-                end_date = pendulum.from_timestamp(request.end_ms / 1000) 
+                start_date = self.to_datetime(request.start_ms) 
+                end_date = self.to_datetime(request.end_ms)
                 formatted_start_date = start_date.to_iso8601_string()[:16].replace('T', '-')
                 formatted_end_date = end_date.to_iso8601_string()[:16].replace('T', '-')
                 filename = f'{request.house_alias}_{request.timestep}s_{formatted_start_date}-{formatted_end_date}.csv'.replace(':','_')
@@ -852,7 +808,7 @@ class VisualizerApi():
                     visible='legendonly', 
                     )
                 )
-        # Layout
+
         if plotting_temperatures and plotting_power:
             fig.update_layout(yaxis=dict(title='Temperature [F]', range=[0,260]))
             fig.update_layout(yaxis2=dict(title='Flow [GPM] or Power [W]', range=[0,20]))
@@ -860,6 +816,7 @@ class VisualizerApi():
             fig.update_layout(yaxis=dict(title='Temperature [F]'))
         elif plotting_power and not plotting_temperatures:
             fig.update_layout(yaxis=dict('Flow [GPM] or Power [W]'))
+
         fig.update_layout(
             title=dict(text='Distribution', x=0.5, xanchor='center'),
             plot_bgcolor=self.plot_background_hex,
@@ -909,8 +866,6 @@ class VisualizerApi():
         print(f"Plot 2 (distribution) done in {round(time.time()-plot_start,1)} seconds")
         return html_buffer2
     
-
-
     async def get_plot3_heatcalls(self, request: DataRequest):
         plot_start = time.time()
         fig = go.Figure()
@@ -929,7 +884,6 @@ class VisualizerApi():
                 zone_number = int(whitewire_ch[4])
                 ww_times = self.channels[whitewire_ch]['times']
                 ww_values = self.channels[whitewire_ch]['values']
-
                 # TODO: check if this is useful and why
                 fig.add_trace(
                     go.Scatter(
@@ -942,56 +896,57 @@ class VisualizerApi():
                         showlegend=False,
                     )
                 )
-                # 
+                # Plot heat calls as periods
                 last_was_1 = False
-                shape_start = None
+                heatcall_period_start = None
                 for i in range(len(ww_values)):
                     if ww_values[i] == 1:
-                        # Start a heat call period
-                        if not last_was_1 or 'show-points' in request.selected_channels:
-                            if i>0: 
-                                fig.add_trace(
-                                    go.Scatter(
-                                        x=[ww_times[i], ww_values[i]],
-                                        y=[zone_number-1, zone_number],
-                                        mode='lines',
-                                        line=dict(color=zone_color, width=2),
-                                        opacity=0.7,
-                                        name=whitewire_ch.replace('-state',''),
-                                        showlegend=False,
-                                    )
+                        # Start a heat call period #TODO: why the i>0?
+                        if not last_was_1 or 'show-points' in request.selected_channels and i>0: 
+                            fig.add_trace(
+                                go.Scatter(
+                                    x=[ww_times[i], ww_values[i]],
+                                    y=[zone_number-1, zone_number],
+                                    mode='lines',
+                                    line=dict(color=zone_color, width=2),
+                                    opacity=0.7,
+                                    name=whitewire_ch.replace('-state',''),
+                                    showlegend=False,
                                 )
-                        if i<len(ww_values)-1:
-                            last_was_1 = True
-                            if not shape_start:
-                                shape_start = ww_times[i]
-                            if ww_values[i+1] != 1 or i+1==len(ww_values)-1:
-                                if ww_values[i+1] != 1:
-                                    # End a heat call period
-                                    fig.add_trace(
-                                        go.Scatter(
-                                            x=[ww_times[i+1], ww_times[i+1]],
-                                            y=[zone_number-1, zone_number],
-                                            mode='lines',
-                                            line=dict(color=zone_color, width=2),
-                                            opacity=0.7,
-                                            name=whitewire_ch.replace('-state',''),
-                                            showlegend=False,
-                                        )
-                                    )
-                                if shape_start:
-                                    fig.add_shape(
-                                        type='rect',
-                                        x0=shape_start,
-                                        y0=zone_number - 1,
-                                        x1=ww_times[i+1],
-                                        y1=zone_number,
-                                        line=dict(color=zone_color, width=0),
-                                        fillcolor=zone_color,
-                                        opacity=0.2,
-                                        name=whitewire_ch.replace('-state', ''),
-                                    )
-                                    shape_start = None
+                            )
+                        if i >= len(ww_values)-1:
+                            continue
+                        if not heatcall_period_start:
+                            heatcall_period_start = ww_times[i]
+                        if ww_values[i+1] != 1:
+                            # End a heat call period
+                            fig.add_trace(
+                                go.Scatter(
+                                    x=[ww_times[i+1], ww_times[i+1]],
+                                    y=[zone_number-1, zone_number],
+                                    mode='lines',
+                                    line=dict(color=zone_color, width=2),
+                                    opacity=0.7,
+                                    name=whitewire_ch.replace('-state',''),
+                                    showlegend=False,
+                                )
+                            )
+                        if ww_values[i+1] != 1 or i+1==len(ww_values)-1:
+                            # Add shading between heat call period start and end
+                            if heatcall_period_start:
+                                fig.add_shape(
+                                    type='rect',
+                                    x0=heatcall_period_start,
+                                    y0=zone_number - 1,
+                                    x1=ww_times[i+1],
+                                    y1=zone_number,
+                                    line=dict(color=zone_color, width=0),
+                                    fillcolor=zone_color,
+                                    opacity=0.2,
+                                    name=whitewire_ch.replace('-state', ''),
+                                )
+                                heatcall_period_start = None
+                        last_was_1 = True
                     else:
                         last_was_1 = False
                 fig.add_trace(
@@ -1046,943 +1001,816 @@ class VisualizerApi():
                 bgcolor='rgba(0, 0, 0, 0)'
             )
         )
-
         html_buffer3 = io.StringIO()
         fig.write_html(html_buffer3)
         html_buffer3.seek(0)
         print(f"Plot 3 (heat calls) done in {round(time.time()-plot_start,1)} seconds")
         return html_buffer3
-
-
-
-
-
-        request_start = time.time()
-
-                # --------------------------------------
-                # PLOT 4: Zones
-                # --------------------------------------
-
-                if time.time() - request_start > self.timeout_seconds:
-                    raise asyncio.TimeoutError('Timed out')
-
-                fig = go.Figure()
-
-                min_zones, max_zones = 45, 80
-                for zone in zones:
-                    for key in zones[zone]:
-                        if 'temp' in key:
-                            fig.add_trace(
-                                go.Scatter(
-                                    x=self.channels[key]['times'], 
-                                    y=self.channels[key]['values'], 
-                                    mode=self.line_style, 
-                                    opacity=0.7,
-                                    line=dict(color=self.zone_color[int(key[4])-1], dash='solid'),
-                                    name=key.replace('-temp','')
-                                    )
-                                )
-                            min_temp = min(self.channels[key]['values'])
-                            max_temp = max(self.channels[key]['values'])
-                            if min_temp < min_zones:
-                                min_zones = min_temp
-                            if max_temp > max_zones:
-                                max_zones = max_temp
-                        elif 'set' in key:
-                            fig.add_trace(
-                                go.Scatter(
-                                    x=self.channels[key]['times'], 
-                                    y=self.channels[key]['values'], 
-                                    mode=self.line_style, 
-                                    opacity=0.7,
-                                    line=dict(color=self.zone_color[int(key[4])-1], dash='dash'),
-                                    name=key.replace('-set',''),
-                                    showlegend=False
-                                    )
-                                )
-                            min_temp = min(self.channels[key]['values'])
-                            max_temp = max(self.channels[key]['values'])
-                            if min_temp < min_zones:
-                                min_zones = min_temp
-                            if max_temp > max_zones:
-                                max_zones = max_temp
-
-                min_oat, max_oat = 70, 80    
-                if 'oat' in request.selected_channels and 'oat' in self.channels:
-                    fig.add_trace(
-                        go.Scatter(
-                            x=self.channels['oat']['times'], 
-                            y=[self.to_fahrenheit(x/1000) for x in self.channels['oat']['values']], 
-                            mode=self.line_style, 
-                            opacity=0.8,
-                            line=dict(color=self.oat_color, dash='solid'),
-                            name='Outside air',
-                            yaxis='y2',
-                            )
-                        )
-                    min_oat = self.to_fahrenheit(min(self.channels['oat']['values'])/1000)
-                    max_oat = self.to_fahrenheit(max(self.channels['oat']['values'])/1000)
-                    fig.update_layout(yaxis2=dict(title='Outside air temperature [F]'))
-                
-                fig.update_layout(yaxis=dict(title='Zone temperature [F]'))
-
-                fig.update_layout(
-                    title=dict(text='Zones', x=0.5, xanchor='center'),
-                    plot_bgcolor=self.plot_background_hex,
-                    paper_bgcolor=self.plot_background_hex,
-                    font_color=self.fontcolor_hex,
-                    title_font_color=self.fontcolor_hex,
-                    margin=dict(t=30, b=30),
-                    xaxis=dict(
-                        range=[self.min_timestamp, self.max_timestamp],
-                        mirror=True,
-                        ticks='outside',
-                        showline=True,
-                        linecolor=self.fontcolor_hex,
-                        showgrid=False
-                        ),
-                    yaxis=dict(
-                        range = [min_zones-30,max_zones+20],
-                        mirror=True,
-                        ticks='outside',
-                        showline=True,
-                        linecolor=self.fontcolor_hex,
-                        zeroline=False,
-                        showgrid=True, 
-                        gridwidth=1, 
-                        gridcolor=self.gridcolor_hex
-                        ),
-                    yaxis2=dict(
-                        range = [min_oat-2, max_oat+20],
-                        mirror=True,
-                        ticks='outside',
-                        showline=True,
-                        linecolor=self.fontcolor_hex,
-                        overlaying='y', 
-                        side='right', 
-                        zeroline=False,
-                        showgrid=False, 
-                        ),
-                    legend=dict(
-                        x=0,
-                        y=1,
-                        xanchor='left',
-                        yanchor='top',
-                        orientation='h',
-                        bgcolor='rgba(0, 0, 0, 0)'
-                        )
-                    )
-
-                html_buffer4 = io.StringIO()
-                fig.write_html(html_buffer4)
-                html_buffer4.seek(0)
-
-                print(f"Plot 4 (zones) done in {round(time.time()-request_start,1)} seconds")
-                request_start = time.time()
-
-                # --------------------------------------
-                # PLOT 5: Buffer
-                # --------------------------------------
-
-                if time.time() - request_start > self.timeout_seconds:
-                    raise asyncio.TimeoutError('Timed out')
-
-                fig = go.Figure()
-
-                min_buffer_temp = 1e5
-                max_buffer_temp = 0
-                buffer_channels = []
-
-                if 'buffer-depths' in request.selected_channels:
-                    buffer_channels = sorted([key for key in self.channels.keys() if 'buffer-depth' in key and 'micro-v' not in key])
-                    for buffer_channel in buffer_channels:
-                        yf = [self.to_fahrenheit(x/1000) for x in self.channels[buffer_channel]['values']]
-                        min_buffer_temp = min(min_buffer_temp, min(yf))
-                        max_buffer_temp = max(max_buffer_temp, max(yf))
-                        fig.add_trace(
-                            go.Scatter(
-                                x=self.channels[buffer_channel]['times'], 
-                                y=yf, 
-                                mode=self.line_style, 
-                                opacity=0.7,
-                                name=buffer_channel.replace('buffer-',''),
-                                line=dict(color=self.buffer_layer_colors[buffer_channel], dash='solid')
-                                )
-                            )
-                
-                if 'buffer-hot-pipe' in request.selected_channels and 'buffer-hot-pipe' in self.channels:
-                    yf = [self.to_fahrenheit(x/1000) for x in self.channels['buffer-hot-pipe']['values']]
-                    min_buffer_temp = min(min_buffer_temp, min(yf))
-                    max_buffer_temp = max(max_buffer_temp, max(yf))
-                    fig.add_trace(
-                        go.Scatter(
-                            x=self.channels['buffer-hot-pipe']['times'], 
-                            y=yf, 
-                            mode=self.line_style, 
-                            opacity=0.7,
-                            name='Hot pipe',
-                            line=dict(color='#d62728', dash='solid')
-                            )
-                        )
-                if 'buffer-cold-pipe' in request.selected_channels and 'buffer-cold-pipe' in self.channels:
-                    yf = [self.to_fahrenheit(x/1000) for x in self.channels['buffer-cold-pipe']['values']]
-                    min_buffer_temp = min(min_buffer_temp, min(yf))
-                    max_buffer_temp = max(max_buffer_temp, max(yf))
-                    fig.add_trace(
-                        go.Scatter(
-                            x=self.channels['buffer-cold-pipe']['times'], 
-                            y=yf, 
-                            mode=self.line_style, 
-                            opacity=0.7,
-                            name='Cold pipe',
-                            line=dict(color='#1f77b4', dash='solid')
-                            )
-                        )
-                        
-                fig.update_layout(
-                    title=dict(text='Buffer', x=0.5, xanchor='center'),
-                    plot_bgcolor=self.plot_background_hex,
-                    paper_bgcolor=self.plot_background_hex,
-                    font_color=self.fontcolor_hex,
-                    title_font_color=self.fontcolor_hex,
-                    margin=dict(t=30, b=30),
-                    xaxis=dict(
-                        range=[self.min_timestamp, self.max_timestamp],
-                        mirror=True,
-                        ticks='outside',
-                        showline=True,
-                        linecolor=self.fontcolor_hex,
-                        showgrid=False,
-                        ),
-                    yaxis=dict(
-                        range = [min_buffer_temp-15, max_buffer_temp+30],
-                        mirror=True,
-                        ticks='outside',
-                        showline=True,
-                        linecolor=self.fontcolor_hex,
-                        title='Temperature [F]', 
-                        zeroline=False,
-                        showgrid=True, 
-                        gridwidth=1, 
-                        gridcolor=self.gridcolor_hex,
-                        ),
-                    legend=dict(
-                        x=0,
-                        y=1,
-                        xanchor='left',
-                        yanchor='top',
-                        orientation='h',
-                        bgcolor='rgba(0, 0, 0, 0)'
-                        )
-                    )
-
-                html_buffer5 = io.StringIO()
-                fig.write_html(html_buffer5)
-                html_buffer5.seek(0)
-
-                print(f"Plot 5 (buffer) done in {round(time.time()-request_start,1)} seconds")
-                request_start = time.time()
-
-                # --------------------------------------
-                # PLOT 6: Storage
-                # --------------------------------------
-
-                if time.time() - request_start > self.timeout_seconds:
-                    raise asyncio.TimeoutError('Timed out')
-
-                fig = go.Figure()
-                
-                # Temperature
-                plotting_temperatures = False
-                min_store_temp = 1e5
-                max_store_temp = 0
-                tank_channels = []
-
-                if 'storage-depths' in request.selected_channels:
-                    plotting_temperatures = True
-                    tank_channels = sorted([key for key in self.channels.keys() if 'tank' in key and 'micro-v' not in key])
-                    for tank_channel in tank_channels:
-                        yf = [self.to_fahrenheit(x/1000) for x in self.channels[tank_channel]['values']]
-                        min_store_temp = min(min_store_temp, min(yf))
-                        max_store_temp = max(max_store_temp, max(yf))
-                        fig.add_trace(
-                            go.Scatter(x=self.channels[tank_channel]['times'], y=yf, 
-                            mode=self.line_style, opacity=0.7,
-                            name=tank_channel.replace('storage-',''),
-                            line=dict(color=self.storage_layer_colors[tank_channel], dash='solid'))
-                            )
-
-                if ('thermocline' in request.selected_channels 
-                    and 'thermocline-position' in self.channels
-                    and 'top-centroid' in self.channels
-                    and 'bottom-centroid' in self.channels):
-                    fig.add_trace(
-                        go.Scatter(
-                            x=self.channels['top-centroid']['times'],
-                            y=[x/1000 for x in self.channels['top-centroid']['values']], 
-                            mode='markers', opacity=0.7,
-                            name='centroids',
-                            line=dict(color='yellow', dash='solid'),
-                            showlegend=False),
-                        )
-                    fig.add_trace(
-                        go.Scatter(
-                            x=self.channels['bottom-centroid']['times'],
-                            y=[x/1000 for x in self.channels['bottom-centroid']['values']], 
-                            mode='markers', opacity=0.7,
-                            name='centroids',
-                            line=dict(color='yellow', dash='solid'),
-                            showlegend=False),
-                        ) 
-                    thermocline_temps = []
-                    for i in range(len(self.channels['thermocline-position']['times'])):
-                        x = self.channels['thermocline-position']['values'][i] - 1
-                        thermoc_time = self.channels['thermocline-position']['times'][i]
-                        times = self.channels[tank_temperatures[x]]['times']
-                        values = [self.to_fahrenheit(y/1000) for y in self.channels[tank_temperatures[x]]['values']]
-                        idx = min(range(len(times)), key=lambda i: abs(times[i] - thermoc_time))
-                        thermocline_temps.append(values[idx])
-                    fig.add_trace(
-                        go.Scatter(
-                            x=self.channels['thermocline-position']['times'],
-                            y=thermocline_temps,
-                            mode='markers', opacity=0.7,
-                            name=f'thermocline',
-                            line=dict(color='green', dash='solid'),
-                            showlegend=False),
-                        )
-                
-                if 'store-hot-pipe' in request.selected_channels and 'store-hot-pipe' in self.channels:
-                    plotting_temperatures = True
-                    yf = [self.to_fahrenheit(x/1000) for x in self.channels['store-hot-pipe']['values']]
-                    min_store_temp = min(min_store_temp, min(yf))
-                    max_store_temp = max(max_store_temp, max(yf))
-                    fig.add_trace(
-                        go.Scatter(
-                            x=self.channels['store-hot-pipe']['times'], 
-                            y=yf, 
-                            mode=self.line_style, 
-                            opacity=0.7,
-                            name='Hot pipe',
-                            line=dict(color='#d62728', dash='solid'))
-                        )
-                if 'store-cold-pipe' in request.selected_channels and 'store-cold-pipe' in self.channels:
-                    plotting_temperatures = True
-                    yf = [self.to_fahrenheit(x/1000) for x in self.channels['store-cold-pipe']['values']]
-                    min_store_temp = min(min_store_temp, min(yf))
-                    max_store_temp = max(max_store_temp, max(yf))
-                    fig.add_trace(
-                        go.Scatter(
-                            x=self.channels['store-cold-pipe']['times'], 
-                            y=yf, 
-                            mode=self.line_style, 
-                            opacity=0.7,
-                            name='Cold pipe',
-                            line=dict(color='#1f77b4', dash='solid'))
-                        )
-
-                # Secondary yaxis
-                y_axis_power = 'y2' if plotting_temperatures else 'y'
-
-                # Power
-                plotting_power = False
-                max_power = 60
-                if 'store-pump-pwr' in request.selected_channels and 'store-pump-pwr' in self.channels:
-                    plotting_power = True
-                    fig.add_trace(
-                        go.Scatter(
-                            x=self.channels['store-pump-pwr']['times'], 
-                            y=[x for x in self.channels['store-pump-pwr']['values']], 
-                            mode=self.line_style, 
-                            opacity=0.7,
-                            line=dict(color='pink', dash='solid'),
-                            name='Storage pump power x1000',
-                            yaxis=y_axis_power,
-                            visible='legendonly'
-                            )
-                        )
-                if 'store-flow' in request.selected_channels and 'store-flow' in self.channels:
-                    plotting_power = True
-                    fig.add_trace(
-                        go.Scatter(
-                            x=self.channels['store-flow']['times'], 
-                            y=[x/100*10 for x in self.channels['store-flow']['values']], 
-                            mode=self.line_style, 
-                            opacity=0.4,
-                            line=dict(color='purple', dash='solid'),
-                            name='Storage pump flow x10',
-                            yaxis=y_axis_power
-                            )
-                        )
-                if 'store-energy' in request.selected_channels and 'usable-energy' in self.channels:
-                    plotting_power = True
-                    fig.add_trace(
-                        go.Scatter(
-                            x=self.channels['usable-energy']['times'], 
-                            y=[x/1000 for x in self.channels['usable-energy']['values']], 
-                            mode=self.line_style, 
-                            opacity=0.4,
-                            line=dict(color='#2ca02c', dash='solid'),
-                            name='Usable',
-                            yaxis=y_axis_power
-                            )
-                        )
-                    fig.add_trace(
-                        go.Scatter(
-                            x=self.channels['required-energy']['times'], 
-                            y=[x/1000 for x in self.channels['required-energy']['values']], 
-                            mode=self.line_style, 
-                            opacity=0.4,
-                            line=dict(color='#2ca02c', dash='dash'),
-                            name='Required',
-                            yaxis=y_axis_power
-                            )
-                        )
-                    max_power = max([x/1000 for x in self.channels['required-energy']['values']])*4
-                    
-                if plotting_temperatures and plotting_power:
-                    fig.update_layout(yaxis=dict(title='Temperature [F]', range=[min_store_temp-80, max_store_temp+60]))
-                    fig.update_layout(yaxis2=dict(title='GPM, kW, or kWh', range=[-1, max_power]))
-                elif plotting_temperatures and not plotting_power:
-                    min_store_temp = 20 if min_store_temp<0 else min_store_temp
-                    fig.update_layout(yaxis=dict(title='Temperature [F]', range=[min_store_temp-20, max_store_temp+60]))
-                elif plotting_power and not plotting_temperatures:
-                    fig.update_layout(yaxis=dict(title='GPM, kW, or kWh'))
-
-                fig.update_layout(
-                    title=dict(text='Storage', x=0.5, xanchor='center'),
-                    plot_bgcolor=self.plot_background_hex,
-                    paper_bgcolor=self.plot_background_hex,
-                    font_color=self.fontcolor_hex,
-                    title_font_color=self.fontcolor_hex,
-                    margin=dict(t=30, b=30),
-                    xaxis=dict(
-                        range=[self.min_timestamp, self.max_timestamp],
-                        mirror=True,
-                        ticks='outside',
-                        showline=True,
-                        linecolor=self.fontcolor_hex,
-                        showgrid=False,
-                        ),
-                    yaxis=dict(
-                        mirror=True,
-                        ticks='outside',
-                        showline=True,
-                        linecolor=self.fontcolor_hex,
-                        zeroline=False,
-                        showgrid=True, 
-                        gridwidth=1, 
-                        gridcolor=self.gridcolor_hex
-                        ),
-                    yaxis2=dict(
-                        mirror=True,
-                        ticks='outside',
-                        showline=True,
-                        linecolor=self.fontcolor_hex,
-                        overlaying='y', 
-                        side='right', 
-                        zeroline=False,
-                        showgrid=False, 
-                        ),
-                    legend=dict(
-                        x=0,
-                        y=1,
-                        xanchor='left',
-                        yanchor='top',
-                        orientation='h',
-                        bgcolor='rgba(0, 0, 0, 0)'
-                    )
-                )
-
-                html_buffer6 = io.StringIO()
-                fig.write_html(html_buffer6)
-                html_buffer6.seek(0)
-
-                print(f"Plot 6 (storage) done in {round(time.time()-request_start,1)} seconds")
-                request_start = time.time()
-
-                # --------------------------------------
-                # PLOT 7: Top State
-                # --------------------------------------
-
-                if time.time() - request_start > self.timeout_seconds:
-                    raise asyncio.TimeoutError('Timed out')
-
-                fig = go.Figure()
-
-                if self.top_states!={}:
-
-                    fig.add_trace(
-                        go.Scatter(
-                            x=self.top_states['all']['times'],
-                            y=self.top_states['all']['values'],
-                            mode='lines',
-                            line=dict(color=self.home_alone_line, width=2),
-                            opacity=0.3,
-                            showlegend=False,
-                            line_shape='hv'
-                        )
-                    )
-
-                    for state in self.top_states.keys():
-                        if state != 'all' and state in self.top_state_color:
-                            fig.add_trace(
-                                go.Scatter(
-                                    x=self.top_states[state]['times'],
-                                    y=self.top_states[state]['values'],
-                                    mode='markers',
-                                    marker=dict(color=self.top_state_color[state], size=10),
-                                    opacity=0.8,
-                                    name=state,
-                                )
-                            )
-
-                fig.update_layout(
-                    title=dict(text='Top State', x=0.5, xanchor='center'),
-                    plot_bgcolor=self.plot_background_hex,
-                    paper_bgcolor=self.plot_background_hex,
-                    font_color=self.fontcolor_hex,
-                    title_font_color=self.fontcolor_hex,
-                    margin=dict(t=30, b=30),
-                    xaxis=dict(
-                        range=[self.min_timestamp, self.max_timestamp],
-                        mirror=True,
-                        ticks='outside',
-                        showline=True,
-                        linecolor=self.fontcolor_hex,
-                        showgrid=False
-                        ),
-                    yaxis=dict(
-                        range = [-0.6, len(self.top_states)-1+0.2],
-                        mirror=True,
-                        ticks='outside',
-                        showline=True,
-                        linecolor=self.fontcolor_hex,
-                        zeroline=False,
-                        showgrid=True, 
-                        gridwidth=1, 
-                        gridcolor=self.gridcolor_hex, 
-                        tickvals=list(range(len(self.top_states)-1)),
-                        ),
-                    legend=dict(
-                        x=0,
-                        y=1,
-                        xanchor='left',
-                        yanchor='top',
-                        orientation='h',
-                        bgcolor='rgba(0, 0, 0, 0)'
-                    )
-                )
-
-                html_buffer7 = io.StringIO()
-                fig.write_html(html_buffer7)
-                html_buffer7.seek(0)
-
-                print(f"Plot 7 (top state) done in {round(time.time()-request_start,1)} seconds")
-                request_start = time.time()
-
-                # --------------------------------------
-                # PLOT 8: HomeAlone
-                # --------------------------------------
-
-                if time.time() - request_start > self.timeout_seconds:
-                    raise asyncio.TimeoutError('Timed out')
-
-                fig = go.Figure()
-
-                if self.ha_states!={}:
-
-                    fig.add_trace(
-                        go.Scatter(
-                            x=self.ha_states['all']['times'],
-                            y=self.ha_states['all']['values'],
-                            mode='lines',
-                            line=dict(color=self.home_alone_line, width=2),
-                            opacity=0.3,
-                            showlegend=False,
-                            line_shape='hv'
-                        )
-                    )
-
-                    for state in self.ha_states.keys():
-                        if state != 'all' and state in self.ha_state_color:
-                            fig.add_trace(
-                                go.Scatter(
-                                    x=self.ha_states[state]['times'],
-                                    y=self.ha_states[state]['values'],
-                                    mode='markers',
-                                    marker=dict(color=self.ha_state_color[state], size=10),
-                                    opacity=0.8,
-                                    name=state,
-                                )
-                            )
-
-                fig.update_layout(
-                    title=dict(text='HomeAlone State', x=0.5, xanchor='center'),
-                    plot_bgcolor=self.plot_background_hex,
-                    paper_bgcolor=self.plot_background_hex,
-                    font_color=self.fontcolor_hex,
-                    title_font_color=self.fontcolor_hex,
-                    margin=dict(t=30, b=30),
-                    xaxis=dict(
-                        range=[self.min_timestamp, self.max_timestamp],
-                        mirror=True,
-                        ticks='outside',
-                        showline=True,
-                        linecolor=self.fontcolor_hex,
-                        showgrid=False
-                        ),
-                    yaxis=dict(
-                        range = [-0.6, 8-0.8],
-                        mirror=True,
-                        ticks='outside',
-                        showline=True,
-                        linecolor=self.fontcolor_hex,
-                        zeroline=False,
-                        showgrid=True, 
-                        gridwidth=1, 
-                        gridcolor=self.gridcolor_hex, 
-                        tickvals=list(range(6)),
-                        ),
-                    legend=dict(
-                        x=0,
-                        y=1,
-                        xanchor='left',
-                        yanchor='top',
-                        orientation='h',
-                        bgcolor='rgba(0, 0, 0, 0)'
-                    )
-                )
-
-                html_buffer8 = io.StringIO()
-                fig.write_html(html_buffer8)
-                html_buffer8.seek(0)
-
-                print(f"Plot 8 (HA state) done in {round(time.time()-request_start,1)} seconds")
-                request_start = time.time()
-
-                # --------------------------------------
-                # PLOT 9: Atomic Ally
-                # --------------------------------------
-
-                if time.time() - request_start > self.timeout_seconds:
-                    raise asyncio.TimeoutError('Timed out')
-
-                fig = go.Figure()
-
-                if aa_modes!={}:
-
-                    fig.add_trace(
-                        go.Scatter(
-                            x=aa_modes['all']['times'],
-                            y=aa_modes['all']['values'],
-                            mode='lines',
-                            line=dict(color=self.home_alone_line, width=2),
-                            opacity=0.3,
-                            showlegend=False,
-                            line_shape='hv'
-                        )
-                    )
-
-                    for state in aa_modes.keys():
-                        if state != 'all' and state in self.ha_state_color:
-                            fig.add_trace(
-                                go.Scatter(
-                                    x=aa_modes[state]['times'],
-                                    y=aa_modes[state]['values'],
-                                    mode='markers',
-                                    marker=dict(color=self.ha_state_color[state], size=10),
-                                    opacity=0.8,
-                                    name=state,
-                                )
-                            )
-
-                fig.update_layout(
-                    title=dict(text='AtomicAlly State', x=0.5, xanchor='center'),
-                    plot_bgcolor=self.plot_background_hex,
-                    paper_bgcolor=self.plot_background_hex,
-                    font_color=self.fontcolor_hex,
-                    title_font_color=self.fontcolor_hex,
-                    margin=dict(t=30, b=30),
-                    xaxis=dict(
-                        range=[self.min_timestamp, self.max_timestamp],
-                        mirror=True,
-                        ticks='outside',
-                        showline=True,
-                        linecolor=self.fontcolor_hex,
-                        showgrid=False
-                        ),
-                    yaxis=dict(
-                        range = [-0.6, 8-0.8],
-                        mirror=True,
-                        ticks='outside',
-                        showline=True,
-                        linecolor=self.fontcolor_hex,
-                        zeroline=False,
-                        showgrid=True, 
-                        gridwidth=1, 
-                        gridcolor=self.gridcolor_hex, 
-                        tickvals=list(range(7)),
-                        ),
-                    legend=dict(
-                        x=0,
-                        y=1,
-                        xanchor='left',
-                        yanchor='top',
-                        orientation='h',
-                        bgcolor='rgba(0, 0, 0, 0)'
-                    )
-                )
-
-                html_buffer9 = io.StringIO()
-                fig.write_html(html_buffer9)
-                html_buffer9.seek(0)
-
-                print(f"Plot 9 (AA state) done in {round(time.time()-request_start,1)} seconds")
-                request_start = time.time()
-
-                # --------------------------------------
-                # PLOT 10: Weather forecasts
-                # --------------------------------------
-
-                if time.time() - request_start > self.timeout_seconds:
-                    raise asyncio.TimeoutError('Timed out')
-
-                fig = go.Figure()
-                color_scale = pc.diverging.RdBu[::-1]
-
-                oat_forecasts, ws_forecasts = {}, {}
-                for message in weather:
-                    forecast_start_time = int((message.message_persisted_ms/1000 // 3600) * 3600)
-                    oat_forecasts[forecast_start_time] = message.payload['OatF']
-                    ws_forecasts[forecast_start_time] = message.payload['WindSpeedMph']
-
-                for idx, weather_time in enumerate(oat_forecasts):
-                    forecast_times = [int(weather_time) + 3600 * i for i in range(len(oat_forecasts[weather_time]))]
-                    forecast_times = [pendulum.from_timestamp(x, tz="America/New_York") for x in forecast_times]
-                    color = color_scale[int((idx / len(oat_forecasts)) * (len(color_scale) - 1))]
-                    opcty = 0.2
-                    showme = False
-                    if idx == len(oat_forecasts) - 1:
-                        color = 'red'
-                        opcty = 1
-                        showme = True
-
-                    fig.add_trace(
-                        go.Scatter(
-                            x=forecast_times,
-                            y=oat_forecasts[weather_time],
-                            mode='lines',
-                            line=dict(color=color, width=2),
-                            opacity=opcty,
-                            showlegend=showme,
-                            line_shape='hv',
-                            name=f"{pendulum.from_timestamp(weather_time, tz=self.timezone_str).hour}" 
-                        )
-                    )
-
-                fig.update_layout(
-                    title=dict(text='Weather Forecasts', x=0.5, xanchor='center'),
-                    plot_bgcolor=self.plot_background_hex,
-                    paper_bgcolor=self.plot_background_hex,
-                    font_color=self.fontcolor_hex,
-                    title_font_color=self.fontcolor_hex,
-                    margin=dict(t=30, b=30),
-                    xaxis=dict(
-                        range=[self.min_timestamp, self.max_timestamp],
-                        mirror=True,
-                        ticks='outside',
-                        showline=True,
-                        linecolor=self.fontcolor_hex,
-                        showgrid=False
-                        ),
-                    yaxis=dict(
-                        mirror=True,
-                        ticks='outside',
-                        showline=True,
-                        linecolor=self.fontcolor_hex,
-                        zeroline=False,
-                        showgrid=True, 
-                        gridwidth=1, 
-                        gridcolor=self.gridcolor_hex, 
-                        ),
-                    legend=dict(
-                        x=0,
-                        y=1,
-                        xanchor='left',
-                        yanchor='top',
-                        orientation='h',
-                        bgcolor='rgba(0, 0, 0, 0)'
-                    )
-                )
-
-                html_buffer10 = io.StringIO()
-                fig.write_html(html_buffer10)
-                html_buffer10.seek(0)
-
-                print(f"Plot 10 (weather) done in {round(time.time()-request_start,1)} seconds")
-                request_start = time.time()
-
-                # --------------------------------------
-                # PLOT 11: Price
-                # --------------------------------------
-
-                if time.time() - request_start > self.timeout_seconds:
-                    raise asyncio.TimeoutError('Timed out')
-
-                fig = go.Figure()
-
-                request_hours = int((request.end_ms - request.start_ms)/1000 / 3600)
-                price_times_s = [request.start_ms/1000 + x*3600 for x in range(request_hours+2+48)]
-                price_times = [pendulum.from_timestamp(x, tz=self.timezone_str) for x in price_times_s]
-
-                # Open and read the CSV file
-                csv_times, csv_dist, csv_lmp = [], [], []
-                with open('elec_prices.csv', newline='', encoding='utf-8') as csvfile:
-                    csvreader = csv.reader(csvfile)
-                    next(csvreader)
-                    for row in csvreader:
-                        csv_times.append(row[0])
-                        csv_dist.append(float(row[1]))
-                        csv_lmp.append(float(row[2])/10)
-                csv_times = [pendulum.from_format(x, 'M/D/YY H:m', tz=self.timezone_str).timestamp() for x in csv_times]
-
-                price_values = [
-                    lmp
-                    for time, dist, lmp in zip(csv_times, csv_dist, csv_lmp)
-                    if time in price_times_s
-                    ]
-                csv_times = [
-                    time for time in csv_times
-                    if time in price_times_s
-                ]
-                price_times2 = [pendulum.from_timestamp(x, tz=self.timezone_str) for x in csv_times]
-
+    
+    async def get_plot4_zones(self, request: DataRequest):
+        plot_start = time.time()
+        fig = go.Figure()
+
+        # Zone temperature and setpoint
+        min_zones, max_zones = 45, 80
+        for zone in self.channels_by_zone:
+            if 'temp' in self.channels_by_zone[zone]:
                 fig.add_trace(
                     go.Scatter(
-                        x=price_times2,
-                        y=price_values,
-                        mode='lines',
-                        line=dict(color=self.home_alone_line),
-                        opacity=0.8,
-                        showlegend=False,
-                        line_shape='hv',
+                        x=self.channels_by_zone[zone]['temp']['times'], 
+                        y=self.channels_by_zone[zone]['temp']['values'], 
+                        mode=self.line_style, 
+                        opacity=0.7,
+                        line=dict(color=self.zone_color[int(zone[4])-1], dash='solid'),
+                        name=self.channels_by_zone[zone]['temp'].replace('-temp','')
+                        )
+                    )
+                min_zones = min(min_zones, min(self.channels_by_zone[zone]['temp']['values']))
+                max_zones = max(max_zones, max(self.channels_by_zone[zone]['temp']['values']))
+            if 'set' in self.channels_by_zone[zone]:
+                fig.add_trace(
+                    go.Scatter(
+                        x=self.channels_by_zone[zone]['set']['times'], 
+                        y=self.channels_by_zone[zone]['set']['values'], 
+                        mode=self.line_style, 
+                        opacity=0.7,
+                        line=dict(color=self.zone_color[int(zone[4])-1], dash='dash'),
+                        name=self.channels_by_zone[zone]['set'].replace('-set',''),
+                        showlegend=False
+                        )
+                    )
+                min_zones = min(min_zones, min(self.channels_by_zone[zone]['set']['values']))
+                max_zones = max(max_zones, max(self.channels_by_zone[zone]['set']['values']))
+
+        # Outside air temperature
+        min_oat, max_oat = 70, 80    
+        if 'oat' in request.selected_channels and 'oat' in self.channels:
+            fig.add_trace(
+                go.Scatter(
+                    x=self.channels['oat']['times'], 
+                    y=[self.to_fahrenheit(x/1000) for x in self.channels['oat']['values']], 
+                    mode=self.line_style, 
+                    opacity=0.8,
+                    line=dict(color=self.oat_color, dash='solid'),
+                    name='Outside air',
+                    yaxis='y2',
                     )
                 )
+            min_oat = self.to_fahrenheit(min(self.channels['oat']['values'])/1000)
+            max_oat = self.to_fahrenheit(max(self.channels['oat']['values'])/1000)
+            fig.update_layout(yaxis2=dict(title='Outside air temperature [F]'))
 
-                shapes_list = []
-                for x in price_times2:
-                    if x.weekday() in [5,6]:
-                        continue
-                    # Morning onpeak
-                    if x==price_times2[0] and x.hour in [8,9,10,11]:
-                        shapes_list.append(
-                            go.layout.Shape(
-                                type='rect',
-                                x0=x,
-                                x1=x + timedelta(hours=5-(x.hour-7)),
-                                y0=0,
-                                y1=1,
-                                xref="x",
-                                yref="paper",
-                                fillcolor="rgba(0, 100, 255, 0.1)",
-                                layer="below",
-                                line=dict(width=0)
-                            )
-                        )
-                    elif x.hour==7:
-                        shapes_list.append(
-                            go.layout.Shape(
-                                type='rect',
-                                x0=x,
-                                x1=x + timedelta(hours=5),
-                                y0=0,
-                                y1=1,
-                                xref="x",
-                                yref="paper",
-                                fillcolor="rgba(0, 100, 255, 0.1)",
-                                layer="below",
-                                line=dict(width=0)
-                            )
-                        )
-                    # Afternoon onpeak
-                    elif x==price_times2[0] and x.hour in [17,18,19]:
-                        shapes_list.append(
-                            go.layout.Shape(
-                                type='rect',
-                                x0=x,
-                                x1=x + timedelta(hours=4-(x.hour-16)),
-                                y0=0,
-                                y1=1,
-                                xref="x",
-                                yref="paper",
-                                fillcolor="rgba(0, 100, 255, 0.1)",
-                                layer="below",
-                                line=dict(width=0)
-                            )
-                        )
-                    elif x.hour==16:
-                        shapes_list.append(
-                            go.layout.Shape(
-                                type='rect',
-                                x0=x,
-                                x1=x + timedelta(hours=4),
-                                y0=0,
-                                y1=1,
-                                xref="x",
-                                yref="paper",
-                                fillcolor="rgba(0, 100, 255, 0.1)",
-                                layer="below",
-                                line=dict(width=0)
-                            )
-                        )
-                    
-                fig.update_layout(yaxis=dict(title='LMP [cts/kWh]'))
+        fig.update_layout(yaxis=dict(title='Zone temperature [F]'))
+        fig.update_layout(
+            title=dict(text='Zones', x=0.5, xanchor='center'),
+            plot_bgcolor=self.plot_background_hex,
+            paper_bgcolor=self.plot_background_hex,
+            font_color=self.fontcolor_hex,
+            title_font_color=self.fontcolor_hex,
+            margin=dict(t=30, b=30),
+            xaxis=dict(
+                range=[self.min_timestamp, self.max_timestamp],
+                mirror=True,
+                ticks='outside',
+                showline=True,
+                linecolor=self.fontcolor_hex,
+                showgrid=False
+                ),
+            yaxis=dict(
+                range = [min_zones-30,max_zones+20],
+                mirror=True,
+                ticks='outside',
+                showline=True,
+                linecolor=self.fontcolor_hex,
+                zeroline=False,
+                showgrid=True, 
+                gridwidth=1, 
+                gridcolor=self.gridcolor_hex
+                ),
+            yaxis2=dict(
+                range = [min_oat-2, max_oat+20],
+                mirror=True,
+                ticks='outside',
+                showline=True,
+                linecolor=self.fontcolor_hex,
+                overlaying='y', 
+                side='right', 
+                zeroline=False,
+                showgrid=False, 
+                ),
+            legend=dict(
+                x=0,
+                y=1,
+                xanchor='left',
+                yanchor='top',
+                orientation='h',
+                bgcolor='rgba(0, 0, 0, 0)'
+                )
+            )
+        html_buffer4 = io.StringIO()
+        fig.write_html(html_buffer4)
+        html_buffer4.seek(0)
+        print(f"Plot 4 (zones) done in {round(time.time()-plot_start,1)} seconds")
+        return html_buffer4
+    
+    async def get_plot5_buffer(self, request: DataRequest):
+        plot_start = time.time()
+        fig = go.Figure()
 
-                fig.update_layout(
-                    shapes = shapes_list,
-                    title=dict(text='Price Forecast', x=0.5, xanchor='center'),
-                    plot_bgcolor=self.plot_background_hex,
-                    paper_bgcolor=self.plot_background_hex,
-                    font_color=self.fontcolor_hex,
-                    title_font_color=self.fontcolor_hex,
-                    margin=dict(t=30, b=30),
-                    xaxis=dict(
-                        range=[self.min_timestamp, self.max_timestamp],
-                        mirror=True,
-                        ticks='outside',
-                        showline=True,
-                        linecolor=self.fontcolor_hex,
-                        showgrid=False
-                        ),
-                    yaxis=dict(
-                        mirror=True,
-                        ticks='outside',
-                        showline=True,
-                        linecolor=self.fontcolor_hex,
-                        zeroline=False,
-                        showgrid=True, 
-                        gridwidth=1, 
-                        gridcolor=self.gridcolor_hex, 
-                        ),
-                    legend=dict(
-                        x=0,
-                        y=1,
-                        xanchor='left',
-                        yanchor='top',
-                        orientation='h',
-                        bgcolor='rgba(0, 0, 0, 0)'
+        gradient = plt.get_cmap('coolwarm', 4)
+        buffer_colors = {
+            'buffer-depth1': gradient(3),
+            'buffer-depth2': gradient(2),
+            'buffer-depth3': gradient(1),
+            'buffer-depth4': gradient(0)
+            }
+        buffer_layer_colors = {key: self.to_hex(value) for key, value in buffer_colors.items()}
+
+        min_buffer_temp, max_buffer_temp = 1e5, 0
+        if 'buffer-depths' in request.selected_channels:
+            buffer_channels = sorted([key for key in self.channels.keys() if 'buffer-depth' in key and 'micro-v' not in key])
+            for buffer_channel in buffer_channels:
+                min_buffer_temp = min(min_buffer_temp, min([self.to_fahrenheit(x/1000) for x in self.channels[buffer_channel]['values']]))
+                max_buffer_temp = max(max_buffer_temp, max([self.to_fahrenheit(x/1000) for x in self.channels[buffer_channel]['values']]))
+                fig.add_trace(
+                    go.Scatter(
+                        x=self.channels[buffer_channel]['times'], 
+                        y=[self.to_fahrenheit(x/1000) for x in self.channels[buffer_channel]['values']], 
+                        mode=self.line_style, 
+                        opacity=0.7,
+                        name=buffer_channel.replace('buffer-',''),
+                        line=dict(color=buffer_layer_colors[buffer_channel], dash='solid')
+                        )
+                    )  
+        if 'buffer-hot-pipe' in request.selected_channels and 'buffer-hot-pipe' in self.channels:
+            min_buffer_temp = min(min_buffer_temp, min([self.to_fahrenheit(x/1000) for x in self.channels['buffer-hot-pipe']['values']]))
+            max_buffer_temp = max(max_buffer_temp, max([self.to_fahrenheit(x/1000) for x in self.channels['buffer-hot-pipe']['values']]))
+            fig.add_trace(
+                go.Scatter(
+                    x=self.channels['buffer-hot-pipe']['times'], 
+                    y=[self.to_fahrenheit(x/1000) for x in self.channels['buffer-hot-pipe']['values']], 
+                    mode=self.line_style, 
+                    opacity=0.7,
+                    name='Hot pipe',
+                    line=dict(color='#d62728', dash='solid')
                     )
                 )
+        if 'buffer-cold-pipe' in request.selected_channels and 'buffer-cold-pipe' in self.channels:
+            min_buffer_temp = min(min_buffer_temp, min([self.to_fahrenheit(x/1000) for x in self.channels['buffer-cold-pipe']['values']]))
+            max_buffer_temp = max(max_buffer_temp, max([self.to_fahrenheit(x/1000) for x in self.channels['buffer-cold-pipe']['values']]))
+            fig.add_trace(
+                go.Scatter(
+                    x=self.channels['buffer-cold-pipe']['times'], 
+                    y=[self.to_fahrenheit(x/1000) for x in self.channels['buffer-cold-pipe']['values']], 
+                    mode=self.line_style, 
+                    opacity=0.7,
+                    name='Cold pipe',
+                    line=dict(color='#1f77b4', dash='solid')
+                    )
+                )
+               
+        fig.update_layout(
+            title=dict(text='Buffer', x=0.5, xanchor='center'),
+            plot_bgcolor=self.plot_background_hex,
+            paper_bgcolor=self.plot_background_hex,
+            font_color=self.fontcolor_hex,
+            title_font_color=self.fontcolor_hex,
+            margin=dict(t=30, b=30),
+            xaxis=dict(
+                range=[self.min_timestamp, self.max_timestamp],
+                mirror=True,
+                ticks='outside',
+                showline=True,
+                linecolor=self.fontcolor_hex,
+                showgrid=False,
+                ),
+            yaxis=dict(
+                range = [min_buffer_temp-15, max_buffer_temp+30],
+                mirror=True,
+                ticks='outside',
+                showline=True,
+                linecolor=self.fontcolor_hex,
+                title='Temperature [F]', 
+                zeroline=False,
+                showgrid=True, 
+                gridwidth=1, 
+                gridcolor=self.gridcolor_hex,
+                ),
+            legend=dict(
+                x=0,
+                y=1,
+                xanchor='left',
+                yanchor='top',
+                orientation='h',
+                bgcolor='rgba(0, 0, 0, 0)'
+                )
+            )
 
-                html_buffer11 = io.StringIO()
-                fig.write_html(html_buffer11)
-                html_buffer11.seek(0)
+        html_buffer5 = io.StringIO()
+        fig.write_html(html_buffer5)
+        html_buffer5.seek(0)
+        print(f"Plot 5 (buffer) done in {round(time.time()-plot_start,1)} seconds")
+        return html_buffer5
 
-                print(f"Plot 11 (prices) done in {round(time.time()-request_start,1)} seconds")                
+    async def get_plot6_storage(self, request: DataRequest):
+        plot_start = time.time()
+        fig = go.Figure()
 
+        gradient = plt.get_cmap('coolwarm', 12)
+        storage_colors = {
+            'tank1-depth1': gradient(11),
+            'tank1-depth2': gradient(10),
+            'tank1-depth3': gradient(9),
+            'tank1-depth4': gradient(8),
+            'tank2-depth1': gradient(7),
+            'tank2-depth2': gradient(6),
+            'tank2-depth3': gradient(5),
+            'tank2-depth4': gradient(4),
+            'tank3-depth1': gradient(3),
+            'tank3-depth2': gradient(2),
+            'tank3-depth3': gradient(1),
+            'tank3-depth4': gradient(0),
+            }
+        storage_layer_colors = {key: self.to_hex(value) for key, value in storage_colors.items()}
         
+        # Temperature
+        plotting_temperatures = False
+        min_store_temp, max_store_temp = 1e5, 0
+        if 'storage-depths' in request.selected_channels:
+            plotting_temperatures = True
+            tank_channels = sorted([key for key in self.channels.keys() if 'tank' in key and 'micro-v' not in key])
+            for tank_channel in tank_channels:
+                min_store_temp = min(min_store_temp, min([self.to_fahrenheit(x/1000) for x in self.channels[tank_channel]['values']]))
+                max_store_temp = max(max_store_temp, max([self.to_fahrenheit(x/1000) for x in self.channels[tank_channel]['values']]))
+                fig.add_trace(
+                    go.Scatter(
+                        x=self.channels[tank_channel]['times'], 
+                        y=[self.to_fahrenheit(x/1000) for x in self.channels[tank_channel]['values']], 
+                        mode=self.line_style, opacity=0.7,
+                        name=tank_channel.replace('storage-',''),
+                        line=dict(color=storage_layer_colors[tank_channel], dash='solid')
+                        )
+                    )
+        if 'store-hot-pipe' in request.selected_channels and 'store-hot-pipe' in self.channels:
+            plotting_temperatures = True
+            min_store_temp = min(min_store_temp, min([self.to_fahrenheit(x/1000) for x in self.channels['store-hot-pipe']['values']]))
+            max_store_temp = max(max_store_temp, max([self.to_fahrenheit(x/1000) for x in self.channels['store-hot-pipe']['values']]))
+            fig.add_trace(
+                go.Scatter(
+                    x=self.channels['store-hot-pipe']['times'], 
+                    y=[self.to_fahrenheit(x/1000) for x in self.channels['store-hot-pipe']['values']], 
+                    mode=self.line_style, 
+                    opacity=0.7,
+                    name='Hot pipe',
+                    line=dict(color='#d62728', dash='solid')
+                    )
+                )
+        if 'store-cold-pipe' in request.selected_channels and 'store-cold-pipe' in self.channels:
+            plotting_temperatures = True
+            min_store_temp = min(min_store_temp, min([self.to_fahrenheit(x/1000) for x in self.channels['store-cold-pipe']['values']]))
+            max_store_temp = max(max_store_temp, max([self.to_fahrenheit(x/1000) for x in self.channels['store-cold-pipe']['values']]))
+            fig.add_trace(
+                go.Scatter(
+                    x=self.channels['store-cold-pipe']['times'], 
+                    y=[self.to_fahrenheit(x/1000) for x in self.channels['store-cold-pipe']['values']], 
+                    mode=self.line_style, 
+                    opacity=0.7,
+                    name='Cold pipe',
+                    line=dict(color='#1f77b4', dash='solid')
+                    )
+                )
+        # Select yaxis for plotting power/flow
+        y_axis_power = 'y2' if plotting_temperatures else 'y'
+        # Power and flow
+        plotting_power = False
+        if 'store-pump-pwr' in request.selected_channels and 'store-pump-pwr' in self.channels:
+            plotting_power = True
+            fig.add_trace(
+                go.Scatter(
+                    x=self.channels['store-pump-pwr']['times'], 
+                    y=[x for x in self.channels['store-pump-pwr']['values']], 
+                    mode=self.line_style, 
+                    opacity=0.7,
+                    line=dict(color='pink', dash='solid'),
+                    name='Storage pump power x1000',
+                    yaxis=y_axis_power,
+                    visible='legendonly'
+                    )
+                )
+        if 'store-flow' in request.selected_channels and 'store-flow' in self.channels:
+            plotting_power = True
+            fig.add_trace(
+                go.Scatter(
+                    x=self.channels['store-flow']['times'], 
+                    y=[x/100*10 for x in self.channels['store-flow']['values']], 
+                    mode=self.line_style, 
+                    opacity=0.4,
+                    line=dict(color='purple', dash='solid'),
+                    name='Storage pump flow x10',
+                    yaxis=y_axis_power
+                    )
+                )
+        max_power = 60
+        if 'store-energy' in request.selected_channels and 'usable-energy' in self.channels:
+            plotting_power = True
+            fig.add_trace(
+                go.Scatter(
+                    x=self.channels['usable-energy']['times'], 
+                    y=[x/1000 for x in self.channels['usable-energy']['values']], 
+                    mode=self.line_style, 
+                    opacity=0.4,
+                    line=dict(color='#2ca02c', dash='solid'),
+                    name='Usable',
+                    yaxis=y_axis_power
+                    )
+                )
+            fig.add_trace(
+                go.Scatter(
+                    x=self.channels['required-energy']['times'], 
+                    y=[x/1000 for x in self.channels['required-energy']['values']], 
+                    mode=self.line_style, 
+                    opacity=0.4,
+                    line=dict(color='#2ca02c', dash='dash'),
+                    name='Required',
+                    yaxis=y_axis_power
+                    )
+                )
+            max_power = max([x/1000 for x in self.channels['required-energy']['values']])*4
+            
+        if plotting_temperatures and plotting_power:
+            fig.update_layout(yaxis=dict(title='Temperature [F]', range=[min_store_temp-80, max_store_temp+60]))
+            fig.update_layout(yaxis2=dict(title='GPM, kW, or kWh', range=[-1, max_power]))
+        elif plotting_temperatures and not plotting_power:
+            min_store_temp = 20 if min_store_temp<0 else min_store_temp
+            fig.update_layout(yaxis=dict(title='Temperature [F]', range=[min_store_temp-20, max_store_temp+60]))
+        elif plotting_power and not plotting_temperatures:
+            fig.update_layout(yaxis=dict(title='GPM, kW, or kWh'))
+
+        fig.update_layout(
+            title=dict(text='Storage', x=0.5, xanchor='center'),
+            plot_bgcolor=self.plot_background_hex,
+            paper_bgcolor=self.plot_background_hex,
+            font_color=self.fontcolor_hex,
+            title_font_color=self.fontcolor_hex,
+            margin=dict(t=30, b=30),
+            xaxis=dict(
+                range=[self.min_timestamp, self.max_timestamp],
+                mirror=True,
+                ticks='outside',
+                showline=True,
+                linecolor=self.fontcolor_hex,
+                showgrid=False,
+                ),
+            yaxis=dict(
+                mirror=True,
+                ticks='outside',
+                showline=True,
+                linecolor=self.fontcolor_hex,
+                zeroline=False,
+                showgrid=True, 
+                gridwidth=1, 
+                gridcolor=self.gridcolor_hex
+                ),
+            yaxis2=dict(
+                mirror=True,
+                ticks='outside',
+                showline=True,
+                linecolor=self.fontcolor_hex,
+                overlaying='y', 
+                side='right', 
+                zeroline=False,
+                showgrid=False, 
+                ),
+            legend=dict(
+                x=0,
+                y=1,
+                xanchor='left',
+                yanchor='top',
+                orientation='h',
+                bgcolor='rgba(0, 0, 0, 0)'
+            )
+        )
+
+        html_buffer6 = io.StringIO()
+        fig.write_html(html_buffer6)
+        html_buffer6.seek(0)
+        print(f"Plot 6 (storage) done in {round(time.time()-plot_start,1)} seconds")
+        return html_buffer6
+    
+    async def get_plot7_top_state(self, request: DataRequest):
+        plot_start = time.time()
+        fig = go.Figure()
+
+        top_state_color = {
+            'HomeAlone': '#EF553B',
+            'Atn': '#00CC96',
+            'Admin': '#636EFA'
+        }
+        
+        if self.top_states:
+            fig.add_trace(
+                go.Scatter(
+                    x=self.top_states['all']['times'],
+                    y=self.top_states['all']['values'],
+                    mode='lines',
+                    line=dict(color=self.home_alone_line, width=2),
+                    opacity=0.3,
+                    showlegend=False,
+                    line_shape='hv'
+                )
+            )
+            for state in self.top_states.keys():
+                if state != 'all' and state in top_state_color:
+                    fig.add_trace(
+                        go.Scatter(
+                            x=self.top_states[state]['times'],
+                            y=self.top_states[state]['values'],
+                            mode='markers',
+                            marker=dict(color=top_state_color[state], size=10),
+                            opacity=0.8,
+                            name=state,
+                        )
+                    )
+
+        fig.update_layout(
+            title=dict(text='Top State', x=0.5, xanchor='center'),
+            plot_bgcolor=self.plot_background_hex,
+            paper_bgcolor=self.plot_background_hex,
+            font_color=self.fontcolor_hex,
+            title_font_color=self.fontcolor_hex,
+            margin=dict(t=30, b=30),
+            xaxis=dict(
+                range=[self.min_timestamp, self.max_timestamp],
+                mirror=True,
+                ticks='outside',
+                showline=True,
+                linecolor=self.fontcolor_hex,
+                showgrid=False
+                ),
+            yaxis=dict(
+                range = [-0.6, len(self.top_states)-1+0.2],
+                mirror=True,
+                ticks='outside',
+                showline=True,
+                linecolor=self.fontcolor_hex,
+                zeroline=False,
+                showgrid=True, 
+                gridwidth=1, 
+                gridcolor=self.gridcolor_hex, 
+                tickvals=list(range(len(self.top_states)-1)),
+                ),
+            legend=dict(
+                x=0,
+                y=1,
+                xanchor='left',
+                yanchor='top',
+                orientation='h',
+                bgcolor='rgba(0, 0, 0, 0)'
+            )
+        )
+        
+        html_buffer7 = io.StringIO()
+        fig.write_html(html_buffer7)
+        html_buffer7.seek(0)
+        print(f"Plot 7 (top state) done in {round(time.time()-plot_start,1)} seconds")
+        return html_buffer7
+    
+    async def get_plot8_ha_state(self, request: DataRequest):
+        plot_start = time.time()
+        fig = go.Figure()
+
+        ha_state_color = {
+            'HpOffStoreDischarge': '#EF553B',
+            'HpOffStoreOff': '#00CC96',
+            'HpOnStoreOff': '#636EFA',
+            'HpOnStoreCharge': '#feca52',
+            'Initializing': '#a3a3a3',
+            'StratBoss': '#ee93fa',
+            'Dormant': '#4f4f4f'
+        }
+
+        if self.ha_states!={}:
+            fig.add_trace(
+                go.Scatter(
+                    x=self.ha_states['all']['times'],
+                    y=self.ha_states['all']['values'],
+                    mode='lines',
+                    line=dict(color=self.home_alone_line, width=2),
+                    opacity=0.3,
+                    showlegend=False,
+                    line_shape='hv'
+                )
+            )
+            for state in self.ha_states.keys():
+                if state != 'all' and state in ha_state_color:
+                    fig.add_trace(
+                        go.Scatter(
+                            x=self.ha_states[state]['times'],
+                            y=self.ha_states[state]['values'],
+                            mode='markers',
+                            marker=dict(color=ha_state_color[state], size=10),
+                            opacity=0.8,
+                            name=state,
+                        )
+                    )
+
+        fig.update_layout(
+            title=dict(text='HomeAlone State', x=0.5, xanchor='center'),
+            plot_bgcolor=self.plot_background_hex,
+            paper_bgcolor=self.plot_background_hex,
+            font_color=self.fontcolor_hex,
+            title_font_color=self.fontcolor_hex,
+            margin=dict(t=30, b=30),
+            xaxis=dict(
+                range=[self.min_timestamp, self.max_timestamp],
+                mirror=True,
+                ticks='outside',
+                showline=True,
+                linecolor=self.fontcolor_hex,
+                showgrid=False
+                ),
+            yaxis=dict(
+                range = [-0.6, 8-0.8],
+                mirror=True,
+                ticks='outside',
+                showline=True,
+                linecolor=self.fontcolor_hex,
+                zeroline=False,
+                showgrid=True, 
+                gridwidth=1, 
+                gridcolor=self.gridcolor_hex, 
+                tickvals=list(range(6)),
+                ),
+            legend=dict(
+                x=0,
+                y=1,
+                xanchor='left',
+                yanchor='top',
+                orientation='h',
+                bgcolor='rgba(0, 0, 0, 0)'
+            )
+        )
+
+        html_buffer8 = io.StringIO()
+        fig.write_html(html_buffer8)
+        html_buffer8.seek(0)
+        print(f"Plot 8 (HA state) done in {round(time.time()-plot_start,1)} seconds")
+        return html_buffer8
+    
+    async def get_plot9_aa_state(self, request: DataRequest):
+        plot_start = time.time()
+        fig = go.Figure()
+
+        aa_state_color = {
+            'HpOffStoreDischarge': '#EF553B',
+            'HpOffStoreOff': '#00CC96',
+            'HpOnStoreOff': '#636EFA',
+            'HpOnStoreCharge': '#feca52',
+            'Initializing': '#a3a3a3',
+            'StratBoss': '#ee93fa',
+            'Dormant': '#4f4f4f'
+        }
+
+        if self.aa_states!={}:
+            fig.add_trace(
+                go.Scatter(
+                    x=self.aa_states['all']['times'],
+                    y=self.aa_states['all']['values'],
+                    mode='lines',
+                    line=dict(color=self.home_alone_line, width=2),
+                    opacity=0.3,
+                    showlegend=False,
+                    line_shape='hv'
+                )
+            )
+            for state in self.aa_states.keys():
+                if state != 'all' and state in aa_state_color:
+                    fig.add_trace(
+                        go.Scatter(
+                            x=self.aa_states[state]['times'],
+                            y=self.aa_states[state]['values'],
+                            mode='markers',
+                            marker=dict(color=aa_state_color[state], size=10),
+                            opacity=0.8,
+                            name=state,
+                        )
+                    )
+
+        fig.update_layout(
+            title=dict(text='AtomicAlly State', x=0.5, xanchor='center'),
+            plot_bgcolor=self.plot_background_hex,
+            paper_bgcolor=self.plot_background_hex,
+            font_color=self.fontcolor_hex,
+            title_font_color=self.fontcolor_hex,
+            margin=dict(t=30, b=30),
+            xaxis=dict(
+                range=[self.min_timestamp, self.max_timestamp],
+                mirror=True,
+                ticks='outside',
+                showline=True,
+                linecolor=self.fontcolor_hex,
+                showgrid=False
+                ),
+            yaxis=dict(
+                range = [-0.6, 8-0.8],
+                mirror=True,
+                ticks='outside',
+                showline=True,
+                linecolor=self.fontcolor_hex,
+                zeroline=False,
+                showgrid=True, 
+                gridwidth=1, 
+                gridcolor=self.gridcolor_hex, 
+                tickvals=list(range(7)),
+                ),
+            legend=dict(
+                x=0,
+                y=1,
+                xanchor='left',
+                yanchor='top',
+                orientation='h',
+                bgcolor='rgba(0, 0, 0, 0)'
+            )
+        )
+
+        html_buffer9 = io.StringIO()
+        fig.write_html(html_buffer9)
+        html_buffer9.seek(0)
+        print(f"Plot 9 (AA state) done in {round(time.time()-plot_start,1)} seconds")
+        return html_buffer9
+    
+
+    async def get_plot10_weather(self, request: DataRequest):
+        plot_start = time.time()
+        fig = go.Figure()
+                
+        oat_forecasts, ws_forecasts = {}, {}
+        for message in self.weather_forecasts:
+            forecast_start_time = int((message.message_persisted_ms/1000//3600)*3600)
+            oat_forecasts[forecast_start_time] = message.payload['OatF']
+            ws_forecasts[forecast_start_time] = message.payload['WindSpeedMph']
+
+        color_scale = pc.diverging.RdBu[::-1]
+        for i, weather_time in enumerate(oat_forecasts):
+            forecast_times = [int(weather_time) + 3600*i for i in range(len(oat_forecasts[weather_time]))]
+            forecast_times = [self.to_datetime(x*1000) for x in forecast_times]
+            color = 'red' if i == len(oat_forecasts)-1 else color_scale[int((i/len(oat_forecasts))*(len(color_scale)-1))]
+            fig.add_trace(
+                go.Scatter(
+                    x=forecast_times,
+                    y=oat_forecasts[weather_time],
+                    mode='lines',
+                    line=dict(color=color, width=2),
+                    opacity=0.2 if i<len(oat_forecasts)-1 else 1,
+                    showlegend=False if i<len(oat_forecasts)-1 else True,
+                    line_shape='hv',
+                    name=f"{self.to_datetime(weather_time*1000).hour}" 
+                )
+            )
+
+        fig.update_layout(
+            title=dict(text='Weather Forecasts', x=0.5, xanchor='center'),
+            plot_bgcolor=self.plot_background_hex,
+            paper_bgcolor=self.plot_background_hex,
+            font_color=self.fontcolor_hex,
+            title_font_color=self.fontcolor_hex,
+            margin=dict(t=30, b=30),
+            xaxis=dict(
+                range=[self.min_timestamp, self.max_timestamp],
+                mirror=True,
+                ticks='outside',
+                showline=True,
+                linecolor=self.fontcolor_hex,
+                showgrid=False
+                ),
+            yaxis=dict(
+                mirror=True,
+                ticks='outside',
+                showline=True,
+                linecolor=self.fontcolor_hex,
+                zeroline=False,
+                showgrid=True, 
+                gridwidth=1, 
+                gridcolor=self.gridcolor_hex, 
+                ),
+            legend=dict(
+                x=0,
+                y=1,
+                xanchor='left',
+                yanchor='top',
+                orientation='h',
+                bgcolor='rgba(0, 0, 0, 0)'
+            )
+        )
+
+        html_buffer10 = io.StringIO()
+        fig.write_html(html_buffer10)
+        html_buffer10.seek(0)
+        print(f"Plot 10 (weather) done in {round(time.time()-plot_start,1)} seconds")
+        return html_buffer10
+    
+    async def get_plot11_price(self, request: DataRequest):
+        plot_start = time.time()
+        fig = go.Figure()
+
+        # Open and read the price CSV file
+        csv_times, csv_dist, csv_lmp = [], [], []
+        with open('elec_prices.csv', newline='', encoding='utf-8') as csvfile:
+            csvreader = csv.reader(csvfile)
+            next(csvreader)
+            for row in csvreader:
+                csv_times.append(row[0])
+                csv_dist.append(float(row[1]))
+                csv_lmp.append(float(row[2])/10)
+        csv_times = [pendulum.from_format(x, 'M/D/YY H:m', tz=self.timezone_str).timestamp() for x in csv_times]
+
+        request_hours = int((request.end_ms - request.start_ms)/1000 / 3600)
+        price_times_s = [request.start_ms/1000 + x*3600 for x in range(request_hours+2+48)]
+        price_values = [lmp for time, dist, lmp in zip(csv_times, csv_dist, csv_lmp) if time in price_times_s]
+        csv_times = [time for time in csv_times if time in price_times_s]
+        price_times = [self.to_datetime(x*1000) for x in csv_times]
+
+        # Plot LMP
+        fig.add_trace(
+            go.Scatter(
+                x=price_times,
+                y=price_values,
+                mode='lines',
+                line=dict(color=self.home_alone_line),
+                opacity=0.8,
+                showlegend=False,
+                line_shape='hv',
+            )
+        )
+
+        # Shading on-peak
+        shapes_list = []
+        for x in price_times:
+            if x==price_times[0] and x.hour in [8,9,10,11]:
+                x1 = x+timedelta(hours=5-(x.hour-7))
+            elif x.hour==7:
+                x1 = x+timedelta(hours=5)
+            elif x==price_times[0] and x.hour in [17,18,19]:
+                x1 = x+timedelta(hours=4-(x.hour-16))
+            elif x.hour==16:
+                x1 = x+timedelta(hours=4)
+            if x.hour in [7,8,9,10,11,16,17,18,19] and x.weekday<5:
+                shapes_list.append(
+                        go.layout.Shape(
+                            type='rect',
+                            x0=x, x1=x1,
+                            y0=0, y1=1,
+                            xref="x", yref="paper",
+                            fillcolor="rgba(0, 100, 255, 0.1)",
+                            layer="below",
+                            line=dict(width=0)
+                        )
+                    )
+        
+        fig.update_layout(yaxis=dict(title='LMP [cts/kWh]'))
+        fig.update_layout(
+            shapes = shapes_list,
+            title=dict(text='Price Forecast', x=0.5, xanchor='center'),
+            plot_bgcolor=self.plot_background_hex,
+            paper_bgcolor=self.plot_background_hex,
+            font_color=self.fontcolor_hex,
+            title_font_color=self.fontcolor_hex,
+            margin=dict(t=30, b=30),
+            xaxis=dict(
+                range=[self.min_timestamp, self.max_timestamp],
+                mirror=True,
+                ticks='outside',
+                showline=True,
+                linecolor=self.fontcolor_hex,
+                showgrid=False
+                ),
+            yaxis=dict(
+                mirror=True,
+                ticks='outside',
+                showline=True,
+                linecolor=self.fontcolor_hex,
+                zeroline=False,
+                showgrid=True, 
+                gridwidth=1, 
+                gridcolor=self.gridcolor_hex, 
+                ),
+            legend=dict(
+                x=0,
+                y=1,
+                xanchor='left',
+                yanchor='top',
+                orientation='h',
+                bgcolor='rgba(0, 0, 0, 0)'
+            )
+        )
+
+        html_buffer11 = io.StringIO()
+        fig.write_html(html_buffer11)
+        html_buffer11.seek(0)
+        print(f"Plot 11 (prices) done in {round(time.time()-plot_start,1)} seconds")   
+        return html_buffer11             
+
 
 if __name__ == "__main__":
     a = VisualizerApi(running_locally=True)
-    a.run()
+    a.start()
