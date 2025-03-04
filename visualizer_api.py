@@ -2,13 +2,14 @@ import io
 import zipfile
 import numpy as np
 import pandas as pd
-from typing import List, Optional
+from typing import List, Optional, Union
 import time
 import asyncio
 import async_timeout
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse
 import dotenv
 import pendulum
 from datetime import timedelta
@@ -18,15 +19,13 @@ from sqlalchemy.orm import sessionmaker
 from fake_config import Settings
 from fake_models import MessageSql
 import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
 import plotly.graph_objects as go
 from analysis import download_excel, get_bids
 import os
-from fastapi.responses import FileResponse
-from typing import Union
 import plotly.colors as pc
 import csv
 import uvicorn
+import traceback
 
 class DataRequest(BaseModel):
     house_alias: str
@@ -55,9 +54,9 @@ class DijkstraRequest(BaseModel):
     time_ms: int
 
 class MessagesRequest(BaseModel):
+    house_alias: str = ""
     password: str
     selected_message_types: List[str]
-    house_alias: str = ""
     start_ms: int 
     end_ms: int
     darkmode: Optional[bool] = False
@@ -71,7 +70,7 @@ class VisualizerApi():
         engine = create_engine(self.settings.db_url.get_secret_value())
         self.Session = sessionmaker(bind=engine)
         self.admin_user_password = self.settings.visualizer_api_password.get_secret_value()
-        self.timezone_str = self.timezone_str
+        self.timezone_str = 'America/New_York'
         self.timeout_seconds = 5*60
         self.max_days_warning = 3
         self.top_states_order = ['HomeAlone', 'Atn', 'Dormant']
@@ -138,6 +137,7 @@ class VisualizerApi():
             return success_status
         
         with self.Session() as session:
+            import time
             querry_start = time.time()
             self.all_raw_messages = session.query(MessageSql).filter(
                 MessageSql.from_alias.like(f'%.{request.house_alias}.%'),
@@ -258,10 +258,10 @@ class VisualizerApi():
                     print(f"Warning: {state} is not a known top state")
                     continue
                 if state not in self.top_states:
-                    self.top_states[state] = {'time':[], 'values':[]}
-                self.top_states['all']['time'].append(time)
+                    self.top_states[state] = {'times':[], 'values':[]}
+                self.top_states['all']['times'].append(time)
                 self.top_states['all']['values'].append(self.top_states_order.index(state))
-                self.top_states[state]['time'].append(time)
+                self.top_states[state]['times'].append(time)
                 self.top_states[state]['values'].append(self.top_states_order.index(state))
         if "Dormant" in self.top_states:
             self.top_states['Admin'] = self.top_states['Dormant']
@@ -290,10 +290,10 @@ class VisualizerApi():
                     print(f"Warning: {state} is not a known AA state")
                     continue
                 if state not in self.aa_states:
-                    self.aa_states[state] = {'time':[], 'values':[]}
-                self.aa_states['all']['time'].append(time)
+                    self.aa_states[state] = {'times':[], 'values':[]}
+                self.aa_states['all']['times'].append(time)
                 self.aa_states['all']['values'].append(self.aa_states_order.index(state))
-                self.aa_states[state]['time'].append(time)
+                self.aa_states[state]['times'].append(time)
                 self.aa_states[state]['values'].append(self.aa_states_order.index(state))
 
         # Weather forecasts
@@ -376,12 +376,13 @@ class VisualizerApi():
                     "Time created": times_created,
                     "SummaryTable": summary_table
                 }
+            
         except asyncio.TimeoutError:
             warning_message = "The data request timed out. Please try loading a smaller amount of data at a time."
             print(warning_message)
             return {"success": False, "message": warning_message, "reload": False}
         except Exception as e:
-            warning_message = f"An error occurred: {str(e)}"
+            warning_message = f"An error occurred: {traceback.format_exc()}"
             print(warning_message)
             return {"success": False, "message": warning_message, "reload": False}
         
@@ -466,34 +467,22 @@ class VisualizerApi():
                 csv_buffer.write(filename+'\n')
                 df.to_csv(csv_buffer, index=False)
                 csv_buffer.seek(0)
-                response = StreamingResponse(
+                return StreamingResponse(
                     iter([csv_buffer.getvalue()]),
                     media_type="text/csv",
                     headers={"Content-Disposition": f"attachment; filename={filename}"}
                 )
-                return response
 
         except asyncio.TimeoutError:
             warning_message = "The data request timed out. Please try loading a smaller amount of data at a time."
             print(warning_message)
             return {"success": False, "message": warning_message, "reload": False}
         except Exception as e:
-            warning_message = f"An error occurred: {str(e)}"
+            warning_message = f"An error occurred: {traceback.format_exc()}"
             print(warning_message)
             return {"success": False, "message": warning_message, "reload": False}
         
-
-
-
-
-
-
-
-
-
-
-
-
+    # TODO!!!
     async def get_dijkstra(self, request: DijkstraRequest):
         download_excel(request.house_alias, request.time_ms) 
         if os.path.exists('result.xlsx'):
@@ -506,21 +495,10 @@ class VisualizerApi():
         else:
             return {"error": "File not found"}
         
-
     # TODO!!
     async def get_bid_plots(self, request):
         zip_bids = get_bids(request.house_alias, request.start_ms, request.end_ms)
         return zip_bids
-    
-
-        
-
-
-
-
-
-
-
 
     async def get_plots(self, request: DataRequest):
         try:
@@ -544,32 +522,42 @@ class VisualizerApi():
                 # Show markers if the user selected the "show points" option
                 self.line_style = 'lines+markers' if 'show-points'in request.selected_channels else 'lines'
 
-                # Get all plots
-                plotting_start = time.time()
-                html_buffer1 = await self.get_plot1_hp(request)
-                if time.time() - plotting_start > self.timeout_seconds:
-                    raise asyncio.TimeoutError('Timed out')
-                html_buffer2 = await self.get_plot2_dist(request)
-                if time.time() - plotting_start > self.timeout_seconds:
-                    raise asyncio.TimeoutError('Timed out')
-                html_buffer3 = await self.get_plot3_heatcalls(request)
-                if time.time() - plotting_start > self.timeout_seconds:
-                    raise asyncio.TimeoutError('Timed out')
-                
-                # Zip plots and return
+                # Get plots, zip and return
                 zip_buffer = io.BytesIO()
                 with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
-                    zip_file.writestr('plot1.html', html_buffer1.read())
-                    zip_file.writestr('plot2.html', html_buffer2.read())
-                    zip_file.writestr('plot3.html', html_buffer3.read())
-                    zip_file.writestr('plot4.html', html_buffer4.read())
-                    zip_file.writestr('plot5.html', html_buffer5.read())
-                    zip_file.writestr('plot6.html', html_buffer6.read())
-                    zip_file.writestr('plot7.html', html_buffer7.read())
-                    zip_file.writestr('plot8.html', html_buffer8.read())
-                    zip_file.writestr('plot9.html', html_buffer9.read())
-                    zip_file.writestr('plot10.html', html_buffer10.read())
-                    zip_file.writestr('plot11.html', html_buffer11.read())
+                    html_buffer = await self.plot_heatpump(request)
+                    zip_file.writestr('plot1.html', html_buffer.read())
+                    
+                    html_buffer = await self.plot_distribution(request)
+                    zip_file.writestr('plot2.html', html_buffer.read())
+                    
+                    html_buffer = await self.plot_heatcalls(request)
+                    zip_file.writestr('plot3.html', html_buffer.read())
+                    
+                    html_buffer = await self.plot_zones(request)
+                    zip_file.writestr('plot4.html', html_buffer.read())
+
+                    html_buffer = await self.plot_buffer(request)
+                    zip_file.writestr('plot5.html', html_buffer.read())
+                    
+                    html_buffer = await self.plot_storage(request)
+                    zip_file.writestr('plot6.html', html_buffer.read())
+                    
+                    html_buffer = await self.plot_top_state(request)
+                    zip_file.writestr('plot7.html', html_buffer.read())
+                    
+                    html_buffer = await self.plot_ha_state(request)
+                    zip_file.writestr('plot8.html', html_buffer.read())
+                    
+                    html_buffer = await self.plot_aa_state(request)
+                    zip_file.writestr('plot9.html', html_buffer.read())
+                    
+                    html_buffer = await self.plot_weather(request)
+                    zip_file.writestr('plot10.html', html_buffer.read())
+                    
+                    html_buffer = await self.plot_prices(request)
+                    zip_file.writestr('plot11.html', html_buffer.read())
+                    
                 zip_buffer.seek(0)
 
                 return StreamingResponse(
@@ -583,15 +571,11 @@ class VisualizerApi():
             print(warning_message)
             return {"success": False, "message": warning_message, "reload": False}
         except Exception as e:
-            warning_message = f"An error occurred: {str(e)}"
+            warning_message = f"An error occurred: {traceback.format_exc()}"
             print(warning_message)
             return {"success": False, "message": warning_message, "reload": False}
         
-        
-
-
-
-    async def get_plot1_hp(self, request: DataRequest):
+    async def plot_heatpump(self, request: DataRequest):
         plot_start = time.time()
         fig = go.Figure()
         # Temperatures
@@ -741,14 +725,13 @@ class VisualizerApi():
                 bgcolor='rgba(0, 0, 0, 0)'
                 )
             )
-        html_buffer1 = io.StringIO()
-        fig.write_html(html_buffer1)
-        html_buffer1.seek(0)
-        print(f"Plot 1 (heat pump) done in {round(time.time()-plot_start,1)} seconds")
-        return html_buffer1
+        html_buffer = io.StringIO()
+        fig.write_html(html_buffer)
+        html_buffer.seek(0)
+        print(f"Heat pump plot done in {round(time.time()-plot_start,1)} seconds")
+        return html_buffer
 
-        
-    async def get_plot2_dist(self, request: DataRequest):
+    async def plot_distribution(self, request: DataRequest):
         plot_start = time.time()
         fig = go.Figure()
         # Temperature
@@ -860,28 +843,28 @@ class VisualizerApi():
                 bgcolor='rgba(0, 0, 0, 0)'
                 )
             )
-        html_buffer2 = io.StringIO()
-        fig.write_html(html_buffer2)
-        html_buffer2.seek(0) 
-        print(f"Plot 2 (distribution) done in {round(time.time()-plot_start,1)} seconds")
-        return html_buffer2
+        html_buffer = io.StringIO()
+        fig.write_html(html_buffer)
+        html_buffer.seek(0) 
+        print(f"Distribution plot done in {round(time.time()-plot_start,1)} seconds")
+        return html_buffer
     
-    async def get_plot3_heatcalls(self, request: DataRequest):
+    async def plot_heatcalls(self, request: DataRequest):
         plot_start = time.time()
         fig = go.Figure()
         if 'zone-heat-calls' in request.selected_channels:
             for zone in self.channels_by_zone:
+                whitewire_ch = self.channels_by_zone[zone]['whitewire']
+                zone_number = int(whitewire_ch[4])
                 zone_color = self.zone_color[zone_number-1]
                 # Interpret whitewire readings as active or not based on threshold
                 if request.house_alias in self.whitewire_threshold_watts:
                     threshold = self.whitewire_threshold_watts[request.house_alias]
                 else:
                     threshold = self.whitewire_threshold_watts['default']
-                whitewire_ch = self.channels_by_zone[zone]['whitewire']
                 self.channels[whitewire_ch]['values'] = [
                     int(abs(x)>threshold) for x in self.channels[whitewire_ch]['values']
                     ]
-                zone_number = int(whitewire_ch[4])
                 ww_times = self.channels[whitewire_ch]['times']
                 ww_values = self.channels[whitewire_ch]['values']
                 # TODO: check if this is useful and why
@@ -1001,13 +984,13 @@ class VisualizerApi():
                 bgcolor='rgba(0, 0, 0, 0)'
             )
         )
-        html_buffer3 = io.StringIO()
-        fig.write_html(html_buffer3)
-        html_buffer3.seek(0)
-        print(f"Plot 3 (heat calls) done in {round(time.time()-plot_start,1)} seconds")
-        return html_buffer3
+        html_buffer = io.StringIO()
+        fig.write_html(html_buffer)
+        html_buffer.seek(0)
+        print(f"Heat calls plot done in {round(time.time()-plot_start,1)} seconds")
+        return html_buffer
     
-    async def get_plot4_zones(self, request: DataRequest):
+    async def plot_zones(self, request: DataRequest):
         plot_start = time.time()
         fig = go.Figure()
 
@@ -1015,23 +998,25 @@ class VisualizerApi():
         min_zones, max_zones = 45, 80
         for zone in self.channels_by_zone:
             if 'temp' in self.channels_by_zone[zone]:
+                temp_channel = self.channels_by_zone[zone]['temp']
                 fig.add_trace(
                     go.Scatter(
-                        x=self.channels_by_zone[zone]['temp']['times'], 
-                        y=self.channels_by_zone[zone]['temp']['values'], 
+                        x=self.channels[temp_channel]['times'], 
+                        y=self.channels[temp_channel]['values'], 
                         mode=self.line_style, 
                         opacity=0.7,
                         line=dict(color=self.zone_color[int(zone[4])-1], dash='solid'),
                         name=self.channels_by_zone[zone]['temp'].replace('-temp','')
                         )
                     )
-                min_zones = min(min_zones, min(self.channels_by_zone[zone]['temp']['values']))
-                max_zones = max(max_zones, max(self.channels_by_zone[zone]['temp']['values']))
+                min_zones = min(min_zones, min(self.channels[temp_channel]['values']))
+                max_zones = max(max_zones, max(self.channels[temp_channel]['values']))
             if 'set' in self.channels_by_zone[zone]:
+                set_channel = self.channels_by_zone[zone]['set']
                 fig.add_trace(
                     go.Scatter(
-                        x=self.channels_by_zone[zone]['set']['times'], 
-                        y=self.channels_by_zone[zone]['set']['values'], 
+                        x=self.channels[set_channel]['times'], 
+                        y=self.channels[set_channel]['values'], 
                         mode=self.line_style, 
                         opacity=0.7,
                         line=dict(color=self.zone_color[int(zone[4])-1], dash='dash'),
@@ -1039,8 +1024,8 @@ class VisualizerApi():
                         showlegend=False
                         )
                     )
-                min_zones = min(min_zones, min(self.channels_by_zone[zone]['set']['values']))
-                max_zones = max(max_zones, max(self.channels_by_zone[zone]['set']['values']))
+                min_zones = min(min_zones, min(self.channels[set_channel]['values']))
+                max_zones = max(max_zones, max(self.channels[set_channel]['values']))
 
         # Outside air temperature
         min_oat, max_oat = 70, 80    
@@ -1107,13 +1092,13 @@ class VisualizerApi():
                 bgcolor='rgba(0, 0, 0, 0)'
                 )
             )
-        html_buffer4 = io.StringIO()
-        fig.write_html(html_buffer4)
-        html_buffer4.seek(0)
-        print(f"Plot 4 (zones) done in {round(time.time()-plot_start,1)} seconds")
-        return html_buffer4
+        html_buffer = io.StringIO()
+        fig.write_html(html_buffer)
+        html_buffer.seek(0)
+        print(f"Zones plot done in {round(time.time()-plot_start,1)} seconds")
+        return html_buffer
     
-    async def get_plot5_buffer(self, request: DataRequest):
+    async def plot_buffer(self, request: DataRequest):
         plot_start = time.time()
         fig = go.Figure()
 
@@ -1206,13 +1191,13 @@ class VisualizerApi():
                 )
             )
 
-        html_buffer5 = io.StringIO()
-        fig.write_html(html_buffer5)
-        html_buffer5.seek(0)
-        print(f"Plot 5 (buffer) done in {round(time.time()-plot_start,1)} seconds")
-        return html_buffer5
+        html_buffer = io.StringIO()
+        fig.write_html(html_buffer)
+        html_buffer.seek(0)
+        print(f"Buffer plot done in {round(time.time()-plot_start,1)} seconds")
+        return html_buffer
 
-    async def get_plot6_storage(self, request: DataRequest):
+    async def plot_storage(self, request: DataRequest):
         plot_start = time.time()
         fig = go.Figure()
 
@@ -1391,13 +1376,13 @@ class VisualizerApi():
             )
         )
 
-        html_buffer6 = io.StringIO()
-        fig.write_html(html_buffer6)
-        html_buffer6.seek(0)
-        print(f"Plot 6 (storage) done in {round(time.time()-plot_start,1)} seconds")
-        return html_buffer6
+        html_buffer = io.StringIO()
+        fig.write_html(html_buffer)
+        html_buffer.seek(0)
+        print(f"Storage plot done in {round(time.time()-plot_start,1)} seconds")
+        return html_buffer
     
-    async def get_plot7_top_state(self, request: DataRequest):
+    async def plot_top_state(self, request: DataRequest):
         plot_start = time.time()
         fig = go.Figure()
 
@@ -1469,13 +1454,13 @@ class VisualizerApi():
             )
         )
         
-        html_buffer7 = io.StringIO()
-        fig.write_html(html_buffer7)
-        html_buffer7.seek(0)
-        print(f"Plot 7 (top state) done in {round(time.time()-plot_start,1)} seconds")
-        return html_buffer7
+        html_buffer = io.StringIO()
+        fig.write_html(html_buffer)
+        html_buffer.seek(0)
+        print(f"Top state plot done in {round(time.time()-plot_start,1)} seconds")
+        return html_buffer
     
-    async def get_plot8_ha_state(self, request: DataRequest):
+    async def plot_ha_state(self, request: DataRequest):
         plot_start = time.time()
         fig = go.Figure()
 
@@ -1551,13 +1536,13 @@ class VisualizerApi():
             )
         )
 
-        html_buffer8 = io.StringIO()
-        fig.write_html(html_buffer8)
-        html_buffer8.seek(0)
-        print(f"Plot 8 (HA state) done in {round(time.time()-plot_start,1)} seconds")
-        return html_buffer8
+        html_buffer = io.StringIO()
+        fig.write_html(html_buffer)
+        html_buffer.seek(0)
+        print(f"HA state plot done in {round(time.time()-plot_start,1)} seconds")
+        return html_buffer
     
-    async def get_plot9_aa_state(self, request: DataRequest):
+    async def plot_aa_state(self, request: DataRequest):
         plot_start = time.time()
         fig = go.Figure()
 
@@ -1633,14 +1618,14 @@ class VisualizerApi():
             )
         )
 
-        html_buffer9 = io.StringIO()
-        fig.write_html(html_buffer9)
-        html_buffer9.seek(0)
-        print(f"Plot 9 (AA state) done in {round(time.time()-plot_start,1)} seconds")
-        return html_buffer9
+        html_buffer = io.StringIO()
+        fig.write_html(html_buffer)
+        html_buffer.seek(0)
+        print(f"AA state plot done in {round(time.time()-plot_start,1)} seconds")
+        return html_buffer
     
 
-    async def get_plot10_weather(self, request: DataRequest):
+    async def plot_weather(self, request: DataRequest):
         plot_start = time.time()
         fig = go.Figure()
                 
@@ -1703,13 +1688,13 @@ class VisualizerApi():
             )
         )
 
-        html_buffer10 = io.StringIO()
-        fig.write_html(html_buffer10)
-        html_buffer10.seek(0)
-        print(f"Plot 10 (weather) done in {round(time.time()-plot_start,1)} seconds")
-        return html_buffer10
+        html_buffer = io.StringIO()
+        fig.write_html(html_buffer)
+        html_buffer.seek(0)
+        print(f"Weather plot done in {round(time.time()-plot_start,1)} seconds")
+        return html_buffer
     
-    async def get_plot11_price(self, request: DataRequest):
+    async def plot_prices(self, request: DataRequest):
         plot_start = time.time()
         fig = go.Figure()
 
@@ -1754,7 +1739,7 @@ class VisualizerApi():
                 x1 = x+timedelta(hours=4-(x.hour-16))
             elif x.hour==16:
                 x1 = x+timedelta(hours=4)
-            if x.hour in [7,8,9,10,11,16,17,18,19] and x.weekday<5:
+            if x.hour in [7,8,9,10,11,16,17,18,19] and x.weekday()<5:
                 shapes_list.append(
                         go.layout.Shape(
                             type='rect',
@@ -1804,11 +1789,11 @@ class VisualizerApi():
             )
         )
 
-        html_buffer11 = io.StringIO()
-        fig.write_html(html_buffer11)
-        html_buffer11.seek(0)
-        print(f"Plot 11 (prices) done in {round(time.time()-plot_start,1)} seconds")   
-        return html_buffer11             
+        html_buffer = io.StringIO()
+        fig.write_html(html_buffer)
+        html_buffer.seek(0)
+        print(f"Prices plot done in {round(time.time()-plot_start,1)} seconds")   
+        return html_buffer             
 
 
 if __name__ == "__main__":
