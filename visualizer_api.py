@@ -58,7 +58,6 @@ class VisualizerApi():
         self.admin_user_password = self.settings.visualizer_api_password.get_secret_value()
         self.timezone_str = 'America/New_York'
         self.timeout_seconds = 5*60
-        self.max_days_warning = 3
         self.top_states_order = ['HomeAlone', 'Atn', 'Dormant']
         self.ha_states_order = [
             'HpOffStoreDischarge', 'HpOffStoreOff', 'HpOnStoreOff', 
@@ -107,7 +106,7 @@ class VisualizerApi():
         if not isinstance(request, MessagesRequest) and request.house_alias == '':
             return {"success": False, "message": "Please enter a house alias.", "reload": True}
         if isinstance(request, Union[DataRequest, CsvRequest]) and not request.confirm_with_user:
-            if (request.end_ms - request.start_ms)/1000/3600/24 > self.max_days_warning:
+            if (request.end_ms - request.start_ms)/1000/3600/24 > 3:
                 warning_message = f"That's a lot of data! Are you sure you want to proceed?"
                 return {"success": False, "message": warning_message, "reload": False, "confirm_with_user": True}
         if not self.running_locally: 
