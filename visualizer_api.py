@@ -79,7 +79,7 @@ class VisualizerApi():
         self.app.post("/plots")(self.get_plots)
         self.app.post("/csv")(self.get_csv)
         self.app.post("/messages")(self.get_messages)
-        self.app.post("/flo")(self.get_flo) # TODO!!!
+        self.app.post("/flo")(self.get_flo)
         uvicorn.run(self.app, host="0.0.0.0", port=8000)
 
     def to_datetime(self, time_ms):
@@ -171,8 +171,6 @@ class VisualizerApi():
                     for dc in message.payload['DataChannelList']:
                         if dc['Id'] == channel['ChannelId']:
                             channel_name = dc['Name']
-                if channel_name=='oat' and 'oak' in request.house_alias: #TODO: remove?
-                    continue
                 if not channel['ValueList'] or not channel['ScadaReadTimeUnixMsList']:
                     continue
                 if len(channel['ValueList'])!=len(channel['ScadaReadTimeUnixMsList']):
@@ -227,9 +225,6 @@ class VisualizerApi():
                     self.channels_by_zone[zone_number]['temp'] = channel_name
                 elif 'set' in channel_name:
                     self.channels_by_zone[zone_number]['set'] = channel_name
-                # TODO: delete and have a convert function, gets self.channels to the right units
-                if 'state' not in channel_name and 'whitewire' not in channel_name: 
-                    self.channels[channel_name]['values'] = [x/1000 for x in self.channels[channel_name]['values']]
 
         # Relays
         relays = {}
@@ -456,7 +451,7 @@ class VisualizerApi():
                 formatted_start_date = start_date.to_iso8601_string()[:16].replace('T', '-')
                 formatted_end_date = end_date.to_iso8601_string()[:16].replace('T', '-')
                 filename = f'{request.house_alias}_{request.timestep}s_{formatted_start_date}-{formatted_end_date}.csv'.replace(':','_')
-                
+
                 # Send back as a CSV
                 csv_buffer = io.StringIO()
                 csv_buffer.write(filename+'\n')
@@ -953,24 +948,12 @@ class VisualizerApi():
                     ]
                 ww_times = self.channels[whitewire_ch]['times']
                 ww_values = self.channels[whitewire_ch]['values']
-                # TODO: check if this is useful and why
-                fig.add_trace(
-                    go.Scatter(
-                        x=[ww_times[0], ww_times[0]],
-                        y=[zone_number-1, zone_number],
-                        mode='lines',
-                        line=dict(color=zone_color, width=2),
-                        opacity=0, # Has no opacity
-                        name=self.channels_by_zone[zone]['state'].replace('-state',''),
-                        showlegend=False,
-                    )
-                )
                 # Plot heat calls as periods
                 last_was_1 = False
                 heatcall_period_start = None
                 for i in range(len(ww_values)):
                     if ww_values[i] == 1:
-                        # Start a heat call period #TODO: why the i>0?
+                        # Start a heat call period
                         if not last_was_1 or 'show-points' in request.selected_channels and i>0: 
                             fig.add_trace(
                                 go.Scatter(
@@ -1088,21 +1071,21 @@ class VisualizerApi():
                 fig.add_trace(
                     go.Scatter(
                         x=self.channels[temp_channel]['times'], 
-                        y=self.channels[temp_channel]['values'], 
+                        y=[x/1000 for x in self.channels[temp_channel]['values']], 
                         mode=self.line_style, 
                         opacity=0.7,
                         line=dict(color=self.zone_color[int(zone[4])-1], dash='solid'),
                         name=self.channels_by_zone[zone]['temp'].replace('-temp','')
                         )
                     )
-                min_zones = min(min_zones, min(self.channels[temp_channel]['values']))
-                max_zones = max(max_zones, max(self.channels[temp_channel]['values']))
+                min_zones = min(min_zones, min(self.channels[temp_channel]['values'])/1000)
+                max_zones = max(max_zones, max(self.channels[temp_channel]['values'])/1000)
             if 'set' in self.channels_by_zone[zone]:
                 set_channel = self.channels_by_zone[zone]['set']
                 fig.add_trace(
                     go.Scatter(
                         x=self.channels[set_channel]['times'], 
-                        y=self.channels[set_channel]['values'], 
+                        y=[x/1000 for x in self.channels[set_channel]['values']], 
                         mode=self.line_style, 
                         opacity=0.7,
                         line=dict(color=self.zone_color[int(zone[4])-1], dash='dash'),
@@ -1110,8 +1093,8 @@ class VisualizerApi():
                         showlegend=False
                         )
                     )
-                min_zones = min(min_zones, min(self.channels[set_channel]['values']))
-                max_zones = max(max_zones, max(self.channels[set_channel]['values']))
+                min_zones = min(min_zones, min(self.channels[set_channel]['values'])/1000)
+                max_zones = max(max_zones, max(self.channels[set_channel]['values'])/1000)
 
         # Outside air temperature
         min_oat, max_oat = 70, 80    
