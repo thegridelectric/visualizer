@@ -514,12 +514,11 @@ class VisualizerApi():
         print("Done.")
         
         if os.path.exists('result.xlsx'):
-            response = FileResponse(
+            return FileResponse(
                 'result.xlsx',
                 media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                 headers={"Content-Disposition": "attachment; filename=file.xlsx"}
                 )
-            return response
         else:
             return {"error": "File not found"}
         
@@ -598,7 +597,6 @@ class VisualizerApi():
         try:
             async with async_timeout.timeout(self.timeout_seconds):
                 error = await asyncio.to_thread(self.get_data, request)
-                print(error)
                 if error:
                     return error
                 
