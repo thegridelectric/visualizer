@@ -1,52 +1,45 @@
 import io
+import os
+import csv
+import time
+import dotenv
+import uvicorn
 import zipfile
+import pendulum
+import traceback
 import numpy as np
 import pandas as pd
+from datetime import timedelta
+from pydantic import BaseModel
 from typing import List, Optional, Union
-import time
 import asyncio
 import async_timeout
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.responses import FileResponse
-import dotenv
-import pendulum
-from datetime import timedelta
-from pydantic import BaseModel
-from sqlalchemy import create_engine, asc, or_, and_
+from sqlalchemy import create_engine, asc, or_, and_, desc
 from sqlalchemy.orm import sessionmaker
-from fake_config import Settings
-from fake_models import MessageSql
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
-from analysis import download_excel, get_bids
-import os
 import plotly.colors as pc
-import csv
-import uvicorn
-import traceback
-
+from fake_config import Settings
+from fake_models import MessageSql
+from flo import DGraph
+from hinge import FloHinge
+from named_types import FloParamsHouse0
+    
 class DataRequest(BaseModel):
     house_alias: str
     password: str
     start_ms: int
     end_ms: int
     selected_channels: List[str]
-    ip_address: Optional[str] = ''
-    user_agent: Optional[str] = ''
-    timezone: Optional[str] = ''
-    continue_option: Optional[bool] = False
+    confirm_with_user: Optional[bool] = False
     darkmode: Optional[bool] = False
 
-class CsvRequest(BaseModel):
-    house_alias: str
-    password: str
-    start_ms: int
-    end_ms: int
-    selected_channels: List[str]
+class CsvRequest(DataRequest):
     timestep: int
-    continue_option: Optional[bool] = False
 
 class DijkstraRequest(BaseModel):
     house_alias: str
@@ -56,9 +49,9 @@ class DijkstraRequest(BaseModel):
 class MessagesRequest(BaseModel):
     house_alias: str = ""
     password: str
-    selected_message_types: List[str]
     start_ms: int 
     end_ms: int
+    selected_message_types: List[str]
     darkmode: Optional[bool] = False
 
 
@@ -91,8 +84,9 @@ class VisualizerApi():
             allow_methods=["*"],
         )
         self.app.post("/plots")(self.get_plots)
-        self.app.post("/csvs")(self.get_csv)
+        self.app.post("/csv")(self.get_csv)
         self.app.post("/messages")(self.get_messages)
+        self.app.post("/flo")(self.get_flo) # TODO!!!
         uvicorn.run(self.app, host="0.0.0.0", port=8000)
 
     def to_datetime(self, time_ms):
@@ -118,27 +112,32 @@ class VisualizerApi():
             return {"success": False, "message": "Wrong password.", "reload": True}
         if not isinstance(request, MessagesRequest) and request.house_alias == '':
             return {"success": False, "message": "Please enter a house alias.", "reload": True}
-        if isinstance(request, Union[DataRequest, CsvRequest]) and not request.continue_option:
-            if (request.end_ms - request.start_ms)/1000/60/60/24 > self.max_days_warning:
+        if isinstance(request, Union[DataRequest, CsvRequest]) and not request.confirm_with_user:
+            if (request.end_ms - request.start_ms)/1000/3600/24 > self.max_days_warning:
                 warning_message = f"That's a lot of data! Are you sure you want to proceed?"
-                return {"success": False, "message": warning_message, "reload": False, "continue_option": True}
+                return {"success": False, "message": warning_message, "reload": False, "confirm_with_user": True}
         if not self.running_locally: 
-            if (request.end_ms-request.start_ms)/1000/60/60/24 > 5 and isinstance(request, isinstance(request, DataRequest, MessagesRequest)):
+            if (isinstance(request, DataRequest) and not isinstance(request, CsvRequest) 
+                and (request.end_ms-request.start_ms)/1000/3600/24 > 5):
                 warning_message = "Plotting data for this many days is not permitted. Please reduce the range and try again."
                 return {"success": False, "message": warning_message, "reload": False}
-            if (request.end_ms - request.start_ms)/1000/60/60/24 > 21 and isinstance(request, CsvRequest):
+            if isinstance(request, CsvRequest) and (request.end_ms-request.start_ms)/1000/3600/24 > 21:
                 warning_message = "Downloading data for this many days is not permitted. Please reduce the range and try again."
                 return {"success": False, "message": warning_message, "reload": False}
-        return {"success": True, "message": "", "reload": False}
+            if isinstance(request, MessagesRequest) and (request.end_ms-request.start_ms)/1000/3600/24 > 31:
+                warning_message = "Downloading messages for this many days is not permitted. Please reduce the range and try again."
+                return {"success": False, "message": warning_message, "reload": False}
+        return None
     
     def get_data(self, request: Union[DataRequest, CsvRequest, DijkstraRequest]):
-        success_status = self.check_request(request)
-        if not success_status['success'] or request.selected_channels==['bids']:
-            return success_status
+        error = self.check_request(request)
+        if error or request.selected_channels==['bids']:
+            return error
         
         with self.Session() as session:
             import time
             querry_start = time.time()
+            print("Querying journaldb...")
             self.all_raw_messages = session.query(MessageSql).filter(
                 MessageSql.from_alias.like(f'%.{request.house_alias}.%'),
                 MessageSql.message_persisted_ms <= request.end_ms,
@@ -306,12 +305,12 @@ class VisualizerApi():
         return None
             
     async def get_messages(self, request: MessagesRequest):
-        success_status = self.check_request(request)
-        if not success_status['success']:
-            return success_status
+        error = self.check_request(request)
+        if error:
+            return error
         try:
             async with async_timeout.timeout(self.timeout_seconds):
-                
+                print("Querrying journaldb for messages...")
                 with self.Session() as session:
                     messages: List[MessageSql] = session.query(MessageSql).filter(
                         MessageSql.from_alias.like(f'%.{request.house_alias}.%'),
@@ -320,6 +319,7 @@ class VisualizerApi():
                         MessageSql.message_persisted_ms <= request.end_ms,
                     ).order_by(asc(MessageSql.message_persisted_ms)).all()
                 if not messages:
+                    print("No messages found.")
                     return {"success": False, "message": f"No data found.", "reload":False}
                 
                 # Collecting all messages
@@ -440,6 +440,7 @@ class VisualizerApi():
                 csv_times = [x.tz_convert(self.timezone_str).replace(tzinfo=None) for x in csv_times]
                 
                 # Re-sample the data to the desired time step
+                print(f"Sampling data with {request.timestep}-second time step...")
                 request_start = time.time()
                 csv_data = {'timestamps': csv_times}
                 for channel in channels_to_export:
@@ -454,6 +455,7 @@ class VisualizerApi():
                         )
                     csv_data[channel] = list(sampled['values'])
                 df = pd.DataFrame(csv_data)
+                print("Done.")
 
                 # Build file name
                 start_date = self.to_datetime(request.start_ms) 
@@ -482,9 +484,35 @@ class VisualizerApi():
             print(warning_message)
             return {"success": False, "message": warning_message, "reload": False}
         
-    # TODO!!!
-    async def get_dijkstra(self, request: DijkstraRequest):
-        download_excel(request.house_alias, request.time_ms) 
+    async def get_flo(self, request: DijkstraRequest):
+        print("Finding latest FLO run...")
+        with self.Session() as session:
+            flo_params_msg = session.query(MessageSql).filter(
+                MessageSql.message_type_name == "flo.params.house0",
+                MessageSql.from_alias.like(f'%{request.house_alias}%'),
+                MessageSql.message_persisted_ms >= request.time_ms - 48*3600*1000,
+                MessageSql.message_persisted_ms <= request.time_ms,
+            ).order_by(desc(MessageSql.message_persisted_ms)).first()
+        print(f"Found FLO run at {self.to_datetime(flo_params_msg.message_persisted_ms)}")
+
+        if not flo_params_msg:
+            print(f"Could not find a FLO run in the 48 hours prior to {self.to_datetime(request.time_ms)}")
+            if os.path.exists('result.xlsx'):
+                os.remove('result.xlsx')
+            return
+
+        print("Running Dijkstra and saving analysis to excel...")
+        houses_in_hinge = []
+        flo_params = FloParamsHouse0(**flo_params_msg.payload)
+        if request.house_alias in houses_in_hinge:
+            h = FloHinge(flo_params, hinge_hours=5, num_nodes=[10,3,3,3,3])
+            h.export_to_excel()
+        else:
+            g = DGraph(flo_params)
+            g.solve_dijkstra()
+            g.export_to_excel()
+        print("Done.")
+        
         if os.path.exists('result.xlsx'):
             response = FileResponse(
                 'result.xlsx',
@@ -495,23 +523,90 @@ class VisualizerApi():
         else:
             return {"error": "File not found"}
         
-    # TODO!!
-    async def get_bid_plots(self, request):
-        zip_bids = get_bids(request.house_alias, request.start_ms, request.end_ms)
-        return zip_bids
+    async def get_bids(self, request: DataRequest):
+        print("Getting bids...")
+        
+        with self.Session() as session:
+            flo_params_messages = session.query(MessageSql).filter(
+                MessageSql.message_type_name == "flo.params.house0",
+                MessageSql.from_alias.like(f'%{request.house_alias}%'),
+                MessageSql.message_persisted_ms >= request.start_ms,
+                MessageSql.message_persisted_ms <= request.end_ms,
+            ).order_by(desc(MessageSql.payload['StartUnixS'])).all()
+            flo_params_messages = [FloParamsHouse0(**x.payload) for x in flo_params_messages]
+        print(f"Found {len(flo_params_messages)} FLOs for {request.house_alias}")
+
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
+            for i in range(len(flo_params_messages)):
+                g = DGraph(flo_params_messages[i])
+                g.solve_dijkstra()
+                pq_pairs = g.generate_bid()
+                prices = [x.PriceTimes1000 for x in pq_pairs]
+                quantities = [x.QuantityTimes1000/1000 for x in pq_pairs]
+                # To plot quantities on x-axis and prices on y-axis
+                ps, qs = [], []
+                index_p = 0
+                expected_price_usd_mwh = g.params.elec_price_forecast[0] * 10
+                for p in sorted(list(range(min(prices), max(prices)+1)) + [expected_price_usd_mwh*1000]):
+                    ps.append(p/1000)
+                    if index_p+1 < len(prices) and p >= prices[index_p+1]:
+                        index_p += 1
+                    if p == expected_price_usd_mwh*1000:
+                        interesection = (quantities[index_p], expected_price_usd_mwh)
+                    qs.append(quantities[index_p])
+                # Plot
+                plt.plot(qs, ps, label='demand (bid)')
+                prices = [x.PriceTimes1000/1000 for x in pq_pairs]
+                plt.scatter(quantities, prices)
+                plt.plot(
+                    [min(quantities)-1, max(quantities)+1],[expected_price_usd_mwh]*2, 
+                    label="supply (expected market price)"
+                    )
+                plt.scatter(interesection[0], interesection[1])
+                plt.text(
+                    interesection[0]+0.25, interesection[1]+15, 
+                    f'({round(interesection[0],3)}, {round(interesection[1],1)})', 
+                    fontsize=10, color='tab:orange'
+                    )
+                plt.xticks(quantities)
+                if min([abs(x-expected_price_usd_mwh) for x in prices]) < 5:
+                    plt.yticks(prices)
+                else:
+                    plt.yticks(prices + [expected_price_usd_mwh])
+                plt.ylabel("Price [USD/MWh]")
+                plt.xlabel("Quantity [kWh]")
+                plt.title(self.to_datetime(g.params.start_time*1000).strftime('%Y-%m-%d %H:%M'))
+                plt.grid(alpha=0.3)
+                plt.legend()
+                plt.tight_layout()
+                # Append plot to zip
+                img_buf = io.BytesIO()
+                plt.savefig(img_buf, format='png', dpi=300)
+                img_buf.seek(0)
+                zip_file.writestr(f'pq_plot_{i}.png', img_buf.getvalue())
+                plt.close()
+
+        zip_buffer.seek(0)
+        return StreamingResponse(
+            zip_buffer, 
+            media_type='application/zip', 
+            headers={"Content-Disposition": "attachment; filename=plots.zip"}
+            )
 
     async def get_plots(self, request: DataRequest):
         try:
             async with async_timeout.timeout(self.timeout_seconds):
                 error = await asyncio.to_thread(self.get_data, request)
+                print(error)
                 if error:
                     return error
                 
-                # TODO!!
+                # If the request is just to plot bids
                 if request.selected_channels == ['bids']: 
-                    self.get_bid_plots(request)
-                    return
-                    
+                    zip_bids = await self.get_bids(request)
+                    return zip_bids
+                
                 # Plot colors depend on user's dark mode settings
                 self.plot_background_hex = '#222222' if request.darkmode else 'white'
                 self.gridcolor_hex = '#424242' if request.darkmode else 'LightGray'
@@ -1624,8 +1719,7 @@ class VisualizerApi():
         fig.write_html(html_buffer)
         html_buffer.seek(0)
         print(f"AA state plot done in {round(time.time()-plot_start,1)} seconds")
-        return html_buffer
-    
+        return html_buffer 
 
     async def plot_weather(self, request: DataRequest):
         plot_start = time.time()
