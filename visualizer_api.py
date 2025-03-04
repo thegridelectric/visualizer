@@ -29,9 +29,11 @@ from flo import DGraph
 from hinge import FloHinge
 from named_types import FloParamsHouse0
     
-class DataRequest(BaseModel):
+class BaseRequest(BaseModel):
     house_alias: str
     password: str
+
+class DataRequest(BaseRequest):
     start_ms: int
     end_ms: int
     selected_channels: List[str]
@@ -41,20 +43,11 @@ class DataRequest(BaseModel):
 class CsvRequest(DataRequest):
     timestep: int
 
-class DijkstraRequest(BaseModel):
-    house_alias: str
-    password: str
-    time_ms: int
-
-class MessagesRequest(BaseModel):
-    house_alias: str = ""
-    password: str
-    start_ms: int 
-    end_ms: int
+class MessagesRequest(DataRequest):
     selected_message_types: List[str]
-    darkmode: Optional[bool] = False
 
-
+class DijkstraRequest(BaseRequest):
+    time_ms: int
 
 class VisualizerApi():
     def __init__(self, running_locally):
