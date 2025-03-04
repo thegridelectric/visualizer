@@ -72,7 +72,8 @@ class VisualizerApi():
         self.app = FastAPI()
         self.app.add_middleware(
             CORSMiddleware,
-            allow_origins=["*"], # TODO: change to ["https://thegridelectric.github.io"] when ready
+            # TODO: allow_origins=["https://thegridelectric.github.io"]
+            allow_origins=["*"], 
             allow_credentials=True,
             allow_methods=["*"],
         )
@@ -123,180 +124,182 @@ class VisualizerApi():
         return None
     
     def get_data(self, request: Union[DataRequest, CsvRequest, DijkstraRequest]):
-        error = self.check_request(request)
-        if error or request.selected_channels==['bids']:
-            return error
-        
-        with self.Session() as session:
-            import time
-            querry_start = time.time()
-            print("Querying journaldb...")
-            self.all_raw_messages = session.query(MessageSql).filter(
-                MessageSql.from_alias.like(f'%.{request.house_alias}.%'),
-                MessageSql.message_persisted_ms <= request.end_ms,
-                or_(
-                    and_(
-                        or_(
-                            MessageSql.message_type_name == "batched.readings",
-                            MessageSql.message_type_name == "report",
-                            MessageSql.message_type_name == "snapshot.spaceheat",
-                        ),
-                        MessageSql.message_persisted_ms >= request.start_ms,
-                    ),
-                    and_(
-                        MessageSql.message_type_name == "weather.forecast",
-                        MessageSql.message_persisted_ms >= request.start_ms - 24*3600*1000,
-                    )
-                )
-            ).order_by(asc(MessageSql.message_persisted_ms)).all()
-            print(f"Time to fetch data: {round(time.time()-querry_start,1)} seconds")
-            if time.time() - querry_start > self.timeout_seconds:
-                raise asyncio.TimeoutError('Timed out')
-
-        if not self.all_raw_messages:
-            warning_message = f"No data found for house '{request.house_alias}' in the selected timeframe."
-            return {"success": False, "message": warning_message, "reload": False}
-        
-        # Process reports
-        reports: List[MessageSql] = sorted(
-            [x for x in self.all_raw_messages if x.message_type_name in ['report', 'batched.readings']],
-            key = lambda x: x.message_persisted_ms
-            )
-        self.channels = {}
-        for message in reports:
-            for channel in message.payload['ChannelReadingList']:
-                if message.message_type_name == 'report':
-                    channel_name = channel['ChannelName']
-                elif message.message_type_name == 'batched.readings':
-                    for dc in message.payload['DataChannelList']:
-                        if dc['Id'] == channel['ChannelId']:
-                            channel_name = dc['Name']
-                if not channel['ValueList'] or not channel['ScadaReadTimeUnixMsList']:
-                    continue
-                if len(channel['ValueList'])!=len(channel['ScadaReadTimeUnixMsList']):
-                    continue
-                if channel_name not in self.channels:
-                    self.channels[channel_name] = {'values': [], 'times': []}
-                self.channels[channel_name]['values'].extend(channel['ValueList'])
-                self.channels[channel_name]['times'].extend(channel['ScadaReadTimeUnixMsList'])
-            
-        # Process snapshots
-        max_timestamp = max(max(self.channels[channel_name]['times']) for channel_name in self.channels)
-        snapshots = sorted(
-                [x for x in self.all_raw_messages if x.message_type_name=='snapshot.spaceheat'
-                and x.message_persisted_ms >= max_timestamp], 
-                key = lambda x: x.message_persisted_ms
-                )
-        for snapshot in snapshots:
-            for snap in snapshot.payload['LatestReadingList']:
-                if snap['ChannelName'] in self.channels:
-                    self.channels[snap['ChannelName']]['times'].append(snap['ScadaReadTimeUnixMs'])
-                    self.channels[snap['ChannelName']]['values'].append(snap['Value'])
-
-        # Get minimum and maximum timestamp for plots
-        max_timestamp = max(max(self.channels[x]['times']) for x in self.channels)
-        min_timestamp = min(min(self.channels[x]['times']) for x in self.channels)
-        min_timestamp += -(max_timestamp-min_timestamp)*0.05
-        max_timestamp += (max_timestamp-min_timestamp)*0.05
-        self.min_timestamp = self.to_datetime(min_timestamp)
-        self.max_timestamp = self.to_datetime(max_timestamp)
-
-        # Sort values according to time and convert to datetime
-        for channel_name in self.channels.keys():
-            sorted_times_values = sorted(zip(self.channels[channel_name]['times'], self.channels[channel_name]['values']))
-            sorted_times, sorted_values = zip(*sorted_times_values)
-            self.channels[channel_name]['values'] = list(sorted_values)
-            self.channels[channel_name]['times'] = pd.to_datetime(list(sorted_times), unit='ms', utc=True)
-            self.channels[channel_name]['times'] = self.channels[channel_name]['times'].tz_convert(self.timezone_str)
-            self.channels[channel_name]['times'] = [x.replace(tzinfo=None) for x in self.channels[channel_name]['times']]        
-
-        # Find all zone channels
-        self.channels_by_zone = {}
-        for channel_name in self.channels.keys():
-            if 'zone' in channel_name and 'gw-temp' not in channel_name:
-                zone_number = channel_name.split('-')[0]
-                if zone_number not in self.channels_by_zone:
-                    self.channels_by_zone[zone_number] = {}
-                if 'state' in channel_name:
-                    self.channels_by_zone[zone_number]['state'] = channel_name
-                elif 'whitewire' in channel_name:
-                    self.channels_by_zone[zone_number]['whitewire'] = channel_name
-                elif 'temp' in channel_name:
-                    self.channels_by_zone[zone_number]['temp'] = channel_name
-                elif 'set' in channel_name:
-                    self.channels_by_zone[zone_number]['set'] = channel_name
-
-        # Relays
-        relays = {}
-        for message in reports:
-            if 'StateList' not in message.payload:
-                continue
-            for state in message.payload['StateList']:
-                if state['MachineHandle'] not in relays:
-                    relays[state['MachineHandle']] = {'times': [], 'values': []}
-                relays[state['MachineHandle']]['times'].extend([self.to_datetime(x) for x in state['UnixMsList']])
-                relays[state['MachineHandle']]['values'].extend(state['StateList'])
-
-        # Top state
-        self.top_states = {'all': {'times':[], 'values':[]}}
-        if 'auto' in relays:
-            for time, state in zip(relays['auto']['times'], relays['auto']['values']):
-                if state not in self.top_states_order:
-                    print(f"Warning: {state} is not a known top state")
-                    continue
-                if state not in self.top_states:
-                    self.top_states[state] = {'times':[], 'values':[]}
-                self.top_states['all']['times'].append(time)
-                self.top_states['all']['values'].append(self.top_states_order.index(state))
-                self.top_states[state]['times'].append(time)
-                self.top_states[state]['values'].append(self.top_states_order.index(state))
-        if "Dormant" in self.top_states:
-            self.top_states['Admin'] = self.top_states['Dormant']
-            del self.top_states['Dormant']
-        
-        # HomeAlone state
-        self.ha_states = {'all': {'times':[], 'values':[]}}
-        if 'auto.h.n' in relays or 'auto.h' in relays:
-            ha_handle = 'auto.h.n' if 'auto.h.n' in relays else 'auto.h'
-            for time, state in zip(relays[ha_handle]['times'], relays[ha_handle]['values']):
-                if state not in self.ha_states_order:
-                    print(f"Warning: {state} is not a known HA state")
-                    continue
-                if state not in self.ha_states:
-                    self.ha_states[state] = {'times':[], 'values':[]}
-                self.ha_states['all']['times'].append(time)
-                self.ha_states['all']['values'].append(self.ha_states_order.index(state))
-                self.ha_states[state]['times'].append(time)
-                self.ha_states[state]['values'].append(self.ha_states_order.index(state))
-
-        # AtomicAlly state
-        self.aa_states = {'all': {'times':[], 'values':[]}}
-        if 'a.aa' in relays:
-            for time, state in zip(relays['a.aa']['times'], relays['a.aa']['values']):
-                if state not in self.aa_states_order:
-                    print(f"Warning: {state} is not a known AA state")
-                    continue
-                if state not in self.aa_states:
-                    self.aa_states[state] = {'times':[], 'values':[]}
-                self.aa_states['all']['times'].append(time)
-                self.aa_states['all']['values'].append(self.aa_states_order.index(state))
-                self.aa_states[state]['times'].append(time)
-                self.aa_states[state]['values'].append(self.aa_states_order.index(state))
-
-        # Weather forecasts
-        self.weather_forecasts: List[MessageSql] = []
-        if isinstance(request, DataRequest):
-            self.weather_forecasts = sorted(
-                [x for x in self.all_raw_messages if x.message_type_name=='weather.forecast'], 
-                key = lambda x: x.message_persisted_ms
-                )
-        return None
-            
-    async def get_messages(self, request: MessagesRequest):
-        error = self.check_request(request)
-        if error:
-            return error
         try:
+            error = self.check_request(request)
+            if error or request.selected_channels==['bids']:
+                return error
+            
+            with self.Session() as session:
+                import time
+                querry_start = time.time()
+                print("Querying journaldb...")
+                self.all_raw_messages = session.query(MessageSql).filter(
+                    MessageSql.from_alias.like(f'%.{request.house_alias}.%'),
+                    MessageSql.message_persisted_ms <= request.end_ms,
+                    or_(
+                        and_(
+                            or_(
+                                MessageSql.message_type_name == "batched.readings",
+                                MessageSql.message_type_name == "report",
+                                MessageSql.message_type_name == "snapshot.spaceheat",
+                            ),
+                            MessageSql.message_persisted_ms >= request.start_ms,
+                        ),
+                        and_(
+                            MessageSql.message_type_name == "weather.forecast",
+                            MessageSql.message_persisted_ms >= request.start_ms - 24*3600*1000,
+                        )
+                    )
+                ).order_by(asc(MessageSql.message_persisted_ms)).all()
+                print(f"Time to fetch data: {round(time.time()-querry_start,1)} seconds")
+
+            if not self.all_raw_messages:
+                warning_message = f"No data found for house '{request.house_alias}' in the selected timeframe."
+                return {"success": False, "message": warning_message, "reload": False}
+            
+            # Process reports
+            reports: List[MessageSql] = sorted(
+                [x for x in self.all_raw_messages if x.message_type_name in ['report', 'batched.readings']],
+                key = lambda x: x.message_persisted_ms
+                )
+            self.channels = {}
+            for message in reports:
+                for channel in message.payload['ChannelReadingList']:
+                    if message.message_type_name == 'report':
+                        channel_name = channel['ChannelName']
+                    elif message.message_type_name == 'batched.readings':
+                        for dc in message.payload['DataChannelList']:
+                            if dc['Id'] == channel['ChannelId']:
+                                channel_name = dc['Name']
+                    if not channel['ValueList'] or not channel['ScadaReadTimeUnixMsList']:
+                        continue
+                    if len(channel['ValueList'])!=len(channel['ScadaReadTimeUnixMsList']):
+                        continue
+                    if channel_name not in self.channels:
+                        self.channels[channel_name] = {'values': [], 'times': []}
+                    self.channels[channel_name]['values'].extend(channel['ValueList'])
+                    self.channels[channel_name]['times'].extend(channel['ScadaReadTimeUnixMsList'])
+                
+            # Process snapshots
+            max_timestamp = max(max(self.channels[channel_name]['times']) for channel_name in self.channels)
+            snapshots = sorted(
+                    [x for x in self.all_raw_messages if x.message_type_name=='snapshot.spaceheat'
+                    and x.message_persisted_ms >= max_timestamp], 
+                    key = lambda x: x.message_persisted_ms
+                    )
+            for snapshot in snapshots:
+                for snap in snapshot.payload['LatestReadingList']:
+                    if snap['ChannelName'] in self.channels:
+                        self.channels[snap['ChannelName']]['times'].append(snap['ScadaReadTimeUnixMs'])
+                        self.channels[snap['ChannelName']]['values'].append(snap['Value'])
+
+            # Get minimum and maximum timestamp for plots
+            max_timestamp = max(max(self.channels[x]['times']) for x in self.channels)
+            min_timestamp = min(min(self.channels[x]['times']) for x in self.channels)
+            min_timestamp += -(max_timestamp-min_timestamp)*0.05
+            max_timestamp += (max_timestamp-min_timestamp)*0.05
+            self.min_timestamp = self.to_datetime(min_timestamp)
+            self.max_timestamp = self.to_datetime(max_timestamp)
+
+            # Sort values according to time and convert to datetime
+            for channel_name in self.channels.keys():
+                sorted_times_values = sorted(zip(self.channels[channel_name]['times'], self.channels[channel_name]['values']))
+                sorted_times, sorted_values = zip(*sorted_times_values)
+                self.channels[channel_name]['values'] = list(sorted_values)
+                self.channels[channel_name]['times'] = pd.to_datetime(list(sorted_times), unit='ms', utc=True)
+                self.channels[channel_name]['times'] = self.channels[channel_name]['times'].tz_convert(self.timezone_str)
+                self.channels[channel_name]['times'] = [x.replace(tzinfo=None) for x in self.channels[channel_name]['times']]        
+
+            # Find all zone channels
+            self.channels_by_zone = {}
+            for channel_name in self.channels.keys():
+                if 'zone' in channel_name and 'gw-temp' not in channel_name:
+                    zone_number = channel_name.split('-')[0]
+                    if zone_number not in self.channels_by_zone:
+                        self.channels_by_zone[zone_number] = {}
+                    if 'state' in channel_name:
+                        self.channels_by_zone[zone_number]['state'] = channel_name
+                    elif 'whitewire' in channel_name:
+                        self.channels_by_zone[zone_number]['whitewire'] = channel_name
+                    elif 'temp' in channel_name:
+                        self.channels_by_zone[zone_number]['temp'] = channel_name
+                    elif 'set' in channel_name:
+                        self.channels_by_zone[zone_number]['set'] = channel_name
+
+            # Relays
+            relays = {}
+            for message in reports:
+                if 'StateList' not in message.payload:
+                    continue
+                for state in message.payload['StateList']:
+                    if state['MachineHandle'] not in relays:
+                        relays[state['MachineHandle']] = {'times': [], 'values': []}
+                    relays[state['MachineHandle']]['times'].extend([self.to_datetime(x) for x in state['UnixMsList']])
+                    relays[state['MachineHandle']]['values'].extend(state['StateList'])
+
+            # Top state
+            self.top_states = {'all': {'times':[], 'values':[]}}
+            if 'auto' in relays:
+                for time, state in zip(relays['auto']['times'], relays['auto']['values']):
+                    if state not in self.top_states_order:
+                        print(f"Warning: {state} is not a known top state")
+                        continue
+                    if state not in self.top_states:
+                        self.top_states[state] = {'times':[], 'values':[]}
+                    self.top_states['all']['times'].append(time)
+                    self.top_states['all']['values'].append(self.top_states_order.index(state))
+                    self.top_states[state]['times'].append(time)
+                    self.top_states[state]['values'].append(self.top_states_order.index(state))
+            if "Dormant" in self.top_states:
+                self.top_states['Admin'] = self.top_states['Dormant']
+                del self.top_states['Dormant']
+            
+            # HomeAlone state
+            self.ha_states = {'all': {'times':[], 'values':[]}}
+            if 'auto.h.n' in relays or 'auto.h' in relays:
+                ha_handle = 'auto.h.n' if 'auto.h.n' in relays else 'auto.h'
+                for time, state in zip(relays[ha_handle]['times'], relays[ha_handle]['values']):
+                    if state not in self.ha_states_order:
+                        print(f"Warning: {state} is not a known HA state")
+                        continue
+                    if state not in self.ha_states:
+                        self.ha_states[state] = {'times':[], 'values':[]}
+                    self.ha_states['all']['times'].append(time)
+                    self.ha_states['all']['values'].append(self.ha_states_order.index(state))
+                    self.ha_states[state]['times'].append(time)
+                    self.ha_states[state]['values'].append(self.ha_states_order.index(state))
+
+            # AtomicAlly state
+            self.aa_states = {'all': {'times':[], 'values':[]}}
+            if 'a.aa' in relays:
+                for time, state in zip(relays['a.aa']['times'], relays['a.aa']['values']):
+                    if state not in self.aa_states_order:
+                        print(f"Warning: {state} is not a known AA state")
+                        continue
+                    if state not in self.aa_states:
+                        self.aa_states[state] = {'times':[], 'values':[]}
+                    self.aa_states['all']['times'].append(time)
+                    self.aa_states['all']['values'].append(self.aa_states_order.index(state))
+                    self.aa_states[state]['times'].append(time)
+                    self.aa_states[state]['values'].append(self.aa_states_order.index(state))
+
+            # Weather forecasts
+            self.weather_forecasts: List[MessageSql] = []
+            if isinstance(request, DataRequest):
+                self.weather_forecasts = sorted(
+                    [x for x in self.all_raw_messages if x.message_type_name=='weather.forecast'], 
+                    key = lambda x: x.message_persisted_ms
+                    )
+            return None
+        except Exception as e:
+            print(f"An error occurred in get_data():\n{traceback.format_exc()}")
+            return {"success": False, "message": "An error occurred when getting data", "reload": False}
+    
+    async def get_messages(self, request: MessagesRequest):
+        try:
+            error = self.check_request(request)
+            if error:
+                return error
             async with async_timeout.timeout(self.timeout_seconds):
                 print("Querrying journaldb for messages...")
                 with self.Session() as session:
@@ -366,13 +369,11 @@ class VisualizerApi():
                 }
             
         except asyncio.TimeoutError:
-            warning_message = "The data request timed out. Please try loading a smaller amount of data at a time."
-            print(warning_message)
-            return {"success": False, "message": warning_message, "reload": False}
+            print("Timed out in get_messages()")
+            return {"success": False, "message": "The request timed out.", "reload": False}
         except Exception as e:
-            warning_message = f"An error occurred: {traceback.format_exc()}"
-            print(warning_message)
-            return {"success": False, "message": warning_message, "reload": False}
+            print(f"An error occurred in get_messages():\n{traceback.format_exc()}")
+            return {"success": False, "message": "An error occured while getting messages", "reload": False}
         
     async def get_csv(self, request: CsvRequest):
         try:
@@ -432,8 +433,6 @@ class VisualizerApi():
                 request_start = time.time()
                 csv_data = {'timestamps': csv_times}
                 for channel in channels_to_export:
-                    if time.time() - request_start > self.timeout_seconds:
-                        raise asyncio.TimeoutError('Timed out')
                     sampled = await asyncio.to_thread(
                         pd.merge_asof, 
                         pd.DataFrame({'times': csv_times}),
@@ -464,122 +463,136 @@ class VisualizerApi():
                 )
 
         except asyncio.TimeoutError:
-            warning_message = "The data request timed out. Please try loading a smaller amount of data at a time."
-            print(warning_message)
-            return {"success": False, "message": warning_message, "reload": False}
+            print("Timed out in get_csv()")
+            return {"success": False, "message": "The request timed out.", "reload": False}
         except Exception as e:
-            warning_message = f"An error occurred: {traceback.format_exc()}"
-            print(warning_message)
-            return {"success": False, "message": warning_message, "reload": False}
+            print(f"An error occurred in get_csv():\n{traceback.format_exc()}")
+            return {"success": False, "message": "An error occured while getting CSV", "reload": False}
         
     async def get_flo(self, request: DijkstraRequest):
-        print("Finding latest FLO run...")
-        with self.Session() as session:
-            flo_params_msg = session.query(MessageSql).filter(
-                MessageSql.message_type_name == "flo.params.house0",
-                MessageSql.from_alias.like(f'%{request.house_alias}%'),
-                MessageSql.message_persisted_ms >= request.time_ms - 48*3600*1000,
-                MessageSql.message_persisted_ms <= request.time_ms,
-            ).order_by(desc(MessageSql.message_persisted_ms)).first()
-        print(f"Found FLO run at {self.to_datetime(flo_params_msg.message_persisted_ms)}")
+        try:
+            async with async_timeout.timeout(self.timeout_seconds):
+                print("Finding latest FLO run...")
+                with self.Session() as session:
+                    flo_params_msg = session.query(MessageSql).filter(
+                        MessageSql.message_type_name == "flo.params.house0",
+                        MessageSql.from_alias.like(f'%{request.house_alias}%'),
+                        MessageSql.message_persisted_ms >= request.time_ms - 48*3600*1000,
+                        MessageSql.message_persisted_ms <= request.time_ms,
+                    ).order_by(desc(MessageSql.message_persisted_ms)).first()
+                print(f"Found FLO run at {self.to_datetime(flo_params_msg.message_persisted_ms)}")
 
-        if not flo_params_msg:
-            print(f"Could not find a FLO run in the 48 hours prior to {self.to_datetime(request.time_ms)}")
-            if os.path.exists('result.xlsx'):
-                os.remove('result.xlsx')
-            return
+                if not flo_params_msg:
+                    print(f"Could not find a FLO run in the 48 hours prior to {self.to_datetime(request.time_ms)}")
+                    if os.path.exists('result.xlsx'):
+                        os.remove('result.xlsx')
+                    return
 
-        print("Running Dijkstra and saving analysis to excel...")
-        houses_in_hinge = []
-        flo_params = FloParamsHouse0(**flo_params_msg.payload)
-        if request.house_alias in houses_in_hinge:
-            h = FloHinge(flo_params, hinge_hours=5, num_nodes=[10,3,3,3,3])
-            h.export_to_excel()
-        else:
-            g = DGraph(flo_params)
-            g.solve_dijkstra()
-            g.export_to_excel()
-        print("Done.")
-        
-        if os.path.exists('result.xlsx'):
-            return FileResponse(
-                'result.xlsx',
-                media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                headers={"Content-Disposition": "attachment; filename=file.xlsx"}
-                )
-        else:
-            return {"error": "File not found"}
+                print("Running Dijkstra and saving analysis to excel...")
+                houses_in_hinge = []
+                flo_params = FloParamsHouse0(**flo_params_msg.payload)
+                if request.house_alias in houses_in_hinge:
+                    h = FloHinge(flo_params, hinge_hours=5, num_nodes=[10,3,3,3,3])
+                    h.export_to_excel()
+                else:
+                    g = DGraph(flo_params)
+                    g.solve_dijkstra()
+                    g.export_to_excel()
+                print("Done.")
+                
+                if os.path.exists('result.xlsx'):
+                    return FileResponse(
+                        'result.xlsx',
+                        media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                        headers={"Content-Disposition": "attachment; filename=file.xlsx"}
+                        )
+                else:
+                    return {"error": "File not found"}
+        except asyncio.TimeoutError:
+            print("Timed out in get_flo()")
+            return {"success": False, "message": "The request timed out.", "reload": False}
+        except Exception as e:
+            print(f"An error occurred in get_flo():\n{traceback.format_exc()}")
+            return {"success": False, "message": "An error occured while getting FLO", "reload": False}
         
     async def get_bids(self, request: DataRequest):
-        print("Getting bids...")
-        
-        with self.Session() as session:
-            flo_params_messages = session.query(MessageSql).filter(
-                MessageSql.message_type_name == "flo.params.house0",
-                MessageSql.from_alias.like(f'%{request.house_alias}%'),
-                MessageSql.message_persisted_ms >= request.start_ms,
-                MessageSql.message_persisted_ms <= request.end_ms,
-            ).order_by(desc(MessageSql.payload['StartUnixS'])).all()
-            flo_params_messages = [FloParamsHouse0(**x.payload) for x in flo_params_messages]
-        print(f"Found {len(flo_params_messages)} FLOs for {request.house_alias}")
+        try:
+            async with async_timeout.timeout(self.timeout_seconds):
+                print("Getting bids...")
+                
+                with self.Session() as session:
+                    flo_params_messages = session.query(MessageSql).filter(
+                        MessageSql.message_type_name == "flo.params.house0",
+                        MessageSql.from_alias.like(f'%{request.house_alias}%'),
+                        MessageSql.message_persisted_ms >= request.start_ms,
+                        MessageSql.message_persisted_ms <= request.end_ms,
+                    ).order_by(desc(MessageSql.payload['StartUnixS'])).all()
+                    flo_params_messages = [FloParamsHouse0(**x.payload) for x in flo_params_messages]
+                print(f"Found {len(flo_params_messages)} FLOs for {request.house_alias}")
 
-        zip_buffer = io.BytesIO()
-        with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
-            for i in range(len(flo_params_messages)):
-                g = DGraph(flo_params_messages[i])
-                g.solve_dijkstra()
-                pq_pairs = g.generate_bid()
-                prices = [x.PriceTimes1000 for x in pq_pairs]
-                quantities = [x.QuantityTimes1000/1000 for x in pq_pairs]
-                # To plot quantities on x-axis and prices on y-axis
-                ps, qs = [], []
-                index_p = 0
-                expected_price_usd_mwh = g.params.elec_price_forecast[0] * 10
-                for p in sorted(list(range(min(prices), max(prices)+1)) + [expected_price_usd_mwh*1000]):
-                    ps.append(p/1000)
-                    if index_p+1 < len(prices) and p >= prices[index_p+1]:
-                        index_p += 1
-                    if p == expected_price_usd_mwh*1000:
-                        interesection = (quantities[index_p], expected_price_usd_mwh)
-                    qs.append(quantities[index_p])
-                # Plot
-                plt.plot(qs, ps, label='demand (bid)')
-                prices = [x.PriceTimes1000/1000 for x in pq_pairs]
-                plt.scatter(quantities, prices)
-                plt.plot(
-                    [min(quantities)-1, max(quantities)+1],[expected_price_usd_mwh]*2, 
-                    label="supply (expected market price)"
-                    )
-                plt.scatter(interesection[0], interesection[1])
-                plt.text(
-                    interesection[0]+0.25, interesection[1]+15, 
-                    f'({round(interesection[0],3)}, {round(interesection[1],1)})', 
-                    fontsize=10, color='tab:orange'
-                    )
-                plt.xticks(quantities)
-                if min([abs(x-expected_price_usd_mwh) for x in prices]) < 5:
-                    plt.yticks(prices)
-                else:
-                    plt.yticks(prices + [expected_price_usd_mwh])
-                plt.ylabel("Price [USD/MWh]")
-                plt.xlabel("Quantity [kWh]")
-                plt.title(self.to_datetime(g.params.start_time*1000).strftime('%Y-%m-%d %H:%M'))
-                plt.grid(alpha=0.3)
-                plt.legend()
-                plt.tight_layout()
-                # Append plot to zip
-                img_buf = io.BytesIO()
-                plt.savefig(img_buf, format='png', dpi=300)
-                img_buf.seek(0)
-                zip_file.writestr(f'pq_plot_{i}.png', img_buf.getvalue())
-                plt.close()
+                zip_buffer = io.BytesIO()
+                with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
+                    for i in range(len(flo_params_messages)):
+                        g = DGraph(flo_params_messages[i])
+                        g.solve_dijkstra()
+                        pq_pairs = g.generate_bid()
+                        prices = [x.PriceTimes1000 for x in pq_pairs]
+                        quantities = [x.QuantityTimes1000/1000 for x in pq_pairs]
+                        # To plot quantities on x-axis and prices on y-axis
+                        ps, qs = [], []
+                        index_p = 0
+                        expected_price_usd_mwh = g.params.elec_price_forecast[0] * 10
+                        for p in sorted(list(range(min(prices), max(prices)+1)) + [expected_price_usd_mwh*1000]):
+                            ps.append(p/1000)
+                            if index_p+1 < len(prices) and p >= prices[index_p+1]:
+                                index_p += 1
+                            if p == expected_price_usd_mwh*1000:
+                                interesection = (quantities[index_p], expected_price_usd_mwh)
+                            qs.append(quantities[index_p])
+                        # Plot
+                        plt.plot(qs, ps, label='demand (bid)')
+                        prices = [x.PriceTimes1000/1000 for x in pq_pairs]
+                        plt.scatter(quantities, prices)
+                        plt.plot(
+                            [min(quantities)-1, max(quantities)+1],[expected_price_usd_mwh]*2, 
+                            label="supply (expected market price)"
+                            )
+                        plt.scatter(interesection[0], interesection[1])
+                        plt.text(
+                            interesection[0]+0.25, interesection[1]+15, 
+                            f'({round(interesection[0],3)}, {round(interesection[1],1)})', 
+                            fontsize=10, color='tab:orange'
+                            )
+                        plt.xticks(quantities)
+                        if min([abs(x-expected_price_usd_mwh) for x in prices]) < 5:
+                            plt.yticks(prices)
+                        else:
+                            plt.yticks(prices + [expected_price_usd_mwh])
+                        plt.ylabel("Price [USD/MWh]")
+                        plt.xlabel("Quantity [kWh]")
+                        plt.title(self.to_datetime(g.params.start_time*1000).strftime('%Y-%m-%d %H:%M'))
+                        plt.grid(alpha=0.3)
+                        plt.legend()
+                        plt.tight_layout()
+                        # Append plot to zip
+                        img_buf = io.BytesIO()
+                        plt.savefig(img_buf, format='png', dpi=300)
+                        img_buf.seek(0)
+                        zip_file.writestr(f'pq_plot_{i}.png', img_buf.getvalue())
+                        plt.close()
 
-        zip_buffer.seek(0)
-        return StreamingResponse(
-            zip_buffer, 
-            media_type='application/zip', 
-            headers={"Content-Disposition": "attachment; filename=plots.zip"}
-            )
+                zip_buffer.seek(0)
+                return StreamingResponse(
+                    zip_buffer, 
+                    media_type='application/zip', 
+                    headers={"Content-Disposition": "attachment; filename=plots.zip"}
+                    )
+        except asyncio.TimeoutError:
+            print("Timed out in get_bids()")
+            return {"success": False, "message": "The request timed out.", "reload": False}
+        except Exception as e:
+            print(f"An error occurred in get_bids():\n{traceback.format_exc()}")
+            return {"success": False, "message": "An error occured while getting bids", "reload": False}
 
     async def get_plots(self, request: DataRequest):
         try:
@@ -648,13 +661,11 @@ class VisualizerApi():
                     )
                 
         except asyncio.TimeoutError:
-            warning_message = "The data request timed out. Please try loading a smaller amount of data at a time."
-            print(warning_message)
-            return {"success": False, "message": warning_message, "reload": False}
+            print("Timed out in get_plots()")
+            return {"success": False, "message": "The request timed out.", "reload": False}
         except Exception as e:
-            warning_message = f"An error occurred: {traceback.format_exc()}"
-            print(warning_message)
-            return {"success": False, "message": warning_message, "reload": False}
+            print(f"An error occurred in get_plots():\n{traceback.format_exc()}")
+            return {"success": False, "message": "An error occured while getting plots", "reload": False}
         
     async def plot_heatpump(self, request: DataRequest):
         plot_start = time.time()

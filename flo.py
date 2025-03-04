@@ -802,8 +802,6 @@ class DGraph():
 
         # Add the PQ pairs to a seperate sheet and plot the curve
         pq_pairs = self.generate_bid()
-        print(pq_pairs)
-        print(len(pq_pairs))
         prices = [x.PriceTimes1000 for x in pq_pairs]
         quantities = [x.QuantityTimes1000/1000 for x in pq_pairs]
         pqpairs_df = pd.DataFrame({'price':[x/1000 for x in prices], 'quantity':quantities})
