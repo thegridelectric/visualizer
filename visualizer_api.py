@@ -276,10 +276,10 @@ class VisualizerApi():
                     print(f"Warning: {state} is not a known HA state")
                     continue
                 if state not in self.ha_states:
-                    self.ha_states[state] = {'time':[], 'values':[]}
-                self.ha_states['all']['time'].append(time)
+                    self.ha_states[state] = {'times':[], 'values':[]}
+                self.ha_states['all']['times'].append(time)
                 self.ha_states['all']['values'].append(self.ha_states_order.index(state))
-                self.ha_states[state]['time'].append(time)
+                self.ha_states[state]['times'].append(time)
                 self.ha_states[state]['values'].append(self.ha_states_order.index(state))
 
         # AtomicAlly state
@@ -875,7 +875,7 @@ class VisualizerApi():
                         mode='lines',
                         line=dict(color=zone_color, width=2),
                         opacity=0, # Has no opacity
-                        name=whitewire_ch.replace('-state',''),
+                        name=self.channels_by_zone[zone]['state'].replace('-state',''),
                         showlegend=False,
                     )
                 )
@@ -888,12 +888,12 @@ class VisualizerApi():
                         if not last_was_1 or 'show-points' in request.selected_channels and i>0: 
                             fig.add_trace(
                                 go.Scatter(
-                                    x=[ww_times[i], ww_values[i]],
+                                    x=[ww_times[i], ww_times[i]],
                                     y=[zone_number-1, zone_number],
                                     mode='lines',
                                     line=dict(color=zone_color, width=2),
                                     opacity=0.7,
-                                    name=whitewire_ch.replace('-state',''),
+                                    name=self.channels_by_zone[zone]['state'].replace('-state',''),
                                     showlegend=False,
                                 )
                             )
@@ -910,7 +910,7 @@ class VisualizerApi():
                                     mode='lines',
                                     line=dict(color=zone_color, width=2),
                                     opacity=0.7,
-                                    name=whitewire_ch.replace('-state',''),
+                                    name=self.channels_by_zone[zone]['state'].replace('-state',''),
                                     showlegend=False,
                                 )
                             )
@@ -926,7 +926,7 @@ class VisualizerApi():
                                     line=dict(color=zone_color, width=0),
                                     fillcolor=zone_color,
                                     opacity=0.2,
-                                    name=whitewire_ch.replace('-state', ''),
+                                    name=self.channels_by_zone[zone]['state'].replace('-state', ''),
                                 )
                                 heatcall_period_start = None
                         last_was_1 = True
@@ -938,7 +938,7 @@ class VisualizerApi():
                         y=[None],
                         mode='lines',
                         line=dict(color=zone_color, width=2),
-                        name=whitewire_ch.replace('-state','')
+                        name=self.channels_by_zone[zone]['state'].replace('-state','')
                     )
                 )
 
@@ -1306,7 +1306,8 @@ class VisualizerApi():
                     opacity=0.4,
                     line=dict(color='#2ca02c', dash='solid'),
                     name='Usable',
-                    yaxis=y_axis_power
+                    yaxis=y_axis_power,
+                    visible='legendonly'
                     )
                 )
             fig.add_trace(
@@ -1317,7 +1318,8 @@ class VisualizerApi():
                     opacity=0.4,
                     line=dict(color='#2ca02c', dash='dash'),
                     name='Required',
-                    yaxis=y_axis_power
+                    yaxis=y_axis_power,
+                    visible='legendonly'
                     )
                 )
             max_power = max([x/1000 for x in self.channels['required-energy']['values']])*4
@@ -1647,9 +1649,8 @@ class VisualizerApi():
                     mode='lines',
                     line=dict(color=color, width=2),
                     opacity=0.2 if i<len(oat_forecasts)-1 else 1,
-                    showlegend=False if i<len(oat_forecasts)-1 else True,
+                    showlegend=False,
                     line_shape='hv',
-                    name=f"{self.to_datetime(weather_time*1000).hour}" 
                 )
             )
 
@@ -1731,6 +1732,7 @@ class VisualizerApi():
         # Shading on-peak
         shapes_list = []
         for x in price_times:
+            x1 = None
             if x==price_times[0] and x.hour in [8,9,10,11]:
                 x1 = x+timedelta(hours=5-(x.hour-7))
             elif x.hour==7:
@@ -1739,7 +1741,7 @@ class VisualizerApi():
                 x1 = x+timedelta(hours=4-(x.hour-16))
             elif x.hour==16:
                 x1 = x+timedelta(hours=4)
-            if x.hour in [7,8,9,10,11,16,17,18,19] and x.weekday()<5:
+            if x1 and x.hour in [7,8,9,10,11,16,17,18,19] and x.weekday()<5:
                 shapes_list.append(
                         go.layout.Shape(
                             type='rect',
