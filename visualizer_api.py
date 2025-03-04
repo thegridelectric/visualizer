@@ -23,8 +23,8 @@ from sqlalchemy.orm import sessionmaker
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 import plotly.colors as pc
-from fake_config import Settings
-from fake_models import MessageSql
+from config import Settings
+from models import MessageSql
 from flo import DGraph
 from hinge import FloHinge
 from named_types import FloParamsHouse0

@@ -1,6 +1,6 @@
 from flo import DGraph, DParams, DNode, DEdge, to_kelvin
 from named_types import FloParamsHouse0, PriceQuantityUnitless
-from fake_models import MessageSql
+from models import MessageSql
 import json
 from typing import List, Union
 import matplotlib

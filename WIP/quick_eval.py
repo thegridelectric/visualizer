@@ -5,8 +5,8 @@ import dotenv
 import pendulum
 from sqlalchemy import create_engine, desc, asc, or_
 from sqlalchemy.orm import sessionmaker
-from fake_config import Settings
-from fake_models import MessageSql
+from config import Settings
+from models import MessageSql
 import matplotlib.pyplot as plt
 from typing import List
 import numpy as np
