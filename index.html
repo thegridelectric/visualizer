@@ -710,8 +710,8 @@
             const endUnixMilliseconds = endtime_luxon.toUTC().toMillis();
 
             try {
-                // const response = await fetch(`https://visualizer.electricity.works/plots`, {
-                const response = await fetch(`http://localhost:8000/plots`, {
+                // const response = await fetch(`https://visualizer.electricity.works/flo`, {
+                const response = await fetch(`http://localhost:8000/flo`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -755,7 +755,7 @@
             }
         }
 
-        async function exportCSV(event, continueOption) {
+        async function exportCSV(event, confirmWithUser) {
 
             event.preventDefault();
 
@@ -792,7 +792,7 @@
                         end_ms: endUnixMilliseconds,
                         selected_channels: selectedChannels,
                         timestep: timestep,
-                        continue_option: continueOption,
+                        confirm_with_user: confirmWithUser,
                     })
                 });
 
@@ -805,7 +805,7 @@
                 if (contentType && contentType.includes("application/json")) {
                     const data = await response.json();
                     if ('success' in data && data.success === false) {
-                        if (data.continue_option) {
+                        if (data.confirm_with_user) {
                             const userChoice = confirm(data.message);
                             console.log(userChoice ? "User chose to Continue" : "User chose to Abort");
                             if (userChoice) {
@@ -842,7 +842,7 @@
             }
         }
 
-        async function fetchPlots(house_alias, password, start_ms, end_ms, channels, continueOption) {
+        async function fetchPlots(house_alias, password, start_ms, end_ms, channels, confirmWithUser) {
 
             disable_plot_buttons()
             showLoader()
@@ -860,7 +860,7 @@
                         start_ms: start_ms, 
                         end_ms: end_ms,
                         selected_channels: channels,
-                        continue_option: continueOption,
+                        confirm_with_user: confirmWithUser,
                         darkmode: darkmode_tf,
                     })
                 });
@@ -870,7 +870,7 @@
                 if (contentType && contentType.includes("application/json")) {
                     const data = await response.json();
                     if ('success' in data && data.success === false) {
-                        if (data.continue_option) {
+                        if (data.confirm_with_user) {
                             const userChoice = confirm(data.message);
                             console.log(userChoice ? "User chose to Continue" : "User chose to Abort");
                             if (userChoice) {
@@ -967,7 +967,7 @@
             }
         }
 
-        async function fetchBids(house_alias, password, start_ms, end_ms, continueOption) {
+        async function fetchBids(house_alias, password, start_ms, end_ms, confirmWithUser) {
 
             disable_bid_buttons()
             showLoader()
@@ -985,7 +985,7 @@
                         start_ms: start_ms, 
                         end_ms: end_ms,
                         selected_channels: ["bids"],
-                        continue_option: continueOption,
+                        confirm_with_user: confirmWithUser,
                         darkmode: darkmode_tf,
                     })
                 });
@@ -995,7 +995,7 @@
                 if (contentType && contentType.includes("application/json")) {
                     const data = await response.json();
                     if ('success' in data && data.success === false) {
-                        if (data.continue_option) {
+                        if (data.confirm_with_user) {
                             const userChoice = confirm(data.message);
                             console.log(userChoice ? "User chose to Continue" : "User chose to Abort");
                             if (userChoice) {
