@@ -6,14 +6,15 @@
     --navbar-bgcolor: #F5F5F7;
     --menu-border-bottom: rgba(226, 226, 226, 0);
     --box-bgcolor: #F5F5F7;
-    --box-textcolor: rgb(55,55,55);
-    --button-bgcolor: #3f3f3f;
-    --button-hover: #3f3f3f;
+    --box-textcolor: rgb(87, 87, 87);
+    --button-bgcolor: #e1e1e1;
+    --button-hover: #d6d6d6;
     --button-options: #3f3f3f;
+    --button-textcolor: rgb(87, 87, 87);
     --options-hover: #3f3f3f;
     --inputs-bgcolor: #ffffff;
-    --disabled-button-text: rgba(255, 255, 255, 0.636);
-    --disabled-button-background:rgba(169, 169, 169, 0.594);
+    --disabled-button-text: rgb(178, 178, 178);
+    --disabled-button-background:rgba(236, 236, 236, 0.782);
     --checkbox-textcolor: #555;
     --loader-bigpart: #cdcdcd;
     --loader-smallpart: #3f3f3f;
@@ -29,6 +30,7 @@
     --button-bgcolor: #6d6d6d;
     --button-hover: #838383;
     --button-options: #cbcbcb;
+    --button-textcolor: white;
     --options-hover: transparent;
     --inputs-bgcolor: #e7e7e7;
     --disabled-button-text: rgba(206, 206, 206, 0.636);
@@ -206,7 +208,7 @@ a {
     font-size:15px;
     font-family: 'Montserrat';
     margin-top:10px;
-    color:white;
+    color:var(--button-textcolor);
     border-radius:30px;
     text-align:center;
     height:40px;
