@@ -637,35 +637,35 @@ class VisualizerApi():
                 with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
                     html_buffer = await self.plot_heatpump(request)
                     zip_file.writestr('plot1.html', html_buffer.read())
-                    
-                    html_buffer = await self.plot_distribution(request)
+
+                    html_buffer = await self.plot_prices(request)
                     zip_file.writestr('plot2.html', html_buffer.read())
                     
-                    html_buffer = await self.plot_heatcalls(request)
+                    html_buffer = await self.plot_distribution(request)
                     zip_file.writestr('plot3.html', html_buffer.read())
                     
-                    html_buffer = await self.plot_zones(request)
+                    html_buffer = await self.plot_heatcalls(request)
                     zip_file.writestr('plot4.html', html_buffer.read())
+                    
+                    html_buffer = await self.plot_zones(request)
+                    zip_file.writestr('plot5.html', html_buffer.read())
 
                     html_buffer = await self.plot_buffer(request)
-                    zip_file.writestr('plot5.html', html_buffer.read())
-                    
-                    html_buffer = await self.plot_storage(request)
                     zip_file.writestr('plot6.html', html_buffer.read())
                     
-                    html_buffer = await self.plot_top_state(request)
+                    html_buffer = await self.plot_storage(request)
                     zip_file.writestr('plot7.html', html_buffer.read())
                     
-                    html_buffer = await self.plot_ha_state(request)
+                    html_buffer = await self.plot_top_state(request)
                     zip_file.writestr('plot8.html', html_buffer.read())
                     
-                    html_buffer = await self.plot_aa_state(request)
+                    html_buffer = await self.plot_ha_state(request)
                     zip_file.writestr('plot9.html', html_buffer.read())
                     
-                    html_buffer = await self.plot_weather(request)
+                    html_buffer = await self.plot_aa_state(request)
                     zip_file.writestr('plot10.html', html_buffer.read())
                     
-                    html_buffer = await self.plot_prices(request)
+                    html_buffer = await self.plot_weather(request)
                     zip_file.writestr('plot11.html', html_buffer.read())
                     
                 zip_buffer.seek(0)
