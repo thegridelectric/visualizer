@@ -4,475 +4,66 @@
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta charset="UTF-8">
-    <title>GridWorks Visualizer</title>
+    <title>GridWorks - Visualizer</title>
     <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
-    <!-- Libraries -->
+    <!-- Stylesheets -->
+    <link rel="stylesheet" type="text/css" href="resources/styles.css">
+    <!-- Libraries and Javascript -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/luxon@3.0.1/build/global/luxon.min.js"></script>
-
-    <style>
-
-        :root {
-            --body-bgcolor: #ffffff;
-            --header-textcolor: #555555;
-            --header-bgcolor: #F5F5F7;
-            --box-bgcolor: #F5F5F7;
-            --borderbottom: rgb(226,226,226);
-            --box-textcolor: rgb(55,55,55);
-            --button-bgcolor: #3f3f3f;
-            --button-hover: #3f3f3f;
-            --button-options: #3f3f3f;
-            --options-hover: #3f3f3f;
-            --inputs-bgcolor: #ffffff;
-            --loading-color: rgba(255, 255, 255, 0.636);
-            --loading-bgcolor:rgba(169, 169, 169, 0.594);
-            --checkbox-textcolor: #555;
-            --loader-bigpart: #cdcdcd;
-            --loader-smallpart: #3f3f3f;
-        }
-
-        .dark-mode {
-            --body-bgcolor: #222222;
-            --header-textcolor: #f5f5f7;
-            --header-bgcolor: #222222;
-            --box-bgcolor: #3a3a3a;
-            --borderbottom: #515151;
-            --box-textcolor: #f5f5f7;
-            --button-bgcolor: #6d6d6d;
-            --button-hover: #787878;
-            --button-options: #cbcbcb;
-            --options-hover: transparent;
-            --inputs-bgcolor: #e7e7e7;
-            --loading-color: rgba(206, 206, 206, 0.636);
-            --loading-bgcolor: rgba(107, 107, 107, 0.246);
-            --checkbox-textcolor: #dbdbdb;
-            --loader-bigpart: #cdcdcd;
-            --loader-smallpart: #3a3a3a;
-        }
-
-        body {
-            background-color: var(--body-bgcolor);
-            font-family: 'Helvetica Neue', Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            font-family: 'Montserrat';
-        }
-
-        #PlotPng, #Plot1, #Plot2, #Plot3, #Plot4, #Plot5, #Plot6, #Plot7, #Plot8, #Plot9, #Plot10, #Plot11 {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding-bottom:15px;
-        }
-
-        #Bids {
-            display: flex;
-            flex-direction: column;  /* Align items vertically */
-            gap: 10px;
-            margin-left: 5%;
-            margin-right: 5%;
-            display: flex;
-            justify-content: center;
-            padding-bottom:15px;
-            overflow: scroll;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .image-container img {
-            width: 100%;
-            max-width: 500px;
-        }
-        
-        #PlotPng img {
-            width: 100%;
-            max-width: 1100px;
-            height: auto;
-            margin-bottom: 10px;
-        }
-
-        #header{
-            height: 75px; 
-            color: var(--header-textcolor); 
-            background-color: var(--header-bgcolor); 
-            display: flex; 
-            align-items: stretch;
-            margin-bottom: 0;
-            /* flex-direction: column; */
-            /* border-bottom: #d6d6d6 0.5px solid; */
-        }
-
-        a {
-            color: var(--header-textcolor);
-            text-decoration: none;
-        }
-
-        #pageTitle {
-            font-family: 'Montserrat';
-            font-size: 40px;
-            padding: 20px;
-            padding-left:5%;
-            color: #323232
-        }
-
-        #houseAliasHeader {
-            color: var(--header-textcolor);
-            font-family: 'Montserrat';
-            font-size: 35px;
-            padding-bottom: 25px;
-            margin: 0px;
-        }
-
-        #LoginHeader {
-            color: var(--header-textcolor);
-            font-family: 'Montserrat';
-            font-size: 35px;
-            padding-bottom: 15px;
-            margin: 0px;
-        }
-
-        #checkboxButton {
-            margin-right: 12px;
-        }
-
-        #submit_button, #close-button, #csv_button, #login-button, 
-        #nowButton, #checkboxButton, #dijkstra_button, #bid_button, #reorder-button, .move-button {
-            cursor: pointer;
-            font-size:15px;
-            font-family: 'Montserrat';
-            margin-top:0px;
-            color:white;
-            border-radius:30px;
-            text-align:center;
-            height:40px;
-            padding-left: 20px;
-            padding-right: 20px;
-            background-color:var(--button-bgcolor); 
-            border: none;
-        }
-
-        .move-button{
-            margin-top: -10px;
-            margin-right: 10px;
-            margin-bottom: 40px;
-        }
-
-        #nowButton, #checkboxButton {
-            cursor: pointer;
-            font-size:15px;
-            font-family: 'Montserrat';
-            margin-top:0px;
-            color:var(--button-options);
-            background-color: transparent;
-            border-radius:30px;
-            text-align:center;
-            height:40px;
-            padding-left: 15px;
-            padding-right: 15px;
-            border: var(--button-options) 2px solid;
-        }
-
-        #login-button {
-            margin-top: 10px;
-        }
-
-        #nowButton {
-            color: rgb(63, 63, 63);
-            background-color: var(--inputs-bgcolor);
-            margin-left:0px;
-            border-radius: 5px;
-            border: none
-        }
-
-        #submit_button:hover, #close-button:hover, #csv_button:hover, #login-button:hover, #nowButton:hover,
-        #checkboxButton:hover, #dijkstra_button:hover, #bid_button:hover, #reorder-button:hover, .move-button:hover {
-            background-color:var(--button-hover);
-        }
-
-        #checkboxButton:hover {
-            background-color:var(--options-hover);
-            color:white;
-        }
-
-        #nowButton:hover {
-            background-color: white;
-            /* font-weight: bold; */
-        }
-
-        #Inputs, #LoginBox{
-            min-height: 110px;
-            margin-left: 5%;
-            margin-right: 5%;
-            margin-bottom: 50px;
-            margin-top:30px;
-            padding: 30px;
-            padding-bottom: 70px;
-            /* padding-bottom: 75px; */
-            background-color: var(--box-bgcolor);
-            border-radius: 10px;
-            /* border: #d6d6d6 0.5px solid; */
-        }
-
-        #LoginBox {
-            padding-bottom: 80px;
-        }
-
-        #checkboxDiv{
-            box-sizing: border-box;
-            left: 50%;
-            height: auto;
-            max-height: 90%;
-            overflow:scroll ;
-            transform: translate(-50%, -0%);
-            background-color: var(--box-bgcolor);
-            /* border: #d6d6d6 0.5px solid; */
-            color: var(--box-textcolor);
-            position: absolute;
-            width: 100%;
-            max-width: 800px;
-            margin-top: 20px;
-            border-radius: 10px;
-            padding-left: 40px;
-            padding-right: 30px;
-            /* padding-bottom: 25px; */
-            padding-top: 15px;
-            /* box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); */
-            z-index: 10000;
-        }
-
-        #GWlogo {
-            height: 75px; 
-            margin: 0; 
-            padding: 0; 
-            width:100%; 
-            min-width: 175px; 
-            display: flex; 
-            justify-content: center; 
-            align-items: center;
-            font-size: 16px;
-        }
-
-        .menuItem {
-            cursor: pointer;
-            height: 75px; 
-            margin: 0; 
-            padding: 0; 
-            display: flex; 
-            align-items: center; 
-            justify-content: center;
-            flex: 1;
-            width: 20vw;
-            max-width: 135px;
-            min-width: 100px;
-            transition: all 0.3s ease;
-        }
-
-        #menubutton{
-            display: none;
-        }
-
-        #darkbutton {
-            position: absolute;
-            display: flex; 
-            font-size: 20px;
-            height:75px;
-            width: 40px;
-            right:30px;
-            cursor: pointer;
-            justify-content: center;
-            align-items: center; 
-            flex-direction: column;
-        }
-
-        .toggle-circle {
-            width: 15px;
-            height: 15px;
-            background-color: var(--header-textcolor, #333); /* dark color */
-            border-radius: 50%;
-            position: absolute;
-            top: 30px;
-            left: 12.5px;
-            transition: transform 0.3s ease;
-        }
-
-        .toggle-circle::before {
-            content: '';
-            width: 10px;
-            height: 10px;
-            background-color: var(--header-bgcolor, #333);
-            border-radius: 50%;
-            position: absolute;
-            left: 7px;
-            top: 1px;
-        }
-
-        @media (max-width: 800px) {
-            #GWlogo {
-                border-bottom: var(--borderbottom) 0.5px solid;
-            }
-            .menuItem {
-                width: 100%;
-                max-width: 100%;
-                height:40px;
-                border-bottom: var(--borderbottom) 0.5px solid;
-            }
-            #header {
-                flex-direction: column;
-                height: 75px;
-                overflow:hidden
-            }
-            #menubutton {
-                position: absolute;
-                display: flex; 
-                font-size: 20px;
-                right:0;
-                height:75px;
-                width: 75px;
-                cursor: pointer;
-                justify-content: center;
-                align-items: center; 
-                flex-direction: column;
-            }
-            #darkbutton {
-                right:60px;
-            }
-            #checkboxDiv{
-                height:100%;
-                max-height: 100%;
-                margin: 0px;
-                margin-top:0px
-            }
-        }
-
-        #housealias, #passwd, #startDatePicker, #startTimePicker, #endDatePicker, #endTimePicker, #csv_inputs {
-            margin-top: 10px;
-            height: 40px;
-            border-radius: 5px;
-            border: none;
-            background-color: var(--inputs-bgcolor);
-            color: rgb(53, 53, 53);
-            padding-left: 15px;
-            padding-right: 10px;
-            margin-bottom: 10px;
-            font-size: 16px;
-            font-family: 'Montserrat';
-        }
-
-        #csv_inputs {
-            margin-bottom: 0px;
-        }
-
-        #housealias {
-            margin-bottom: 0px;
-        }
-
-        #PlotContainer {
-            padding-top: 10px;
-            /* background-color: #ffffff; */
-            width: 100%;
-            margin-bottom: 20px;
-        }
-
-        #footer {
-            background-color: #eeeeee;
-            color: #6c6c6c;
-            font-size: 14px;
-            width: 100%;
-            margin: 0px;
-            padding: 10px;
-            text-align: center;
-            bottom: 0;
-            left: 0;
-        }
-
-        input[type="checkbox"] {
-            appearance: none;
-            width: 22px;
-            height: 22px;
-            border: 2px solid #d1d1d6;
-            border-radius: 4px;
-            background-color: var(--box-bgcolor);
-            position: relative;
-            cursor: pointer;
-            margin-right: 10px;
-            transition: background-color 0.2s ease, border-color 0.2s ease;
-        }
-
-        input[type="checkbox"]:checked {
-            background-color: #d1d1d6;
-            border-color: #d1d1d6;
-        }
-
-        #checkboxDiv label {
-            display: inline-flex;
-            align-items: center;
-            font-size: 16px;
-            color: var(--checbox-textcolor);
-            cursor: pointer;
-            user-select: none;
-        }
-
-        #checkboxDiv h2, #checkboxDiv h4 {
-            margin-bottom: 15px;
-        }
-
-        #checkboxDiv h4 {
-            font-size: 18px;
-        }
-
-        #checkboxDiv input[type="number"] {
-            border: 1px solid #ccc;
-            border-radius: 6px;
-            padding: 6px 12px;
-            font-size: 16px;
-            width: 80px;
-            transition: border-color 0.3s ease;
-        }
-
-        #checkboxDiv input[type="number"]:focus {
-            border-color: #535353;
-            outline: none;
-        }
-
-        #loadingText, #csvLoadingText, #dijkstraLoadingText, #bidLoadingText {
-            /* cursor:progress; */
-            font-size:15px;
-            font-family: 'Montserrat';
-            margin-top:0px;
-            color:var(--loading-color);
-            border-radius:30px;
-            text-align:center;
-            height:40px;
-            padding-left: 20px;
-            padding-right: 20px;
-            background-color:var(--loading-bgcolor); 
-            border: none;
-        } 
-
-        #loader {
-            border: 10px solid var(--loader-bigpart);
-            border-top: 10px solid var(--loader-smallpart);
-            border-radius: 50%;
-            width: 20px;
-            height: 20px;
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-    </style>
-
+    <script src="resources/script.js" defer></script>
+    <!-- Favicon -->
+    <link rel="icon" type="image/x-icon" href="resources/images/favicon_light/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="resources/images/favicon_light/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="resources/images/favicon_light/favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="resources/images/favicon_light/apple-touch-icon.png">
+    <link rel="android-chrome" sizes="192x192" href="resources/images/favicon_light/android-chrome-192x192.png">
+    <link rel="android-chrome" sizes="512x512" href="resources/images/favicon_light/android-chrome-512x512.png">
 </head>
 
-<body> <!-- class="dark-mode" -->
-    
-    <div id="checkboxDiv" style="display: none;">
-        <button id="close-button" style="float: right; margin-top: 15px;" onclick="toggleCheckbox()">X</button>
+<body>
+    <!-- Navigation bar -->
+    <div id="navbar">
+        <div id="dropdown-menu-button" onclick="dropDownMenu()">
+            <div style="width: 30%; height:2px; background-color: var(--navbar-textcolor); margin-bottom: 6px;"></div>
+            <div style="width: 30%; height:2px; background-color: var(--navbar-textcolor);"></div>
+        </div>
+        <div id="darkmode-button" onclick="toggleDarkMode()">
+            <div class="darkmode-icon"></div>
+        </div>
+        <a href=""><div id="gridworks-logo">
+            <span style="font-family: 'Montserrat'; font-weight: normal">
+                <span>GRIDWORKS</span><br>CONSULTING
+            </span>
+        </div></a>
+        <a href="index.html"><div class='menu-item'>
+            <span style="font-size: 14px; font-weight: bold;">Visualizer</span>
+        </div></a>
+        <a href="dashboard.html"><div class='menu-item'>
+            <span style="font-size: 14px;">Dashboard</span>
+        </div></a>
+        <a href="morning_report.html"><div class='menu-item'>
+            <span style="font-size: 14px;">Morning report</span>
+        </div></a>
+        <a href="https://gridworks-consulting.com/"><div class='menu-item'>
+            <span style="font-size: 14px;">About</span>
+        </div></a>
+    </div> 
+
+    <!-- Login -->
+    <div id="login-div" style="display: block">               
+        <h2 id="login-title">Log in</h2>
+        <form onsubmit="LogIn(event)">
+            <input class="text-input" type="text" id="housealias" placeholder="House alias"><br>
+            <input class="text-input" type="password" id="password" placeholder="Password"><br>
+            <input class='enabled' id='login-button' type="submit" style='position: absolute' value="Log in">
+        </form>
+    </div>
+
+    <!-- Options -->
+    <div id="options-div" style="display: none;">
+        <button id="close-options-button" onclick="toggleOptions()">X</button>
         <h2>Select channels</h2>
         <h4>Heat pump</h4>
         <label><input type="checkbox" name="channels" value="hp-lwt" checked>LWT</label><br>
@@ -502,773 +93,72 @@
         <label><input type="checkbox" name="channels" value="store-pump-pwr" checked>Storage pump power</label><br>
         <label><input type="checkbox" name="channels" value="store-energy" checked>Available and required energy</label><br>
         <label><input type="checkbox" name="channels" value="thermocline">Thermocline and centroids</label><br>
-        <h2>Plots</h2>
-        <label><input type="checkbox" name="channels" value="show-points">Show points</label><br>
-        <button id="reorder-button" style="margin-top: 15px;" onclick="reorderPlots()">Re-order plots</button>
-        <h2>Only for CSVs</h2>
+        <h4>Only for CSVs</h4>
         <label><input type="checkbox" name="channels" value="relays" checked>Relays</label><br>
-        <label><input type="checkbox" name="channels" value="white-wires" checked>White wires</label><br>
-        <h2>Export to CSV</h2>
+        <label><input type="checkbox" name="channels" value="white-wires" checked>White wire power</label><br>
+        <h2>Plot settings</h2>
+        <label><input type="checkbox" name="channels" value="show-points">Show points</label><br>
+        <button class="enabled" id="reorder-button" style="margin-top: 15px;" onclick="reorderPlots()">Re-order plots</button>
+        <h2>CSV settings</h2>
         <label><input type="checkbox" name="channels" value="all-data" checked>Export all data channels</label><br><br>
-        <span style="color: var(--checkbox-textcolor);">Time step (seconds):</span><br><label><input type="number" style="width: 50px;" name="csv_inputs" id="csv_inputs" value="1"></label><br>
-        <br>
-        <!-- <div style="position:absolute">
-        <button id="csv_button" style='position:relative;' onclick='exportCSV()'>Export to CSV</button>
-        <button id="csvLoadingText" style='display:none;'>Export to CSV</button><br>
-        <div style="position: absolute; height:35px; width: 100%;"></div>
-        <br>
-        </div> -->
-    </div>
-    
-    <div>
-        <div id="header">
-            <div id="menubutton" onclick="dropDownMenu()">
-                <div style="width: 30%; height:2px; background-color: var(--header-textcolor);margin-bottom: 6px;"></div>
-                <div style="width: 30%; height:2px; background-color: var(--header-textcolor);"></div>
-            </div>
-            <div id="darkbutton" onclick="toggleDarkMode()">
-                <div class="toggle-circle"></div>
-            </div>
-            <a href="">
-            <div id="GWlogo">
-                <span style="font-family: 'Montserrat'">
-                    <span style="font-weight: normal;">GRIDWORKS</span><br>CONSULTING
-                </span>
-            </div>
-            </a>
-            <a href="index.html">
-            <div class='menuItem'>
-                <span style="font-size: 14px; font-weight: bold;">
-                    Visualizer
-                </span>
-            </div>
-            </a>
-            <a href="dashboard.html">
-                <div class='menuItem'>
-                    <span style="font-size: 14px;">
-                        Dashboard
-                    </span>
-                </div>
-                </a>
-            <a href="morning_report.html">
-                <div class='menuItem'>
-                    <span style="font-size: 14px;">
-                        Morning report
-                    </span>
-                </div>
-            </a>
-            <a href="https://gridworks-consulting.com/">
-            <div class='menuItem'>
-                <span style="font-size: 14px;">
-                    About
-                </span>
-            </div>
-            </a>
-        </div> 
-
-        <!-- <h1 id="pageTitle">Visualizer</h1> -->
-
-        <!-- Login -->
-        <div id="login" style="display: block;">               
-            <div id="LoginBox">
-                <h2 id="LoginHeader">Log in</h2>
-                <form id="form1" onsubmit="LogInFunction(event)">
-                    <input type="text" id="housealias" name="housealiaspicker" placeholder="House alias"><br>
-                    <input type="password" id="passwd" name="passwordpicker" placeholder="Password"><br>
-                    <input id='login-button' type="submit" style='position: absolute' value="Log in">
-                </form>
-            </div>
-        </div> 
-
-
-        <div id="content" style="display: none;">               
-        <div id="Inputs">
-            <h2 id="houseAliasHeader"></h2>
-            <form  id="form2">
-                <label style="color: var(--box-textcolor); font-size: 16px;" for="startDatePicker">Start<br></label>
-                <input type="date" id="startDatePicker" name="startDatePicker">
-                <input type="time" id="startTimePicker" name="startTimePicker"><br><br>
-                <label style="color: var(--box-textcolor); font-size: 16px;" for="endDatePicker">End<br></label>
-                <input type="date" id="endDatePicker" name="endDatePicker">
-                <input type="time" id="endTimePicker" name="endTimePicker">
-                <button type="button" id="nowButton" onclick=setNow()>Now</button><br><br>
-                <button type="button" id="checkboxButton" onclick=toggleCheckbox()>Options</button>
-                <input id='loadingText' type="button" style='position: absolute' value="Plot">
-                <input id='submit_button' type="submit" style='position: absolute' value="Plot" onclick="getData(event, false)">
-                <div id="loader" style="margin-left: 172px; position:absolute; display:none"></div>
-                <div style="margin-left: 80px; position:absolute; display:inline">
-                    <button id="csv_button" style='position:relative;' onclick='exportCSV(event, false)'>CSV</button>
-                    <button id="csvLoadingText" style='display:none;'>CSV</button><br>
-                    <div style="position: absolute; height:35px; width: 100%;"></div>
-                    <br>
-                </div>
-                <br>
-                <br>
-                <div style="margin-left: 0px; position:absolute; display:inline">
-                    <button id="dijkstra_button" style='position:relative;' onclick='downloadExcel(event)'>FLO</button>
-                    <button id="dijkstraLoadingText" style='display:none;'>FLO</button><br>
-                    <div style="position: absolute; height:35px; width: 100%;"></div>
-                    <br>
-                </div>
-                <div style="margin-left: 80px; position:absolute; display:inline">
-                    <button id="bid_button" style='position:relative;' onclick="getData(event, true)">Bids</button>
-                    <button id="bidLoadingText" style='display:none;'>Bids</button><br>
-                    <div style="position: absolute; height:35px; width: 100%;"></div>
-                    <br>
-                </div>
-                <!-- <span id="loadingText" style="font-weight: bold; color: rgb(55, 55, 55); display: none; position: absolute; margin-top:11px;">Loading data...</span> -->
-            </form>
-        </div>
-        <div id="PlotContainer">
-            <div class="draggable" id="Plot1"></div>
-            <div class="draggable" id="Plot11"></div>
-            <div class="draggable" id="Plot2"></div>
-            <div class="draggable" id="Plot3"></div>
-            <div class="draggable" id="Plot4"></div>
-            <div class="draggable" id="Plot5"></div>
-            <div class="draggable" id="Plot6"></div>
-            <div class="draggable" id="Plot7"></div>
-            <div class="draggable" id="Plot8"></div>
-            <div class="draggable" id="Plot9"></div>
-            <div class="draggable" id="Plot10"></div>
-            <div class="draggable" id="Bids"></div>
-            <div class="draggable" id="PlotPng"></div>
-        </div>
-
-    <!-- content -->
-    </div> 
+        <span style="color: var(--checkbox-textcolor);">Time step (seconds):</span><br>
+        <label><input class="text-input" type="number" id="csv-timestep" name="csv-timestep" value="1"></label><br><br>
     </div>
 
-
-    <!-- <div id="footer">
-        Copyright © GridWorks Energy Consulting 2024. All rights reserved.
-    </div> -->
-
-    <script>
-
-        const prefersDarkMode = window.matchMedia("(prefers-color-scheme: dark)").matches;
-        if (prefersDarkMode) {
-            document.body.classList.toggle('dark-mode');
-        }
-
-        window.matchMedia("(prefers-color-scheme: dark)").addEventListener('change', (e) => {
-            if (e.matches) {
-                document.body.classList.add('dark-mode');
-                darkmode_tf = true
-            } else {
-                document.body.classList.remove('dark-mode');
-                darkmode_tf = false
-            }
-            const plotDivs = [
-                document.getElementById('Plot1'),
-                document.getElementById('Plot2'),
-                document.getElementById('Plot3'),
-                document.getElementById('Plot4'),
-                document.getElementById('Plot5'),
-                document.getElementById('Plot6'),
-                document.getElementById('Plot7'),
-                document.getElementById('Plot8'),
-                document.getElementById('Plot9'),
-                document.getElementById('Plot10'),
-                document.getElementById('Plot11'),
-                document.getElementById('PlotPng')
-            ];
-            plotDivs.forEach(div => div.innerHTML = '');
-        });
-
-        function moveDown(button) {
-            const div = button.parentElement.parentElement;
-            const nextDiv = div.nextElementSibling;
-    
-            if (nextDiv) {
-                div.parentElement.insertBefore(nextDiv, div);
-            }
-        }
-    
-        function moveUp(button) {
-            const div = button.parentElement.parentElement;
-            const prevDiv = div.previousElementSibling;
-    
-            if (prevDiv) {
-                div.parentElement.insertBefore(div, prevDiv);
-            }
-        }
-
-        let house_alias, password;
-        let darkmode_tf = prefersDarkMode;
-        let api_host = 'http://localhost:8000'
-        // let api_host = 'https://visualizer.electricity.works'
-
-        async function downloadExcel(event) {
-
-            event.preventDefault();
-
-            disable_dijkstra_buttons()
-            showLoader()
-
-            const enddate = document.getElementById('endDatePicker').value;
-            const endtime = document.getElementById('endTimePicker').value;
-            const endtime_luxon = luxon.DateTime.fromFormat(`${enddate} ${endtime}`, 'yyyy-MM-dd HH:mm', { zone: 'America/New_York' });
-            const endUnixMilliseconds = endtime_luxon.toUTC().toMillis();
-
-            try {
-                const response = await fetch(`${api_host}/flo`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        house_alias: `${house_alias}`,
-                        password: password, 
-                        time_ms: endUnixMilliseconds, 
-                    })
-                });
-
-                if (response.ok) {
-                    const blob = await response.blob();
-                    const link = document.createElement('a');
-                    const url = window.URL.createObjectURL(blob);
-                    link.href = url;
-                    const endDateFile = new Date(endUnixMilliseconds);
-                    const newYorkDate = endDateFile.toLocaleString('en-US', { 
-                        timeZone: 'America/New_York', 
-                        hour12: false, 
-                        year: 'numeric', 
-                        month: 'short', 
-                        day: 'numeric', 
-                        hour: 'numeric', 
-                    })
-                    .replace(/,/g, '')
-                    .replace(/\s/g, '_')
-                    .toLowerCase();
-                    link.download = `flo_${house_alias}_${newYorkDate}.xlsx`;
-                    link.click();
-                    window.URL.revokeObjectURL(url);
-                } else {
-                    alert('Failed to download the file.');
-                }
-            } catch (error) {
-                console.error('Error downloading Excel file:', error);
-                alert('Error downloading the file.');
-            } finally {
-                enable_dijkstra_buttons()
-                hideLoader()
-            }
-        }
-
-        async function exportCSV(event, confirmWithUser) {
-
-            event.preventDefault();
-
-            disable_csv_buttons()
-            showLoader()
-
-            const startdate = document.getElementById('startDatePicker').value;
-            const starttime = document.getElementById('startTimePicker').value;
-            const starttime_luxon = luxon.DateTime.fromFormat(`${startdate} ${starttime}`, 'yyyy-MM-dd HH:mm', { zone: 'America/New_York' });
-            const startUnixMilliseconds = starttime_luxon.toUTC().toMillis();
-
-            const enddate = document.getElementById('endDatePicker').value;
-            const endtime = document.getElementById('endTimePicker').value;
-            const endtime_luxon = luxon.DateTime.fromFormat(`${enddate} ${endtime}`, 'yyyy-MM-dd HH:mm', { zone: 'America/New_York' });
-            const endUnixMilliseconds = endtime_luxon.toUTC().toMillis();
-
-            const selectedChannels = Array.from(document.querySelectorAll('input[name="channels"]:checked'))
-                .map(checkbox => checkbox.value);
-
-            const timestep_wip = document.getElementsByName('csv_inputs')[0];
-            const timestep = timestep_wip.value;
-            
-            try {
-                const response = await fetch(`${api_host}/csv`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        house_alias: `${house_alias}`,
-                        password: password, 
-                        start_ms: startUnixMilliseconds, 
-                        end_ms: endUnixMilliseconds,
-                        selected_channels: selectedChannels,
-                        timestep: timestep,
-                        confirm_with_user: confirmWithUser,
-                    })
-                });
-
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-
-                const contentType = response.headers.get("Content-Type");
-
-                if (contentType && contentType.includes("application/json")) {
-                    const data = await response.json();
-                    if ('success' in data && data.success === false) {
-                        if (data.confirm_with_user) {
-                            const userChoice = confirm(data.message);
-                            console.log(userChoice ? "User chose to Continue" : "User chose to Abort");
-                            if (userChoice) {
-                                await exportCSV(event, true); 
-                            }
-                        } else { 
-                            alert(data.message);
-                            if (data.reload) {
-                                location.reload();
-                            }
-                        }
-                    }
-                } else {
-                    const startDate = new Date(startUnixMilliseconds);
-                    const formattedStartDate = startDate.toISOString().slice(0, 16).replace('T', '-');
-                    const endDate = new Date(endUnixMilliseconds);
-                    const formattedEndDate = endDate.toISOString().slice(0, 16).replace('T', '-');
-                    const blob = await response.blob();
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `${house_alias}_${timestep}s_${formattedStartDate}-${formattedEndDate}.csv`;
-                    document.body.appendChild(a);
-                    a.click();
-                    a.remove();
-                    window.URL.revokeObjectURL(url);
-                }
-            } catch (error) {
-                console.error('Error downloading CSV:', error);
-                alert(`Error downloading CSV`);
-            } finally {
-                enable_csv_buttons()
-                hideLoader()
-            }
-        }
-
-        async function fetchPlots(house_alias, password, start_ms, end_ms, channels, confirmWithUser) {
-
-            disable_plot_buttons()
-            showLoader()
-
-            try {
-                const response = await fetch(`${api_host}/plots`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        house_alias: `${house_alias}`,
-                        password: password, 
-                        start_ms: start_ms, 
-                        end_ms: end_ms,
-                        selected_channels: channels,
-                        confirm_with_user: confirmWithUser,
-                        darkmode: darkmode_tf,
-                    })
-                });
-
-                const contentType = response.headers.get("Content-Type");
-
-                if (contentType && contentType.includes("application/json")) {
-                    const data = await response.json();
-                    if ('success' in data && data.success === false) {
-                        if (data.confirm_with_user) {
-                            const userChoice = confirm(data.message);
-                            console.log(userChoice ? "User chose to Continue" : "User chose to Abort");
-                            if (userChoice) {
-                                await fetchPlots(house_alias, password, start_ms, end_ms, channels, true); 
-                            }
-                        } else { 
-                            alert(data.message);
-                            if (data.reload) {
-                                location.reload();
-                            }
-                        }
-                    }
-                } else {
-                    const blob = await response.blob();
-                    const zip = await JSZip.loadAsync(blob);
-
-                    const plotDivs = [
-                        document.getElementById('Plot1'),
-                        document.getElementById('Plot2'),
-                        document.getElementById('Plot3'),
-                        document.getElementById('Plot4'),
-                        document.getElementById('Plot5'),
-                        document.getElementById('Plot6'),
-                        document.getElementById('Plot7'),
-                        document.getElementById('Plot8'),
-                        document.getElementById('Plot9'),
-                        document.getElementById('Plot10'),
-                        document.getElementById('Plot11'),
-                        document.getElementById('PlotPng')
-                    ];
-                    plotDivs.forEach(div => div.innerHTML = '');
-
-                    function createMoveButtons() {
-                        const moveButtonsDiv = document.createElement('div');
-                        moveButtonsDiv.classList.add('move_buttons');
-                        moveButtonsDiv.style.display = 'none';
-
-                        const moveUpButton = document.createElement('button');
-                        moveUpButton.classList.add('move-button');
-                        moveUpButton.textContent = '⬆︎';
-                        moveUpButton.onclick = function() {
-                            moveUp(moveUpButton);
-                        };
-
-                        const moveDownButton = document.createElement('button');
-                        moveDownButton.classList.add('move-button');
-                        moveDownButton.textContent = '⬇︎';
-                        moveDownButton.onclick = function() {
-                            moveDown(moveDownButton);
-                        };
-
-                        moveButtonsDiv.appendChild(moveUpButton);
-                        moveButtonsDiv.appendChild(moveDownButton);
-
-                        return moveButtonsDiv;
-                    }
-
-                    let iframeCount = 0;
-
-                    for (const filename of Object.keys(zip.files)) {
-                        const fileData = await zip.files[filename].async('blob');
-
-                        if (filename.endsWith('.html')) {
-                            const blob = new Blob([await zip.files[filename].async('text')], { type: 'text/html' });
-                            const htmlUrl = URL.createObjectURL(blob);
-                            const iframe = document.createElement('iframe');
-                            iframe.src = htmlUrl;
-                            iframe.style.width = '90%';
-                            iframe.style.maxWidth = '1500px';
-                            iframe.style.height = '375px';
-                            iframe.style.border = 'none';
-
-                            // Use modulo to ensure the plotDivs array is reused for all iframes
-                            const currentDiv = plotDivs[iframeCount % plotDivs.length];
-                            currentDiv.appendChild(iframe);
-                            currentDiv.appendChild(createMoveButtons()); // Append the move buttons
-
-                            iframeCount++;
-                        } else if (filename.endsWith('.png')) {
-                            const imgUrl = URL.createObjectURL(fileData);
-                            const img = document.createElement('img');
-                            img.src = imgUrl;
-                            img.alt = 'Plot Image';
-                            plotsDivPng.appendChild(img);
-                        }
-                    }
-                }
-            } catch (error) {
-                console.error('Error fetching plots:', error);
-                alert(`Error fetching plots for house '${house_alias}'.`);
-            } finally {
-                enable_plot_buttons();
-                hideLoader();
-            }
-        }
-
-        async function fetchBids(house_alias, password, start_ms, end_ms, confirmWithUser) {
-
-            disable_bid_buttons()
-            showLoader()
-
-            try {
-                const response = await fetch(`${api_host}/plots`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        house_alias: `${house_alias}`,
-                        password: password, 
-                        start_ms: start_ms, 
-                        end_ms: end_ms,
-                        selected_channels: ["bids"],
-                        confirm_with_user: confirmWithUser,
-                        darkmode: darkmode_tf,
-                    })
-                });
-
-                const contentType = response.headers.get("Content-Type");
-
-                if (contentType && contentType.includes("application/json")) {
-                    const data = await response.json();
-                    if ('success' in data && data.success === false) {
-                        if (data.confirm_with_user) {
-                            const userChoice = confirm(data.message);
-                            console.log(userChoice ? "User chose to Continue" : "User chose to Abort");
-                            if (userChoice) {
-                                await fetchBids(house_alias, password, start_ms, end_ms, true); 
-                            }
-                        } else { 
-                            alert(data.message);
-                            if (data.reload) {
-                                location.reload();
-                            }
-                        }
-                    }
-                } else {
-                    const blob = await response.blob();
-                    const zip = await JSZip.loadAsync(blob);
-                    const plotsDiv = document.getElementById('Bids');
-                    plotsDiv.innerHTML = '';
-
-                    // Convert zip.files into an array to preserve the order
-                    const fileNames = Object.keys(zip.files);
-
-                    for (const filename of fileNames) {
-                        const fileData = await zip.files[filename].async('blob');
-                        const imgUrl = URL.createObjectURL(fileData);
-                        
-                        const imageDiv = document.createElement('div');
-                        const img = document.createElement('img');
-                        img.src = imgUrl;
-                        img.alt = 'Plot Image';
-                        imageDiv.appendChild(img);
-                        imageDiv.classList.add('image-container');
-                        plotsDiv.appendChild(imageDiv);
-                    }
-                }
-            } catch (error) {
-                console.error('Error fetching bids:', error);
-                alert(`Error fetching bids for house '${house_alias}'.`);
-            } finally {
-                enable_bid_buttons();
-                hideLoader();
-            }
-            }
-
-        function getDefaultDate(is_start) {
-            const nyDate = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
-            if (is_start) { 
-                nyDate.setDate(nyDate.getDate() - 1);
-                nyDate.setHours(20, 0, 0, 0);
-            } else {
-                nyDate.setMinutes(nyDate.getMinutes() + 1);  
-            } 
-            const year = nyDate.getFullYear();
-            const month = String(nyDate.getMonth() + 1).padStart(2, '0');
-            const day = String(nyDate.getDate()).padStart(2, '0');
-            return `${year}-${month}-${day}`;
-        }
-
-        function getDefaultTime(is_start) {
-            const nyDate = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
-            if (is_start) { 
-                nyDate.setDate(nyDate.getDate() - 1);
-                nyDate.setHours(20, 0, 0, 0);
-            } else {
-                nyDate.setMinutes(nyDate.getMinutes() + 1);  
-            }  
-            const hours = String(nyDate.getHours()).padStart(2, '0');
-            const minutes = String(nyDate.getMinutes()).padStart(2, '0');
-
-            return `${hours}:${minutes}`;
-        }
-
-        function setNow() {
-            const nyDate = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
-            nyDate.setMinutes(nyDate.getMinutes() + 1);
-            document.getElementById('endDatePicker').value = nyDate.toISOString().split('T')[0];
-            document.getElementById('endTimePicker').value = nyDate.toTimeString().split(' ')[0].substring(0, 5);
-            getData(event, false)
-        }
-
-        function handleKey(event) {
-            if (event.key === "Enter") {
-                const target = document.activeElement;
-                if (target.tagName !== "BUTTON") {
-                    event.preventDefault();
-                    document.querySelector('input[type="submit"]').click();
-                }
-            }
-        }
-
-        function enable_plot_buttons() {
-            const submitButton = document.querySelector('#form2 input[type="submit"]');
-            const nowButton = document.getElementById('nowButton');
-            const loadingText = document.getElementById('loadingText');
-            submitButton.style.display = 'inline';
-            nowButton.style.display = 'inline';
-            loadingText.style.display = 'none';
-        }
-
-        function disable_plot_buttons() {
-            const submitButton = document.querySelector('#form2 input[type="submit"]');
-            const nowButton = document.getElementById('nowButton');
-            const loadingText = document.getElementById('loadingText');
-            submitButton.style.display = 'none';
-            nowButton.style.display = 'none';
-            loadingText.style.display = 'inline';
-        }
-
-        function enable_csv_buttons() {
-            const csvButton= document.getElementById('csv_button');
-            const csvLoadingText = document.getElementById('csvLoadingText');
-            csvButton.style.display = 'inline';
-            csvLoadingText.style.display = 'none';
-        }
-
-        function disable_csv_buttons() {
-            const csvButton= document.getElementById('csv_button');
-            const csvLoadingText = document.getElementById('csvLoadingText');
-            csvButton.style.display = 'none';
-            csvLoadingText.style.display = 'inline';
-        }
-
-        function enable_dijkstra_buttons() {
-            const dijkstraButton= document.getElementById('dijkstra_button');
-            const dijkstraLoadingText = document.getElementById('dijkstraLoadingText');
-            dijkstraButton.style.display = 'inline';
-            dijkstraLoadingText.style.display = 'none';
-        }
-
-        function disable_dijkstra_buttons() {
-            const dijkstraButton= document.getElementById('dijkstra_button');
-            const dijkstraLoadingText = document.getElementById('dijkstraLoadingText');
-            dijkstraButton.style.display = 'none';
-            dijkstraLoadingText.style.display = 'inline';
-        }
-
-        function enable_bid_buttons() {
-            const dijkstraButton= document.getElementById('bid_button');
-            const dijkstraLoadingText = document.getElementById('bidLoadingText');
-            dijkstraButton.style.display = 'inline';
-            dijkstraLoadingText.style.display = 'none';
-        }
-
-        function disable_bid_buttons() {
-            const dijkstraButton= document.getElementById('bid_button');
-            const dijkstraLoadingText = document.getElementById('bidLoadingText');
-            dijkstraButton.style.display = 'none';
-            dijkstraLoadingText.style.display = 'inline';
-        }
-
-        function LogInFunction(event) {
-            event.preventDefault();
-            
-            house_alias = document.getElementById("housealias").value;
-            password = document.getElementById("passwd").value;
-            if (!house_alias) {
-                alert("Please enter a house alias.");
-                return;
-            }
-
-            document.getElementById("login").style.display = "none";
-            document.getElementById("houseAliasHeader").textContent = `${house_alias.charAt(0).toUpperCase()}${house_alias.slice(1)}`;
-            document.getElementById('startDatePicker').value = getDefaultDate(true);
-            document.getElementById('startTimePicker').value = getDefaultTime(true);
-            document.getElementById('endDatePicker').value = getDefaultDate();
-            document.getElementById('endTimePicker').value = getDefaultTime();
-            document.getElementById("content").style.display = "block";
-
-            getData(event, false);
-        }
-
-
-        function getData(event, get_bids) {
-            event.preventDefault();
-
-            const selectedChannels = Array.from(document.querySelectorAll('input[name="channels"]:checked'))
-                .map(checkbox => checkbox.value);
-
-            const startdate = document.getElementById('startDatePicker').value;
-            const starttime = document.getElementById('startTimePicker').value;
-            const starttime_luxon = luxon.DateTime.fromFormat(`${startdate} ${starttime}`, 'yyyy-MM-dd HH:mm', { zone: 'America/New_York' });
-            const startUnixMilliseconds = starttime_luxon.toUTC().toMillis();
-
-            const enddate = document.getElementById('endDatePicker').value;
-            const endtime = document.getElementById('endTimePicker').value;
-            const endtime_luxon = luxon.DateTime.fromFormat(`${enddate} ${endtime}`, 'yyyy-MM-dd HH:mm', { zone: 'America/New_York' });
-            const endUnixMilliseconds = endtime_luxon.toUTC().toMillis();
-
-            if (get_bids === true) {
-                console.log('Getting bids')
-                fetchBids(house_alias, password, startUnixMilliseconds, endUnixMilliseconds, false)
-            } else {
-                fetchPlots(house_alias, password, startUnixMilliseconds, endUnixMilliseconds, selectedChannels, false)
-            }
-        }
-
-        function reorderPlots() {
-            const move_buttons = document.getElementsByClassName("move_buttons");
-            const reorder_button = document.getElementById("reorder-button");
-            for (let i = 0; i < move_buttons.length; i++) {
-                if (move_buttons[i].style.display === "none") {
-                    move_buttons[i].style.display = "block";
-                    reorder_button.textContent = "Done re-ordering plots";
-                } else {
-                    move_buttons[i].style.display = "none";
-                    reorder_button.textContent = "Re-order plots";
-                }
-            }
-            toggleCheckbox();
-        }
-
-        function toggleCheckbox() {
-            const checkboxDiv = document.getElementById("checkboxDiv");
-            if (checkboxDiv.style.display === "none") {
-                checkboxDiv.style.display = "block";
-                document.getElementById("content").style.display = "none";
-                document.getElementById("header").style.display = "none";
-
-            } else {
-                checkboxDiv.style.display = "none";
-                document.getElementById("content").style.display = "block";
-                document.getElementById("header").style.display = "flex";
-            }
-        }
-
-        function dropDownMenu(){
-            const header = document.getElementById("header");
-            if (header.style.height === '75px') {
-                document.getElementById("header").style.height = "238px";
-
-            } else {
-                document.getElementById("header").style.height = "75px";
-            }
-        }
-
-        function showLoader() {
-            const loader = document.getElementById('loader');
-            loader.style.display = 'inline-block';
-        }
-
-        function hideLoader() {
-            const loader = document.getElementById('loader');
-            loader.style.display = 'none';
-        }
-
-        function toggleDarkMode() {
-            const plotsDiv1 = document.getElementById('Plot1');
-            const plotsDiv2 = document.getElementById('Plot2');
-            const plotsDiv3 = document.getElementById('Plot3');
-            const plotsDiv4 = document.getElementById('Plot4');
-            const plotsDiv5 = document.getElementById('Plot5');
-            const plotsDiv6 = document.getElementById('Plot6');
-            const plotsDiv7 = document.getElementById('Plot7');
-            const plotsDiv8 = document.getElementById('Plot8');
-            const plotsDiv9 = document.getElementById('Plot9');
-            const plotsDiv10 = document.getElementById('Plot10');
-            const plotsDiv11 = document.getElementById('Plot11');
-            const plotsDivPng = document.getElementById('PlotPng');
-            plotsDiv1.innerHTML = '';
-            plotsDiv2.innerHTML = '';
-            plotsDiv3.innerHTML = '';
-            plotsDiv4.innerHTML = '';
-            plotsDiv5.innerHTML = '';
-            plotsDiv6.innerHTML = '';
-            plotsDiv7.innerHTML = '';
-            plotsDiv8.innerHTML = '';
-            plotsDiv9.innerHTML = '';
-            plotsDiv10.innerHTML = '';
-            plotsDiv11.innerHTML = '';
-            plotsDivPng.innerHTML = '';
-            const toggleButton = document.getElementById('toggle-mode');
-            document.body.classList.toggle('dark-mode');
-            darkmode_tf = !darkmode_tf
-        }
-    </script>
-    
+    <!-- Data selector -->
+    <div id="data-selector" style="display: none;">
+        <h2 id="data-selector-title"></h2>
+        <form id="data-selector-form">
+            <!-- Start and end dates -->
+            <label style="color: var(--box-textcolor); font-size: 16px;" for="start-date-picker">Start<br></label>
+            <input class="text-input" type="date" id="start-date-picker" name="start-date-picker">
+            <input class="text-input" type="time" id="start-time-picker" name="start-time-picker"><br><br>
+            <label style="color: var(--box-textcolor); font-size: 16px;" for="end-date-picker">End<br></label>
+            <input class="text-input" type="date" id="end-date-picker" name="end-date-picker">
+            <input class="text-input" type="time" id="end-time-picker" name="end-time-picker">
+            <button type="button" id="now-button" onclick=setNow()>Now</button><br><br>
+            <!-- Buttons and loader -->
+            <button type="button" id="show-options-button" onclick=toggleOptions()>Options</button>
+            <div style="margin-left: 0px; position:absolute; display:inline">
+                <input class="enabled" id='plot-button' type="submit" value="Plot" onclick="getData(event,false)">
+                <input class="disabled" id='plot-button-disabled' type="button" value="Plot">
+            </div>
+            <div style="margin-left: 80px; position:absolute; display:inline">
+                <button class="enabled" id="csv-button" onclick='exportCSV(event,false)'>CSV</button>
+                <button class="disabled" id="csv-button-disabled">CSV</button><br>
+            </div><br><br>
+            <div style="margin-left: 0px; position:absolute; display:inline">
+                <button class="enabled" id="flo-button" onclick='downloadExcel(event)'>FLO</button>
+                <button class="disabled" id="flo-button-disabled">FLO</button><br>
+            </div>
+            <div style="margin-left: 80px; position:absolute; display:inline">
+                <button class="enabled" id="bid-button" onclick="getData(event,true)">Bids</button>
+                <button class="disabled" id="bid-button-disabled">Bids</button><br>
+            </div>
+            <div id="loader"></div>
+        </form>
+    </div>
+
+    <!-- Plots -->
+    <div id="plot-container" style="display: none;">
+        <div class="plot" id="plot1"></div>
+        <div class="plot" id="plot2"></div>
+        <div class="plot" id="plot3"></div>
+        <div class="plot" id="plot4"></div>
+        <div class="plot" id="plot5"></div>
+        <div class="plot" id="plot6"></div>
+        <div class="plot" id="plot7"></div>
+        <div class="plot" id="plot8"></div>
+        <div class="plot" id="plot9"></div>
+        <div class="plot" id="plot10"></div>
+        <div class="plot" id="plot11"></div>
+        <div class="plot" id="bids"></div>
+        <div id="plot-png"></div>
+    </div>
+
+    <!-- Footer -->
+    <div id="footer">
+        GridWorks 2025 • <a href="mailto:gbaker@gridworks-consulting.com">Email</a> • <a href="tel:+16173207950">Call</a>
+    </div>
 </body>
-
 </html>
