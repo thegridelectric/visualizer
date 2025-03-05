@@ -2,6 +2,7 @@ import io
 import os
 import csv
 import time
+import uuid
 import dotenv
 import uvicorn
 import zipfile
@@ -10,7 +11,7 @@ import traceback
 import numpy as np
 import pandas as pd
 from datetime import timedelta
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional, Union
 import asyncio
 import async_timeout
@@ -32,6 +33,10 @@ from named_types import FloParamsHouse0
 class BaseRequest(BaseModel):
     house_alias: str
     password: str
+    unique_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+
+    def __hash__(self):
+        return hash(self.unique_id)
 
 class DataRequest(BaseRequest):
     start_ms: int
@@ -66,6 +71,7 @@ class VisualizerApi():
         self.aa_states_order = self.ha_states_order.copy()
         self.whitewire_threshold_watts = {'beech': 100, 'default': 20}
         self.zone_color = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']*3
+        self.data = {}
 
     def start(self):
         self.app = FastAPI()
@@ -128,11 +134,12 @@ class VisualizerApi():
             if error or request.selected_channels==['bids']:
                 return error
             
+            self.data[request] = {}
             with self.Session() as session:
                 import time
                 querry_start = time.time()
                 print("Querying journaldb...")
-                self.all_raw_messages = session.query(MessageSql).filter(
+                all_raw_messages = session.query(MessageSql).filter(
                     MessageSql.from_alias.like(f'%.{request.house_alias}.%'),
                     MessageSql.message_persisted_ms <= request.end_ms,
                     or_(
@@ -152,16 +159,16 @@ class VisualizerApi():
                 ).order_by(asc(MessageSql.message_persisted_ms)).all()
                 print(f"Time to fetch data: {round(time.time()-querry_start,1)} seconds")
 
-            if not self.all_raw_messages:
+            if not all_raw_messages:
                 warning_message = f"No data found for house '{request.house_alias}' in the selected timeframe."
                 return {"success": False, "message": warning_message, "reload": False}
             
             # Process reports
             reports: List[MessageSql] = sorted(
-                [x for x in self.all_raw_messages if x.message_type_name in ['report', 'batched.readings']],
+                [x for x in all_raw_messages if x.message_type_name in ['report', 'batched.readings']],
                 key = lambda x: x.message_persisted_ms
                 )
-            self.channels = {}
+            self.data[request]['channels'] = {}
             for message in reports:
                 for channel in message.payload['ChannelReadingList']:
                     if message.message_type_name == 'report':
@@ -174,56 +181,56 @@ class VisualizerApi():
                         continue
                     if len(channel['ValueList'])!=len(channel['ScadaReadTimeUnixMsList']):
                         continue
-                    if channel_name not in self.channels:
-                        self.channels[channel_name] = {'values': [], 'times': []}
-                    self.channels[channel_name]['values'].extend(channel['ValueList'])
-                    self.channels[channel_name]['times'].extend(channel['ScadaReadTimeUnixMsList'])
+                    if channel_name not in self.data[request]['channels']:
+                        self.data[request]['channels'][channel_name] = {'values': [], 'times': []}
+                    self.data[request]['channels'][channel_name]['values'].extend(channel['ValueList'])
+                    self.data[request]['channels'][channel_name]['times'].extend(channel['ScadaReadTimeUnixMsList'])
                 
             # Process snapshots
-            max_timestamp = max(max(self.channels[channel_name]['times']) for channel_name in self.channels)
+            max_timestamp = max(max(self.data[request]['channels'][channel_name]['times']) for channel_name in self.data[request]['channels'])
             snapshots = sorted(
-                    [x for x in self.all_raw_messages if x.message_type_name=='snapshot.spaceheat'
+                    [x for x in all_raw_messages if x.message_type_name=='snapshot.spaceheat'
                     and x.message_persisted_ms >= max_timestamp], 
                     key = lambda x: x.message_persisted_ms
                     )
             for snapshot in snapshots:
                 for snap in snapshot.payload['LatestReadingList']:
-                    if snap['ChannelName'] in self.channels:
-                        self.channels[snap['ChannelName']]['times'].append(snap['ScadaReadTimeUnixMs'])
-                        self.channels[snap['ChannelName']]['values'].append(snap['Value'])
+                    if snap['ChannelName'] in self.data[request]['channels']:
+                        self.data[request]['channels'][snap['ChannelName']]['times'].append(snap['ScadaReadTimeUnixMs'])
+                        self.data[request]['channels'][snap['ChannelName']]['values'].append(snap['Value'])
 
             # Get minimum and maximum timestamp for plots
-            max_timestamp = max(max(self.channels[x]['times']) for x in self.channels)
-            min_timestamp = min(min(self.channels[x]['times']) for x in self.channels)
+            max_timestamp = max(max(self.data[request]['channels'][x]['times']) for x in self.data[request]['channels'])
+            min_timestamp = min(min(self.data[request]['channels'][x]['times']) for x in self.data[request]['channels'])
             min_timestamp += -(max_timestamp-min_timestamp)*0.05
             max_timestamp += (max_timestamp-min_timestamp)*0.05
-            self.min_timestamp = self.to_datetime(min_timestamp)
-            self.max_timestamp = self.to_datetime(max_timestamp)
+            self.data[request]['min_timestamp'] = self.to_datetime(min_timestamp)
+            self.data[request]['max_timestamp'] = self.to_datetime(max_timestamp)
 
             # Sort values according to time and convert to datetime
-            for channel_name in self.channels.keys():
-                sorted_times_values = sorted(zip(self.channels[channel_name]['times'], self.channels[channel_name]['values']))
+            for channel_name in self.data[request]['channels'].keys():
+                sorted_times_values = sorted(zip(self.data[request]['channels'][channel_name]['times'], self.data[request]['channels'][channel_name]['values']))
                 sorted_times, sorted_values = zip(*sorted_times_values)
-                self.channels[channel_name]['values'] = list(sorted_values)
-                self.channels[channel_name]['times'] = pd.to_datetime(list(sorted_times), unit='ms', utc=True)
-                self.channels[channel_name]['times'] = self.channels[channel_name]['times'].tz_convert(self.timezone_str)
-                self.channels[channel_name]['times'] = [x.replace(tzinfo=None) for x in self.channels[channel_name]['times']]        
+                self.data[request]['channels'][channel_name]['values'] = list(sorted_values)
+                self.data[request]['channels'][channel_name]['times'] = pd.to_datetime(list(sorted_times), unit='ms', utc=True)
+                self.data[request]['channels'][channel_name]['times'] = self.data[request]['channels'][channel_name]['times'].tz_convert(self.timezone_str)
+                self.data[request]['channels'][channel_name]['times'] = [x.replace(tzinfo=None) for x in self.data[request]['channels'][channel_name]['times']]        
 
             # Find all zone channels
-            self.channels_by_zone = {}
-            for channel_name in self.channels.keys():
+            self.data[request]['channels_by_zone'] = {}
+            for channel_name in self.data[request]['channels'].keys():
                 if 'zone' in channel_name and 'gw-temp' not in channel_name:
                     zone_number = channel_name.split('-')[0]
-                    if zone_number not in self.channels_by_zone:
-                        self.channels_by_zone[zone_number] = {}
+                    if zone_number not in self.data[request]['channels_by_zone']:
+                        self.data[request]['channels_by_zone'][zone_number] = {}
                     if 'state' in channel_name:
-                        self.channels_by_zone[zone_number]['state'] = channel_name
+                        self.data[request]['channels_by_zone'][zone_number]['state'] = channel_name
                     elif 'whitewire' in channel_name:
-                        self.channels_by_zone[zone_number]['whitewire'] = channel_name
+                        self.data[request]['channels_by_zone'][zone_number]['whitewire'] = channel_name
                     elif 'temp' in channel_name:
-                        self.channels_by_zone[zone_number]['temp'] = channel_name
+                        self.data[request]['channels_by_zone'][zone_number]['temp'] = channel_name
                     elif 'set' in channel_name:
-                        self.channels_by_zone[zone_number]['set'] = channel_name
+                        self.data[request]['channels_by_zone'][zone_number]['set'] = channel_name
 
             # Relays
             relays = {}
@@ -237,56 +244,56 @@ class VisualizerApi():
                     relays[state['MachineHandle']]['values'].extend(state['StateList'])
 
             # Top state
-            self.top_states = {'all': {'times':[], 'values':[]}}
+            self.data[request]['top_states'] = {'all': {'times':[], 'values':[]}}
             if 'auto' in relays:
                 for time, state in zip(relays['auto']['times'], relays['auto']['values']):
                     if state not in self.top_states_order:
                         print(f"Warning: {state} is not a known top state")
                         continue
-                    if state not in self.top_states:
-                        self.top_states[state] = {'times':[], 'values':[]}
-                    self.top_states['all']['times'].append(time)
-                    self.top_states['all']['values'].append(self.top_states_order.index(state))
-                    self.top_states[state]['times'].append(time)
-                    self.top_states[state]['values'].append(self.top_states_order.index(state))
-            if "Dormant" in self.top_states:
-                self.top_states['Admin'] = self.top_states['Dormant']
-                del self.top_states['Dormant']
+                    if state not in self.data[request]['top_states']:
+                        self.data[request]['top_states'][state] = {'times':[], 'values':[]}
+                    self.data[request]['top_states']['all']['times'].append(time)
+                    self.data[request]['top_states']['all']['values'].append(self.top_states_order.index(state))
+                    self.data[request]['top_states'][state]['times'].append(time)
+                    self.data[request]['top_states'][state]['values'].append(self.top_states_order.index(state))
+            if "Dormant" in self.data[request]['top_states']:
+                self.data[request]['top_states']['Admin'] = self.data[request]['top_states']['Dormant']
+                del self.data[request]['top_states']['Dormant']
             
             # HomeAlone state
-            self.ha_states = {'all': {'times':[], 'values':[]}}
+            self.data[request]['ha_states'] = {'all': {'times':[], 'values':[]}}
             if 'auto.h.n' in relays or 'auto.h' in relays:
                 ha_handle = 'auto.h.n' if 'auto.h.n' in relays else 'auto.h'
                 for time, state in zip(relays[ha_handle]['times'], relays[ha_handle]['values']):
                     if state not in self.ha_states_order:
                         print(f"Warning: {state} is not a known HA state")
                         continue
-                    if state not in self.ha_states:
-                        self.ha_states[state] = {'times':[], 'values':[]}
-                    self.ha_states['all']['times'].append(time)
-                    self.ha_states['all']['values'].append(self.ha_states_order.index(state))
-                    self.ha_states[state]['times'].append(time)
-                    self.ha_states[state]['values'].append(self.ha_states_order.index(state))
+                    if state not in self.data[request]['ha_states']:
+                        self.data[request]['ha_states'][state] = {'times':[], 'values':[]}
+                    self.data[request]['ha_states']['all']['times'].append(time)
+                    self.data[request]['ha_states']['all']['values'].append(self.ha_states_order.index(state))
+                    self.data[request]['ha_states'][state]['times'].append(time)
+                    self.data[request]['ha_states'][state]['values'].append(self.ha_states_order.index(state))
 
             # AtomicAlly state
-            self.aa_states = {'all': {'times':[], 'values':[]}}
+            self.data[request]['aa_states'] = {'all': {'times':[], 'values':[]}}
             if 'a.aa' in relays:
                 for time, state in zip(relays['a.aa']['times'], relays['a.aa']['values']):
                     if state not in self.aa_states_order:
                         print(f"Warning: {state} is not a known AA state")
                         continue
-                    if state not in self.aa_states:
-                        self.aa_states[state] = {'times':[], 'values':[]}
-                    self.aa_states['all']['times'].append(time)
-                    self.aa_states['all']['values'].append(self.aa_states_order.index(state))
-                    self.aa_states[state]['times'].append(time)
-                    self.aa_states[state]['values'].append(self.aa_states_order.index(state))
+                    if state not in self.data[request]['aa_states']:
+                        self.data[request]['aa_states'][state] = {'times':[], 'values':[]}
+                    self.data[request]['aa_states']['all']['times'].append(time)
+                    self.data[request]['aa_states']['all']['values'].append(self.aa_states_order.index(state))
+                    self.data[request]['aa_states'][state]['times'].append(time)
+                    self.data[request]['aa_states'][state]['values'].append(self.aa_states_order.index(state))
 
             # Weather forecasts
-            self.weather_forecasts: List[MessageSql] = []
+            self.data[request]['weather_forecasts']: List[MessageSql] = []
             if isinstance(request, DataRequest):
-                self.weather_forecasts = sorted(
-                    [x for x in self.all_raw_messages if x.message_type_name=='weather.forecast'], 
+                self.data[request]['weather_forecasts'] = sorted(
+                    [x for x in all_raw_messages if x.message_type_name=='weather.forecast'], 
                     key = lambda x: x.message_persisted_ms
                     )
             return None
@@ -383,40 +390,40 @@ class VisualizerApi():
                 
                 # Find the channels to export
                 if 'all-data' in request.selected_channels:
-                    channels_to_export = list(self.channels.keys())
+                    channels_to_export = list(self.data[request]['channels'].keys())
                 else:
                     channels_to_export = []
                     for channel in request.selected_channels:
-                        if channel in self.channels:
+                        if channel in self.data[request]['channels']:
                             channels_to_export.append(channel)
                         elif channel == 'zone-heat-calls':
-                            for c in self.channels.keys():
+                            for c in self.data[request]['channels'].keys():
                                 if 'zone' in c:
                                     channels_to_export.append(c)
                         elif channel == 'buffer-depths':
-                            for c in self.channels.keys():
+                            for c in self.data[request]['channels'].keys():
                                 if 'depth' in c and 'buffer' in c and 'micro' not in c:
                                     channels_to_export.append(c)
                         elif channel == 'storage-depths':
-                            for c in self.channels.keys():
+                            for c in self.data[request]['channels'].keys():
                                 if 'depth' in c and 'tank' in c and 'micro' not in c:
                                     channels_to_export.append(c)
                         elif channel == 'relays':
-                            for c in self.channels.keys():
+                            for c in self.data[request]['channels'].keys():
                                 if 'relay' in c:
                                     channels_to_export.append(c)
                         elif channel == 'zone-heat-calls':
-                            for c in self.channels.keys():
+                            for c in self.data[request]['channels'].keys():
                                 if 'zone' in c:
                                     channels_to_export.append(c)
                         elif channel == 'store-energy':
-                            for c in self.channels.keys():
+                            for c in self.data[request]['channels'].keys():
                                 if 'required-energy' in c or 'available-energy':
                                     channels_to_export.append(c)
 
                 # Check the amount of data that will be generated
                 num_points = int((request.end_ms - request.start_ms) / (request.timestep * 1000) + 1)
-                if num_points * len(channels_to_export) > 3600 * 24 * 10 * len(self.channels):
+                if num_points * len(channels_to_export) > 3600 * 24 * 10 * len(self.data[request]['channels']):
                     error_message = f"This request would generate too many data points ({num_points*len(channels_to_export)})."
                     error_message += "\n\nSuggestions:\n- Increase the time step\n- Reduce the number of channels"
                     error_message += "\n- Reduce the difference between the start and end time"
@@ -435,7 +442,7 @@ class VisualizerApi():
                     sampled = await asyncio.to_thread(
                         pd.merge_asof, 
                         pd.DataFrame({'times': csv_times}),
-                        pd.DataFrame(self.channels[channel]),
+                        pd.DataFrame(self.data[request]['channels'][channel]),
                         on='times', 
                         direction='backward'
                         )
@@ -460,13 +467,17 @@ class VisualizerApi():
                     media_type="text/csv",
                     headers={"Content-Disposition": f"attachment; filename={filename}"}
                 )
-
         except asyncio.TimeoutError:
             print("Timed out in get_csv()")
             return {"success": False, "message": "The request timed out.", "reload": False}
         except Exception as e:
             print(f"An error occurred in get_csv():\n{traceback.format_exc()}")
             return {"success": False, "message": "An error occured while getting CSV", "reload": False}
+        finally:
+            if request in self.data:
+                del self.data[request]
+                print(f"Deleted request data")
+            print(f"Unfinished requests in data: {len(self.data)}")
         
     async def get_flo(self, request: DijkstraRequest):
         try:
@@ -513,6 +524,11 @@ class VisualizerApi():
         except Exception as e:
             print(f"An error occurred in get_flo():\n{traceback.format_exc()}")
             return {"success": False, "message": "An error occured while getting FLO", "reload": False}
+        finally:
+            if request in self.data:
+                del self.data[request]
+                print(f"Deleted request data")
+            print(f"Unfinished requests in data: {len(self.data)}")
         
     async def get_bids(self, request: DataRequest):
         try:
@@ -665,30 +681,35 @@ class VisualizerApi():
         except Exception as e:
             print(f"An error occurred in get_plots():\n{traceback.format_exc()}")
             return {"success": False, "message": "An error occured while getting plots", "reload": False}
+        finally:
+            if request in self.data:
+                del self.data[request]
+                print(f"Deleted request data")
+            print(f"Unfinished requests in data: {len(self.data)}")
         
     async def plot_heatpump(self, request: DataRequest):
         plot_start = time.time()
         fig = go.Figure()
         # Temperatures
         plotting_temperatures = False
-        if 'hp-lwt' in request.selected_channels and 'hp-lwt' in self.channels:
+        if 'hp-lwt' in request.selected_channels and 'hp-lwt' in self.data[request]['channels']:
             plotting_temperatures = True
             fig.add_trace(
                 go.Scatter(
-                    x=self.channels['hp-lwt']['times'], 
-                    y=[self.to_fahrenheit(x/1000) for x in self.channels['hp-lwt']['values']], 
+                    x=self.data[request]['channels']['hp-lwt']['times'], 
+                    y=[self.to_fahrenheit(x/1000) for x in self.data[request]['channels']['hp-lwt']['values']], 
                     mode=self.line_style,
                     opacity=0.7,
                     line=dict(color='#d62728', dash='solid'),
                     name='HP LWT'
                     )
                 )
-        if 'hp-ewt' in request.selected_channels and 'hp-ewt' in self.channels:
+        if 'hp-ewt' in request.selected_channels and 'hp-ewt' in self.data[request]['channels']:
             plotting_temperatures = True
             fig.add_trace(
                 go.Scatter(
-                    x=self.channels['hp-ewt']['times'], 
-                    y=[self.to_fahrenheit(x/1000) for x in self.channels['hp-ewt']['values']], 
+                    x=self.data[request]['channels']['hp-ewt']['times'], 
+                    y=[self.to_fahrenheit(x/1000) for x in self.data[request]['channels']['hp-ewt']['values']], 
                     mode=self.line_style, 
                     opacity=0.7,
                     line=dict(color='#1f77b4', dash='solid'),
@@ -699,12 +720,12 @@ class VisualizerApi():
         y_axis_power = 'y2' if plotting_temperatures else 'y'
         # Power and flow
         plotting_power = False
-        if 'hp-odu-pwr' in request.selected_channels and 'hp-odu-pwr' in self.channels:
+        if 'hp-odu-pwr' in request.selected_channels and 'hp-odu-pwr' in self.data[request]['channels']:
             plotting_power = True
             fig.add_trace(
                 go.Scatter(
-                    x=self.channels['hp-odu-pwr']['times'], 
-                    y=[x/1000 for x in self.channels['hp-odu-pwr']['values']], 
+                    x=self.data[request]['channels']['hp-odu-pwr']['times'], 
+                    y=[x/1000 for x in self.data[request]['channels']['hp-odu-pwr']['values']], 
                     mode=self.line_style, 
                     opacity=0.7,
                     line=dict(color='#2ca02c', dash='solid'),
@@ -712,12 +733,12 @@ class VisualizerApi():
                     yaxis=y_axis_power
                     )
                 )
-        if 'hp-idu-pwr' in request.selected_channels and 'hp-idu-pwr' in self.channels:
+        if 'hp-idu-pwr' in request.selected_channels and 'hp-idu-pwr' in self.data[request]['channels']:
             plotting_power = True
             fig.add_trace(
                 go.Scatter(
-                    x=self.channels['hp-idu-pwr']['times'], 
-                    y=[x/1000 for x in self.channels['hp-idu-pwr']['values']], 
+                    x=self.data[request]['channels']['hp-idu-pwr']['times'], 
+                    y=[x/1000 for x in self.data[request]['channels']['hp-idu-pwr']['values']], 
                     mode=self.line_style, 
                     opacity=0.7,
                     line=dict(color='#ff7f0e', dash='solid'),
@@ -725,12 +746,12 @@ class VisualizerApi():
                     yaxis=y_axis_power
                     )
                 ) 
-        if 'oil-boiler-pwr' in request.selected_channels and 'oil-boiler-pwr' in self.channels:
+        if 'oil-boiler-pwr' in request.selected_channels and 'oil-boiler-pwr' in self.data[request]['channels']:
             plotting_power = True
             fig.add_trace(
                 go.Scatter(
-                    x=self.channels['oil-boiler-pwr']['times'], 
-                    y=[x/100 for x in self.channels['oil-boiler-pwr']['values']], 
+                    x=self.data[request]['channels']['oil-boiler-pwr']['times'], 
+                    y=[x/100 for x in self.data[request]['channels']['oil-boiler-pwr']['values']], 
                     mode=self.line_style, 
                     opacity=0.7,
                     line=dict(color=self.home_alone_line, dash='solid'),
@@ -738,12 +759,12 @@ class VisualizerApi():
                     yaxis=y_axis_power
                     )
                 ) 
-        if 'primary-flow' in request.selected_channels and 'primary-flow' in self.channels:
+        if 'primary-flow' in request.selected_channels and 'primary-flow' in self.data[request]['channels']:
             plotting_power = True
             fig.add_trace(
                 go.Scatter(
-                    x=self.channels['primary-flow']['times'],
-                    y=[x/100 for x in self.channels['primary-flow']['values']], 
+                    x=self.data[request]['channels']['primary-flow']['times'],
+                    y=[x/100 for x in self.data[request]['channels']['primary-flow']['values']], 
                     mode=self.line_style, 
                     opacity=0.4,
                     line=dict(color='purple', dash='solid'),
@@ -751,12 +772,12 @@ class VisualizerApi():
                     yaxis=y_axis_power
                     )
                 )
-        if 'primary-pump-pwr' in request.selected_channels and 'primary-pump-pwr' in self.channels:
+        if 'primary-pump-pwr' in request.selected_channels and 'primary-pump-pwr' in self.data[request]['channels']:
             plotting_power = True
             fig.add_trace(
                 go.Scatter(
-                    x=self.channels['primary-pump-pwr']['times'], 
-                    y=[x/1000*100 for x in self.channels['primary-pump-pwr']['values']], 
+                    x=self.data[request]['channels']['primary-pump-pwr']['times'], 
+                    y=[x/1000*100 for x in self.data[request]['channels']['primary-pump-pwr']['values']], 
                     mode=self.line_style, 
                     opacity=0.7,
                     line=dict(color='pink', dash='solid'),
@@ -781,7 +802,7 @@ class VisualizerApi():
             font_color=self.fontcolor_hex,
             title_font_color=self.fontcolor_hex,
             xaxis=dict(
-                range=[self.min_timestamp, self.max_timestamp],
+                range=[self.data[request]['min_timestamp'], self.data[request]['max_timestamp']],
                 mirror=True,
                 ticks='outside',
                 showline=True,
@@ -827,24 +848,24 @@ class VisualizerApi():
         fig = go.Figure()
         # Temperature
         plotting_temperatures = False
-        if 'dist-swt' in request.selected_channels and 'dist-swt' in self.channels:
+        if 'dist-swt' in request.selected_channels and 'dist-swt' in self.data[request]['channels']:
             plotting_temperatures = True
             fig.add_trace(
                 go.Scatter(
-                    x=self.channels['dist-swt']['times'], 
-                    y=[self.to_fahrenheit(x/1000) for x in self.channels['dist-swt']['values']], 
+                    x=self.data[request]['channels']['dist-swt']['times'], 
+                    y=[self.to_fahrenheit(x/1000) for x in self.data[request]['channels']['dist-swt']['values']], 
                     mode=self.line_style, 
                     opacity=0.7,
                     line=dict(color='#d62728', dash='solid'),
                     name='Distribution SWT'
                     )
                 )
-        if 'dist-rwt' in request.selected_channels and 'dist-rwt' in self.channels:
+        if 'dist-rwt' in request.selected_channels and 'dist-rwt' in self.data[request]['channels']:
             plotting_temperatures = True
             fig.add_trace(
                 go.Scatter(
-                    x=self.channels['dist-rwt']['times'], 
-                    y=[self.to_fahrenheit(x/1000) for x in self.channels['dist-rwt']['values']], 
+                    x=self.data[request]['channels']['dist-rwt']['times'], 
+                    y=[self.to_fahrenheit(x/1000) for x in self.data[request]['channels']['dist-rwt']['values']], 
                     mode=self.line_style, 
                     opacity=0.7,
                     line=dict(color='#1f77b4', dash='solid'),
@@ -855,12 +876,12 @@ class VisualizerApi():
         y_axis_power = 'y2' if plotting_temperatures else 'y'
         # Power and flow
         plotting_power = False   
-        if 'dist-flow' in request.selected_channels and 'dist-flow' in self.channels:
+        if 'dist-flow' in request.selected_channels and 'dist-flow' in self.data[request]['channels']:
             plotting_power = True
             fig.add_trace(
                 go.Scatter(
-                    x=self.channels['dist-flow']['times'], 
-                    y=[x/100 for x in self.channels['dist-flow']['values']], 
+                    x=self.data[request]['channels']['dist-flow']['times'], 
+                    y=[x/100 for x in self.data[request]['channels']['dist-flow']['values']], 
                     mode=self.line_style, 
                     opacity=0.4,
                     line=dict(color='purple', dash='solid'),
@@ -868,12 +889,12 @@ class VisualizerApi():
                     yaxis = y_axis_power
                     )
                 )
-        if 'dist-pump-pwr' in request.selected_channels and 'dist-pump-pwr' in self.channels:
+        if 'dist-pump-pwr' in request.selected_channels and 'dist-pump-pwr' in self.data[request]['channels']:
             plotting_power = True
             fig.add_trace(
                 go.Scatter(
-                    x=self.channels['dist-pump-pwr']['times'], 
-                    y=[x/10 for x in self.channels['dist-pump-pwr']['values']], 
+                    x=self.data[request]['channels']['dist-pump-pwr']['times'], 
+                    y=[x/10 for x in self.data[request]['channels']['dist-pump-pwr']['values']], 
                     mode=self.line_style, 
                     opacity=0.7,
                     line=dict(color='pink', dash='solid'),
@@ -899,7 +920,7 @@ class VisualizerApi():
             title_font_color=self.fontcolor_hex,
             margin=dict(t=30, b=30),
             xaxis=dict(
-                range=[self.min_timestamp, self.max_timestamp],
+                range=[self.data[request]['min_timestamp'], self.data[request]['max_timestamp']],
                 mirror=True,
                 ticks='outside',
                 showline=True,
@@ -944,8 +965,8 @@ class VisualizerApi():
         plot_start = time.time()
         fig = go.Figure()
         if 'zone-heat-calls' in request.selected_channels:
-            for zone in self.channels_by_zone:
-                whitewire_ch = self.channels_by_zone[zone]['whitewire']
+            for zone in self.data[request]['channels_by_zone']:
+                whitewire_ch = self.data[request]['channels_by_zone'][zone]['whitewire']
                 zone_number = int(whitewire_ch[4])
                 zone_color = self.zone_color[zone_number-1]
                 # Interpret whitewire readings as active or not based on threshold
@@ -953,11 +974,11 @@ class VisualizerApi():
                     threshold = self.whitewire_threshold_watts[request.house_alias]
                 else:
                     threshold = self.whitewire_threshold_watts['default']
-                self.channels[whitewire_ch]['values'] = [
-                    int(abs(x)>threshold) for x in self.channels[whitewire_ch]['values']
+                self.data[request]['channels'][whitewire_ch]['values'] = [
+                    int(abs(x)>threshold) for x in self.data[request]['channels'][whitewire_ch]['values']
                     ]
-                ww_times = self.channels[whitewire_ch]['times']
-                ww_values = self.channels[whitewire_ch]['values']
+                ww_times = self.data[request]['channels'][whitewire_ch]['times']
+                ww_values = self.data[request]['channels'][whitewire_ch]['values']
                 # Plot heat calls as periods
                 last_was_1 = False
                 heatcall_period_start = None
@@ -972,7 +993,7 @@ class VisualizerApi():
                                     mode='lines',
                                     line=dict(color=zone_color, width=2),
                                     opacity=0.7,
-                                    name=self.channels_by_zone[zone]['state'].replace('-state',''),
+                                    name=self.data[request]['channels_by_zone'][zone]['state'].replace('-state',''),
                                     showlegend=False,
                                 )
                             )
@@ -989,7 +1010,7 @@ class VisualizerApi():
                                     mode='lines',
                                     line=dict(color=zone_color, width=2),
                                     opacity=0.7,
-                                    name=self.channels_by_zone[zone]['state'].replace('-state',''),
+                                    name=self.data[request]['channels_by_zone'][zone]['state'].replace('-state',''),
                                     showlegend=False,
                                 )
                             )
@@ -1005,7 +1026,7 @@ class VisualizerApi():
                                     line=dict(color=zone_color, width=0),
                                     fillcolor=zone_color,
                                     opacity=0.2,
-                                    name=self.channels_by_zone[zone]['state'].replace('-state', ''),
+                                    name=self.data[request]['channels_by_zone'][zone]['state'].replace('-state', ''),
                                 )
                                 heatcall_period_start = None
                         last_was_1 = True
@@ -1017,7 +1038,7 @@ class VisualizerApi():
                         y=[None],
                         mode='lines',
                         line=dict(color=zone_color, width=2),
-                        name=self.channels_by_zone[zone]['state'].replace('-state','')
+                        name=self.data[request]['channels_by_zone'][zone]['state'].replace('-state','')
                     )
                 )
 
@@ -1029,7 +1050,7 @@ class VisualizerApi():
             title_font_color=self.fontcolor_hex,
             margin=dict(t=30, b=30),
             xaxis=dict(
-                range=[self.min_timestamp, self.max_timestamp],
+                range=[self.data[request]['min_timestamp'], self.data[request]['max_timestamp']],
                 mirror=True,
                 ticks='outside',
                 showline=True,
@@ -1037,7 +1058,7 @@ class VisualizerApi():
                 showgrid=False
                 ),
             yaxis=dict(
-                range = [-0.5, len(self.channels_by_zone.keys())*1.3],
+                range = [-0.5, len(self.data[request]['channels_by_zone'].keys())*1.3],
                 mirror=True,
                 ticks='outside',
                 showline=True,
@@ -1046,7 +1067,7 @@ class VisualizerApi():
                 showgrid=True, 
                 gridwidth=1, 
                 gridcolor=self.gridcolor_hex, 
-                tickvals=list(range(len(self.channels_by_zone.keys())+1)),
+                tickvals=list(range(len(self.data[request]['channels_by_zone'].keys())+1)),
                 ),
             yaxis2=dict(
                 mirror=True,
@@ -1075,44 +1096,44 @@ class VisualizerApi():
 
         # Zone temperature and setpoint
         min_zones, max_zones = 45, 80
-        for zone in self.channels_by_zone:
-            if 'temp' in self.channels_by_zone[zone]:
-                temp_channel = self.channels_by_zone[zone]['temp']
+        for zone in self.data[request]['channels_by_zone']:
+            if 'temp' in self.data[request]['channels_by_zone'][zone]:
+                temp_channel = self.data[request]['channels_by_zone'][zone]['temp']
                 fig.add_trace(
                     go.Scatter(
-                        x=self.channels[temp_channel]['times'], 
-                        y=[x/1000 for x in self.channels[temp_channel]['values']], 
+                        x=self.data[request]['channels'][temp_channel]['times'], 
+                        y=[x/1000 for x in self.data[request]['channels'][temp_channel]['values']], 
                         mode=self.line_style, 
                         opacity=0.7,
                         line=dict(color=self.zone_color[int(zone[4])-1], dash='solid'),
-                        name=self.channels_by_zone[zone]['temp'].replace('-temp','')
+                        name=self.data[request]['channels_by_zone'][zone]['temp'].replace('-temp','')
                         )
                     )
-                min_zones = min(min_zones, min(self.channels[temp_channel]['values'])/1000)
-                max_zones = max(max_zones, max(self.channels[temp_channel]['values'])/1000)
-            if 'set' in self.channels_by_zone[zone]:
-                set_channel = self.channels_by_zone[zone]['set']
+                min_zones = min(min_zones, min(self.data[request]['channels'][temp_channel]['values'])/1000)
+                max_zones = max(max_zones, max(self.data[request]['channels'][temp_channel]['values'])/1000)
+            if 'set' in self.data[request]['channels_by_zone'][zone]:
+                set_channel = self.data[request]['channels_by_zone'][zone]['set']
                 fig.add_trace(
                     go.Scatter(
-                        x=self.channels[set_channel]['times'], 
-                        y=[x/1000 for x in self.channels[set_channel]['values']], 
+                        x=self.data[request]['channels'][set_channel]['times'], 
+                        y=[x/1000 for x in self.data[request]['channels'][set_channel]['values']], 
                         mode=self.line_style, 
                         opacity=0.7,
                         line=dict(color=self.zone_color[int(zone[4])-1], dash='dash'),
-                        name=self.channels_by_zone[zone]['set'].replace('-set',''),
+                        name=self.data[request]['channels_by_zone'][zone]['set'].replace('-set',''),
                         showlegend=False
                         )
                     )
-                min_zones = min(min_zones, min(self.channels[set_channel]['values'])/1000)
-                max_zones = max(max_zones, max(self.channels[set_channel]['values'])/1000)
+                min_zones = min(min_zones, min(self.data[request]['channels'][set_channel]['values'])/1000)
+                max_zones = max(max_zones, max(self.data[request]['channels'][set_channel]['values'])/1000)
 
         # Outside air temperature
         min_oat, max_oat = 70, 80    
-        if 'oat' in request.selected_channels and 'oat' in self.channels:
+        if 'oat' in request.selected_channels and 'oat' in self.data[request]['channels']:
             fig.add_trace(
                 go.Scatter(
-                    x=self.channels['oat']['times'], 
-                    y=[self.to_fahrenheit(x/1000) for x in self.channels['oat']['values']], 
+                    x=self.data[request]['channels']['oat']['times'], 
+                    y=[self.to_fahrenheit(x/1000) for x in self.data[request]['channels']['oat']['values']], 
                     mode=self.line_style, 
                     opacity=0.8,
                     line=dict(color=self.oat_color, dash='solid'),
@@ -1120,8 +1141,8 @@ class VisualizerApi():
                     yaxis='y2',
                     )
                 )
-            min_oat = self.to_fahrenheit(min(self.channels['oat']['values'])/1000)
-            max_oat = self.to_fahrenheit(max(self.channels['oat']['values'])/1000)
+            min_oat = self.to_fahrenheit(min(self.data[request]['channels']['oat']['values'])/1000)
+            max_oat = self.to_fahrenheit(max(self.data[request]['channels']['oat']['values'])/1000)
             fig.update_layout(yaxis2=dict(title='Outside air temperature [F]'))
 
         fig.update_layout(yaxis=dict(title='Zone temperature [F]'))
@@ -1133,7 +1154,7 @@ class VisualizerApi():
             title_font_color=self.fontcolor_hex,
             margin=dict(t=30, b=30),
             xaxis=dict(
-                range=[self.min_timestamp, self.max_timestamp],
+                range=[self.data[request]['min_timestamp'], self.data[request]['max_timestamp']],
                 mirror=True,
                 ticks='outside',
                 showline=True,
@@ -1192,40 +1213,40 @@ class VisualizerApi():
 
         min_buffer_temp, max_buffer_temp = 1e5, 0
         if 'buffer-depths' in request.selected_channels:
-            buffer_channels = sorted([key for key in self.channels.keys() if 'buffer-depth' in key and 'micro-v' not in key])
+            buffer_channels = sorted([key for key in self.data[request]['channels'].keys() if 'buffer-depth' in key and 'micro-v' not in key])
             for buffer_channel in buffer_channels:
-                min_buffer_temp = min(min_buffer_temp, min([self.to_fahrenheit(x/1000) for x in self.channels[buffer_channel]['values']]))
-                max_buffer_temp = max(max_buffer_temp, max([self.to_fahrenheit(x/1000) for x in self.channels[buffer_channel]['values']]))
+                min_buffer_temp = min(min_buffer_temp, min([self.to_fahrenheit(x/1000) for x in self.data[request]['channels'][buffer_channel]['values']]))
+                max_buffer_temp = max(max_buffer_temp, max([self.to_fahrenheit(x/1000) for x in self.data[request]['channels'][buffer_channel]['values']]))
                 fig.add_trace(
                     go.Scatter(
-                        x=self.channels[buffer_channel]['times'], 
-                        y=[self.to_fahrenheit(x/1000) for x in self.channels[buffer_channel]['values']], 
+                        x=self.data[request]['channels'][buffer_channel]['times'], 
+                        y=[self.to_fahrenheit(x/1000) for x in self.data[request]['channels'][buffer_channel]['values']], 
                         mode=self.line_style, 
                         opacity=0.7,
                         name=buffer_channel.replace('buffer-',''),
                         line=dict(color=buffer_layer_colors[buffer_channel], dash='solid')
                         )
                     )  
-        if 'buffer-hot-pipe' in request.selected_channels and 'buffer-hot-pipe' in self.channels:
-            min_buffer_temp = min(min_buffer_temp, min([self.to_fahrenheit(x/1000) for x in self.channels['buffer-hot-pipe']['values']]))
-            max_buffer_temp = max(max_buffer_temp, max([self.to_fahrenheit(x/1000) for x in self.channels['buffer-hot-pipe']['values']]))
+        if 'buffer-hot-pipe' in request.selected_channels and 'buffer-hot-pipe' in self.data[request]['channels']:
+            min_buffer_temp = min(min_buffer_temp, min([self.to_fahrenheit(x/1000) for x in self.data[request]['channels']['buffer-hot-pipe']['values']]))
+            max_buffer_temp = max(max_buffer_temp, max([self.to_fahrenheit(x/1000) for x in self.data[request]['channels']['buffer-hot-pipe']['values']]))
             fig.add_trace(
                 go.Scatter(
-                    x=self.channels['buffer-hot-pipe']['times'], 
-                    y=[self.to_fahrenheit(x/1000) for x in self.channels['buffer-hot-pipe']['values']], 
+                    x=self.data[request]['channels']['buffer-hot-pipe']['times'], 
+                    y=[self.to_fahrenheit(x/1000) for x in self.data[request]['channels']['buffer-hot-pipe']['values']], 
                     mode=self.line_style, 
                     opacity=0.7,
                     name='Hot pipe',
                     line=dict(color='#d62728', dash='solid')
                     )
                 )
-        if 'buffer-cold-pipe' in request.selected_channels and 'buffer-cold-pipe' in self.channels:
-            min_buffer_temp = min(min_buffer_temp, min([self.to_fahrenheit(x/1000) for x in self.channels['buffer-cold-pipe']['values']]))
-            max_buffer_temp = max(max_buffer_temp, max([self.to_fahrenheit(x/1000) for x in self.channels['buffer-cold-pipe']['values']]))
+        if 'buffer-cold-pipe' in request.selected_channels and 'buffer-cold-pipe' in self.data[request]['channels']:
+            min_buffer_temp = min(min_buffer_temp, min([self.to_fahrenheit(x/1000) for x in self.data[request]['channels']['buffer-cold-pipe']['values']]))
+            max_buffer_temp = max(max_buffer_temp, max([self.to_fahrenheit(x/1000) for x in self.data[request]['channels']['buffer-cold-pipe']['values']]))
             fig.add_trace(
                 go.Scatter(
-                    x=self.channels['buffer-cold-pipe']['times'], 
-                    y=[self.to_fahrenheit(x/1000) for x in self.channels['buffer-cold-pipe']['values']], 
+                    x=self.data[request]['channels']['buffer-cold-pipe']['times'], 
+                    y=[self.to_fahrenheit(x/1000) for x in self.data[request]['channels']['buffer-cold-pipe']['values']], 
                     mode=self.line_style, 
                     opacity=0.7,
                     name='Cold pipe',
@@ -1241,7 +1262,7 @@ class VisualizerApi():
             title_font_color=self.fontcolor_hex,
             margin=dict(t=30, b=30),
             xaxis=dict(
-                range=[self.min_timestamp, self.max_timestamp],
+                range=[self.data[request]['min_timestamp'], self.data[request]['max_timestamp']],
                 mirror=True,
                 ticks='outside',
                 showline=True,
@@ -1302,41 +1323,41 @@ class VisualizerApi():
         min_store_temp, max_store_temp = 1e5, 0
         if 'storage-depths' in request.selected_channels:
             plotting_temperatures = True
-            tank_channels = sorted([key for key in self.channels.keys() if 'tank' in key and 'micro-v' not in key])
+            tank_channels = sorted([key for key in self.data[request]['channels'].keys() if 'tank' in key and 'micro-v' not in key])
             for tank_channel in tank_channels:
-                min_store_temp = min(min_store_temp, min([self.to_fahrenheit(x/1000) for x in self.channels[tank_channel]['values']]))
-                max_store_temp = max(max_store_temp, max([self.to_fahrenheit(x/1000) for x in self.channels[tank_channel]['values']]))
+                min_store_temp = min(min_store_temp, min([self.to_fahrenheit(x/1000) for x in self.data[request]['channels'][tank_channel]['values']]))
+                max_store_temp = max(max_store_temp, max([self.to_fahrenheit(x/1000) for x in self.data[request]['channels'][tank_channel]['values']]))
                 fig.add_trace(
                     go.Scatter(
-                        x=self.channels[tank_channel]['times'], 
-                        y=[self.to_fahrenheit(x/1000) for x in self.channels[tank_channel]['values']], 
+                        x=self.data[request]['channels'][tank_channel]['times'], 
+                        y=[self.to_fahrenheit(x/1000) for x in self.data[request]['channels'][tank_channel]['values']], 
                         mode=self.line_style, opacity=0.7,
                         name=tank_channel.replace('storage-',''),
                         line=dict(color=storage_layer_colors[tank_channel], dash='solid')
                         )
                     )
-        if 'store-hot-pipe' in request.selected_channels and 'store-hot-pipe' in self.channels:
+        if 'store-hot-pipe' in request.selected_channels and 'store-hot-pipe' in self.data[request]['channels']:
             plotting_temperatures = True
-            min_store_temp = min(min_store_temp, min([self.to_fahrenheit(x/1000) for x in self.channels['store-hot-pipe']['values']]))
-            max_store_temp = max(max_store_temp, max([self.to_fahrenheit(x/1000) for x in self.channels['store-hot-pipe']['values']]))
+            min_store_temp = min(min_store_temp, min([self.to_fahrenheit(x/1000) for x in self.data[request]['channels']['store-hot-pipe']['values']]))
+            max_store_temp = max(max_store_temp, max([self.to_fahrenheit(x/1000) for x in self.data[request]['channels']['store-hot-pipe']['values']]))
             fig.add_trace(
                 go.Scatter(
-                    x=self.channels['store-hot-pipe']['times'], 
-                    y=[self.to_fahrenheit(x/1000) for x in self.channels['store-hot-pipe']['values']], 
+                    x=self.data[request]['channels']['store-hot-pipe']['times'], 
+                    y=[self.to_fahrenheit(x/1000) for x in self.data[request]['channels']['store-hot-pipe']['values']], 
                     mode=self.line_style, 
                     opacity=0.7,
                     name='Hot pipe',
                     line=dict(color='#d62728', dash='solid')
                     )
                 )
-        if 'store-cold-pipe' in request.selected_channels and 'store-cold-pipe' in self.channels:
+        if 'store-cold-pipe' in request.selected_channels and 'store-cold-pipe' in self.data[request]['channels']:
             plotting_temperatures = True
-            min_store_temp = min(min_store_temp, min([self.to_fahrenheit(x/1000) for x in self.channels['store-cold-pipe']['values']]))
-            max_store_temp = max(max_store_temp, max([self.to_fahrenheit(x/1000) for x in self.channels['store-cold-pipe']['values']]))
+            min_store_temp = min(min_store_temp, min([self.to_fahrenheit(x/1000) for x in self.data[request]['channels']['store-cold-pipe']['values']]))
+            max_store_temp = max(max_store_temp, max([self.to_fahrenheit(x/1000) for x in self.data[request]['channels']['store-cold-pipe']['values']]))
             fig.add_trace(
                 go.Scatter(
-                    x=self.channels['store-cold-pipe']['times'], 
-                    y=[self.to_fahrenheit(x/1000) for x in self.channels['store-cold-pipe']['values']], 
+                    x=self.data[request]['channels']['store-cold-pipe']['times'], 
+                    y=[self.to_fahrenheit(x/1000) for x in self.data[request]['channels']['store-cold-pipe']['values']], 
                     mode=self.line_style, 
                     opacity=0.7,
                     name='Cold pipe',
@@ -1347,12 +1368,12 @@ class VisualizerApi():
         y_axis_power = 'y2' if plotting_temperatures else 'y'
         # Power and flow
         plotting_power = False
-        if 'store-pump-pwr' in request.selected_channels and 'store-pump-pwr' in self.channels:
+        if 'store-pump-pwr' in request.selected_channels and 'store-pump-pwr' in self.data[request]['channels']:
             plotting_power = True
             fig.add_trace(
                 go.Scatter(
-                    x=self.channels['store-pump-pwr']['times'], 
-                    y=[x for x in self.channels['store-pump-pwr']['values']], 
+                    x=self.data[request]['channels']['store-pump-pwr']['times'], 
+                    y=[x for x in self.data[request]['channels']['store-pump-pwr']['values']], 
                     mode=self.line_style, 
                     opacity=0.7,
                     line=dict(color='pink', dash='solid'),
@@ -1361,12 +1382,12 @@ class VisualizerApi():
                     visible='legendonly'
                     )
                 )
-        if 'store-flow' in request.selected_channels and 'store-flow' in self.channels:
+        if 'store-flow' in request.selected_channels and 'store-flow' in self.data[request]['channels']:
             plotting_power = True
             fig.add_trace(
                 go.Scatter(
-                    x=self.channels['store-flow']['times'], 
-                    y=[x/100*10 for x in self.channels['store-flow']['values']], 
+                    x=self.data[request]['channels']['store-flow']['times'], 
+                    y=[x/100*10 for x in self.data[request]['channels']['store-flow']['values']], 
                     mode=self.line_style, 
                     opacity=0.4,
                     line=dict(color='purple', dash='solid'),
@@ -1375,12 +1396,12 @@ class VisualizerApi():
                     )
                 )
         max_power = 60
-        if 'store-energy' in request.selected_channels and 'usable-energy' in self.channels:
+        if 'store-energy' in request.selected_channels and 'usable-energy' in self.data[request]['channels']:
             plotting_power = True
             fig.add_trace(
                 go.Scatter(
-                    x=self.channels['usable-energy']['times'], 
-                    y=[x/1000 for x in self.channels['usable-energy']['values']], 
+                    x=self.data[request]['channels']['usable-energy']['times'], 
+                    y=[x/1000 for x in self.data[request]['channels']['usable-energy']['values']], 
                     mode=self.line_style, 
                     opacity=0.4,
                     line=dict(color='#2ca02c', dash='solid'),
@@ -1391,8 +1412,8 @@ class VisualizerApi():
                 )
             fig.add_trace(
                 go.Scatter(
-                    x=self.channels['required-energy']['times'], 
-                    y=[x/1000 for x in self.channels['required-energy']['values']], 
+                    x=self.data[request]['channels']['required-energy']['times'], 
+                    y=[x/1000 for x in self.data[request]['channels']['required-energy']['values']], 
                     mode=self.line_style, 
                     opacity=0.4,
                     line=dict(color='#2ca02c', dash='dash'),
@@ -1401,7 +1422,7 @@ class VisualizerApi():
                     visible='legendonly'
                     )
                 )
-            max_power = max([x/1000 for x in self.channels['required-energy']['values']])*4
+            max_power = max([x/1000 for x in self.data[request]['channels']['required-energy']['values']])*4
             
         if plotting_temperatures and plotting_power:
             fig.update_layout(yaxis=dict(title='Temperature [F]', range=[min_store_temp-80, max_store_temp+60]))
@@ -1420,7 +1441,7 @@ class VisualizerApi():
             title_font_color=self.fontcolor_hex,
             margin=dict(t=30, b=30),
             xaxis=dict(
-                range=[self.min_timestamp, self.max_timestamp],
+                range=[self.data[request]['min_timestamp'], self.data[request]['max_timestamp']],
                 mirror=True,
                 ticks='outside',
                 showline=True,
@@ -1473,11 +1494,11 @@ class VisualizerApi():
             'Admin': '#636EFA'
         }
         
-        if self.top_states:
+        if self.data[request]['top_states']:
             fig.add_trace(
                 go.Scatter(
-                    x=self.top_states['all']['times'],
-                    y=self.top_states['all']['values'],
+                    x=self.data[request]['top_states']['all']['times'],
+                    y=self.data[request]['top_states']['all']['values'],
                     mode='lines',
                     line=dict(color=self.home_alone_line, width=2),
                     opacity=0.3,
@@ -1485,12 +1506,12 @@ class VisualizerApi():
                     line_shape='hv'
                 )
             )
-            for state in self.top_states.keys():
+            for state in self.data[request]['top_states'].keys():
                 if state != 'all' and state in top_state_color:
                     fig.add_trace(
                         go.Scatter(
-                            x=self.top_states[state]['times'],
-                            y=self.top_states[state]['values'],
+                            x=self.data[request]['top_states'][state]['times'],
+                            y=self.data[request]['top_states'][state]['values'],
                             mode='markers',
                             marker=dict(color=top_state_color[state], size=10),
                             opacity=0.8,
@@ -1506,7 +1527,7 @@ class VisualizerApi():
             title_font_color=self.fontcolor_hex,
             margin=dict(t=30, b=30),
             xaxis=dict(
-                range=[self.min_timestamp, self.max_timestamp],
+                range=[self.data[request]['min_timestamp'], self.data[request]['max_timestamp']],
                 mirror=True,
                 ticks='outside',
                 showline=True,
@@ -1514,7 +1535,7 @@ class VisualizerApi():
                 showgrid=False
                 ),
             yaxis=dict(
-                range = [-0.6, len(self.top_states)-1+0.2],
+                range = [-0.6, len(self.data[request]['top_states'])-1+0.2],
                 mirror=True,
                 ticks='outside',
                 showline=True,
@@ -1523,7 +1544,7 @@ class VisualizerApi():
                 showgrid=True, 
                 gridwidth=1, 
                 gridcolor=self.gridcolor_hex, 
-                tickvals=list(range(len(self.top_states)-1)),
+                tickvals=list(range(len(self.data[request]['top_states'])-1)),
                 ),
             legend=dict(
                 x=0,
@@ -1555,11 +1576,11 @@ class VisualizerApi():
             'Dormant': '#4f4f4f'
         }
 
-        if self.ha_states!={}:
+        if self.data[request]['ha_states']!={}:
             fig.add_trace(
                 go.Scatter(
-                    x=self.ha_states['all']['times'],
-                    y=self.ha_states['all']['values'],
+                    x=self.data[request]['ha_states']['all']['times'],
+                    y=self.data[request]['ha_states']['all']['values'],
                     mode='lines',
                     line=dict(color=self.home_alone_line, width=2),
                     opacity=0.3,
@@ -1567,12 +1588,12 @@ class VisualizerApi():
                     line_shape='hv'
                 )
             )
-            for state in self.ha_states.keys():
+            for state in self.data[request]['ha_states'].keys():
                 if state != 'all' and state in ha_state_color:
                     fig.add_trace(
                         go.Scatter(
-                            x=self.ha_states[state]['times'],
-                            y=self.ha_states[state]['values'],
+                            x=self.data[request]['ha_states'][state]['times'],
+                            y=self.data[request]['ha_states'][state]['values'],
                             mode='markers',
                             marker=dict(color=ha_state_color[state], size=10),
                             opacity=0.8,
@@ -1588,7 +1609,7 @@ class VisualizerApi():
             title_font_color=self.fontcolor_hex,
             margin=dict(t=30, b=30),
             xaxis=dict(
-                range=[self.min_timestamp, self.max_timestamp],
+                range=[self.data[request]['min_timestamp'], self.data[request]['max_timestamp']],
                 mirror=True,
                 ticks='outside',
                 showline=True,
@@ -1637,11 +1658,11 @@ class VisualizerApi():
             'Dormant': '#4f4f4f'
         }
 
-        if self.aa_states!={}:
+        if self.data[request]['aa_states']!={}:
             fig.add_trace(
                 go.Scatter(
-                    x=self.aa_states['all']['times'],
-                    y=self.aa_states['all']['values'],
+                    x=self.data[request]['aa_states']['all']['times'],
+                    y=self.data[request]['aa_states']['all']['values'],
                     mode='lines',
                     line=dict(color=self.home_alone_line, width=2),
                     opacity=0.3,
@@ -1649,12 +1670,12 @@ class VisualizerApi():
                     line_shape='hv'
                 )
             )
-            for state in self.aa_states.keys():
+            for state in self.data[request]['aa_states'].keys():
                 if state != 'all' and state in aa_state_color:
                     fig.add_trace(
                         go.Scatter(
-                            x=self.aa_states[state]['times'],
-                            y=self.aa_states[state]['values'],
+                            x=self.data[request]['aa_states'][state]['times'],
+                            y=self.data[request]['aa_states'][state]['values'],
                             mode='markers',
                             marker=dict(color=aa_state_color[state], size=10),
                             opacity=0.8,
@@ -1670,7 +1691,7 @@ class VisualizerApi():
             title_font_color=self.fontcolor_hex,
             margin=dict(t=30, b=30),
             xaxis=dict(
-                range=[self.min_timestamp, self.max_timestamp],
+                range=[self.data[request]['min_timestamp'], self.data[request]['max_timestamp']],
                 mirror=True,
                 ticks='outside',
                 showline=True,
@@ -1710,7 +1731,7 @@ class VisualizerApi():
         fig = go.Figure()
                 
         oat_forecasts, ws_forecasts = {}, {}
-        for message in self.weather_forecasts:
+        for message in self.data[request]['weather_forecasts']:
             forecast_start_time = int((message.message_persisted_ms/1000//3600)*3600)
             oat_forecasts[forecast_start_time] = message.payload['OatF']
             ws_forecasts[forecast_start_time] = message.payload['WindSpeedMph']
@@ -1740,7 +1761,7 @@ class VisualizerApi():
             title_font_color=self.fontcolor_hex,
             margin=dict(t=30, b=30),
             xaxis=dict(
-                range=[self.min_timestamp, self.max_timestamp],
+                range=[self.data[request]['min_timestamp'], self.data[request]['max_timestamp']],
                 mirror=True,
                 ticks='outside',
                 showline=True,
@@ -1842,7 +1863,7 @@ class VisualizerApi():
             title_font_color=self.fontcolor_hex,
             margin=dict(t=30, b=30),
             xaxis=dict(
-                range=[self.min_timestamp, self.max_timestamp],
+                range=[self.data[request]['min_timestamp'], self.data[request]['max_timestamp']],
                 mirror=True,
                 ticks='outside',
                 showline=True,
