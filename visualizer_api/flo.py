@@ -836,8 +836,8 @@ class DGraph():
         plt.close()
 
         # Write to Excel
-        os.makedirs('results', exist_ok=True)
         start = datetime.fromtimestamp(self.params.start_time, tz=pytz.timezone("America/New_York")).strftime('%Y-%m-%d %H:%M')
+        # os.makedirs('results', exist_ok=True)
         # file_path = os.path.join('results', f'result_{start}.xlsx')
         file_path = 'result.xlsx'
         with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
