@@ -104,6 +104,7 @@ async function LogIn(event) {
     if (house_alias === ""){
         return
     }
+    document.getElementById("login-button").style.display = "none";
     try {
         const response = await fetch(`${api_host}/login`, {
             method: 'POST',
@@ -135,6 +136,8 @@ async function LogIn(event) {
         }
     } catch (error) {
         console.error('Error trying to log in:', error);
+    } finally {
+        document.getElementById("login-button").style.display = "block";
     }
 }
 
