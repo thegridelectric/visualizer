@@ -1,5 +1,6 @@
 let house_alias, password;
 let darkmode_tf = false;
+let plotsDisplayed = false;
 let api_host = 'http://localhost:8000'
 // let api_host = 'https://visualizer.electricity.works'
 
@@ -21,6 +22,9 @@ function clearPlots() {
     plotDivs.forEach(div => div.innerHTML = '');
     const plotContainer = document.getElementById('plot-container');
     plotContainer.style.display = 'none'
+    const footer = document.getElementById('footer');
+    footer.style.position = 'fixed'
+    plotsDisplayed = false
 }
 
 // Check devices's dark mode
@@ -93,22 +97,45 @@ function handleKey(event) {
     }
 }
 
-function LogIn(event) {
+async function LogIn(event) {
     event.preventDefault();
     house_alias = document.getElementById("housealias").value;
     password = document.getElementById("password").value;
-    // if (!house_alias) {
-    //     alert("Please enter a house alias.");
-    //     return;
-    // }
-    document.getElementById("login-div").style.display = "none";
-    document.getElementById("data-selector-title").textContent = `${house_alias.charAt(0).toUpperCase()}${house_alias.slice(1)}`;
-    document.getElementById('start-date-picker').value = getDefaultDate(true);
-    document.getElementById('start-time-picker').value = getDefaultTime(true);
-    document.getElementById('end-date-picker').value = getDefaultDate();
-    document.getElementById('end-time-picker').value = getDefaultTime();
-    document.getElementById("data-selector").style.display = "block";
-    // getData(event, false);
+    if (house_alias === ""){
+        return
+    }
+    try {
+        const response = await fetch(`${api_host}/login`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                house_alias: `${house_alias}`,
+                password: password, 
+            })
+        });
+        if (response.ok) {
+            const data = await response.json();
+            if (data === true) {
+                document.getElementById("login-div").style.display = "none";
+                document.getElementById("data-selector-title").textContent = `${house_alias.charAt(0).toUpperCase()}${house_alias.slice(1)}`;
+                document.getElementById('start-date-picker').value = getDefaultDate(true);
+                document.getElementById('start-time-picker').value = getDefaultTime(true);
+                document.getElementById('end-date-picker').value = getDefaultDate();
+                document.getElementById('end-time-picker').value = getDefaultTime();
+                document.getElementById("data-selector").style.display = "block";
+                // getData(event, false);
+            } else {
+                document.getElementById("housealias").style.border = "1px solid red";
+                document.getElementById("password").style.border = "1px solid red";
+                document.getElementById("housealias").style.backgroundColor = "rgb(255, 216, 216)";
+                document.getElementById("password").style.backgroundColor = "rgb(255, 216, 216)";
+                document.getElementById("housealias").value = "";
+                document.getElementById("password").value = "";
+            }
+        }
+    } catch (error) {
+        console.error('Error trying to log in:', error);
+    }
 }
 
 // Re-ordering plots
@@ -146,11 +173,15 @@ function toggleOptions() {
         document.getElementById("data-selector").style.display = "none";
         document.getElementById("plot-container").style.display = "none";
         document.getElementById("navbar").style.display = "none";
+        document.getElementById('footer').style.position = 'relative';
     } else {
         checkboxDiv.style.display = "none";
         document.getElementById("data-selector").style.display = "block";
         document.getElementById("plot-container").style.display = "block";
         document.getElementById("navbar").style.display = "flex";
+        if (!plotsDisplayed) {
+            document.getElementById('footer').style.position = 'fixed';
+        }
     }
 }
 
@@ -254,11 +285,13 @@ async function downloadExcel(event) {
             link.click();
             window.URL.revokeObjectURL(url);
         } else {
-            alert('Error receiving FLO excel file.');
+            document.getElementById("error-text").textContent = "Error getting FLO";
+            document.getElementById("error-text").style.display = 'block'
         }
     } catch (error) {
         console.error('Error getting FLO excel file:', error);
-        alert('Error downloading FLO excel file');
+        document.getElementById("error-text").textContent = "Error getting FLO";
+        document.getElementById("error-text").style.display = 'block'
     } finally {
         enable_button('flo')
     }
@@ -309,10 +342,8 @@ async function exportCSV(event, confirmWithUser) {
                         await exportCSV(event, true); 
                     }
                 } else { 
-                    alert(data.message);
-                    if (data.reload) {
-                        location.reload();
-                    }
+                    document.getElementById("error-text").textContent = data.message;
+                    document.getElementById("error-text").style.display = 'block'
                 }
             }
         } else {
@@ -332,7 +363,8 @@ async function exportCSV(event, confirmWithUser) {
         }
     } catch (error) {
         console.error('Error getting CSV:', error);
-        alert(`Error getting CSV`);
+        document.getElementById("error-text").textContent = "Error getting CSV";
+        document.getElementById("error-text").style.display = 'block'
     } finally {
         enable_button('csv')
     }
@@ -366,10 +398,8 @@ async function fetchPlots(house_alias, password, start_ms, end_ms, channels, con
                         await fetchPlots(house_alias, password, start_ms, end_ms, channels, true); 
                     }
                 } else { 
-                    alert(data.message);
-                    if (data.reload) {
-                        location.reload();
-                    }
+                    document.getElementById("error-text").textContent = data.message;
+                    document.getElementById("error-text").style.display = 'block'
                 }
             }
         } else {
@@ -400,6 +430,9 @@ async function fetchPlots(house_alias, password, start_ms, end_ms, channels, con
             let iframeCount = 0;
             const plotContainer = document.getElementById('plot-container');
             plotContainer.style.display = 'inline'
+            const footer = document.getElementById('footer');
+            footer.style.position = 'relative'
+            plotsDisplayed = true
             for (const filename of Object.keys(zip.files)) {
                 const fileData = await zip.files[filename].async('blob');
                 if (filename.endsWith('.html')) {
@@ -440,7 +473,8 @@ async function fetchPlots(house_alias, password, start_ms, end_ms, channels, con
         }
     } catch (error) {
         console.error('Error getting plots:', error);
-        alert(`Error getting plots`);
+        document.getElementById("error-text").textContent = "Error getting plots";
+        document.getElementById("error-text").style.display = 'block'
     } finally {
         enable_button('plot');
     }
@@ -474,10 +508,8 @@ async function fetchBids(house_alias, password, start_ms, end_ms, confirmWithUse
                         await fetchBids(house_alias, password, start_ms, end_ms, true); 
                     }
                 } else { 
-                    alert(data.message);
-                    if (data.reload) {
-                        location.reload();
-                    }
+                    document.getElementById("error-text").textContent = data.message;
+                    document.getElementById("error-text").style.display = 'block'
                 }
             }
         } else {
@@ -501,13 +533,16 @@ async function fetchBids(house_alias, password, start_ms, end_ms, confirmWithUse
         }
     } catch (error) {
         console.error('Error getting bids:', error);
-        alert(`Error getting bids`);
+        document.getElementById("error-text").textContent = "Error getting bids";
+        document.getElementById("error-text").style.display = 'block'
     } finally {
         enable_button('bid');
     }
     }
 
 function getData(event, get_bids) {
+    document.getElementById("error-text").textContent = ""
+    document.getElementById("error-text").style.display = 'none'
     event.preventDefault();
     const selectedChannels = Array.from(document.querySelectorAll('input[name="channels"]:checked'))
         .map(checkbox => checkbox.value);

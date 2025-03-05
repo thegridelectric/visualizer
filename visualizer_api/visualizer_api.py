@@ -82,6 +82,7 @@ class VisualizerApi():
             allow_credentials=True,
             allow_methods=["*"],
         )
+        self.app.post("/login")(self.check_password)
         self.app.post("/plots")(self.get_plots)
         self.app.post("/csv")(self.get_csv)
         self.app.post("/messages")(self.get_messages)
@@ -98,19 +99,19 @@ class VisualizerApi():
         r, g, b, a = (int(c * 255) for c in rgba)
         return f'#{r:02x}{g:02x}{b:02x}'
 
-    def check_password(self, house_alias, password):
-        if password == self.admin_user_password:
+    def check_password(self, request: BaseRequest):
+        if request.password == self.admin_user_password:
             return True
-        house_owner_password = getattr(self.settings, f"{house_alias}_owner_password").get_secret_value()
-        if password == house_owner_password:
-            return True
+        house_owner_password = getattr(self.settings, f"{request.house_alias}_owner_password", None)
+        if house_owner_password:
+            house_owner_password.get_secret_value()
+            if request.password == house_owner_password:
+                return True
         return False
     
     def check_request(self, request: Union[DataRequest, CsvRequest, DijkstraRequest, MessagesRequest]):
-        if not self.check_password(request.house_alias, request.password):
-            return {"success": False, "message": "Wrong password.", "reload": True}
-        if not isinstance(request, MessagesRequest) and request.house_alias == '':
-            return {"success": False, "message": "Please enter a house alias.", "reload": True}
+        if not self.check_password(request):
+            return {"success": False, "message": "Wrong password.", "reload": False}
         if isinstance(request, Union[DataRequest, CsvRequest]) and not request.confirm_with_user:
             if (request.end_ms - request.start_ms)/1000/3600/24 > 3:
                 warning_message = f"That's a lot of data! Are you sure you want to proceed?"
