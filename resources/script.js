@@ -123,7 +123,7 @@ async function LogIn(event) {
                 document.getElementById('end-date-picker').value = getDefaultDate();
                 document.getElementById('end-time-picker').value = getDefaultTime();
                 document.getElementById("data-selector").style.display = "block";
-                // getData(event, false);
+                getData(event, false);
             } else {
                 document.getElementById("housealias").style.border = "1px solid red";
                 document.getElementById("password").style.border = "1px solid red";
@@ -228,6 +228,8 @@ function enable_button(buttonName) {
 }
 
 function disable_button(buttonName) {
+    document.getElementById("error-text").textContent = ""
+    document.getElementById("error-text").style.display = 'none'
     showLoader()
     let enabledButton;
     if (buttonName === 'plot') {
@@ -541,8 +543,6 @@ async function fetchBids(house_alias, password, start_ms, end_ms, confirmWithUse
     }
 
 function getData(event, get_bids) {
-    document.getElementById("error-text").textContent = ""
-    document.getElementById("error-text").style.display = 'none'
     event.preventDefault();
     const selectedChannels = Array.from(document.querySelectorAll('input[name="channels"]:checked'))
         .map(checkbox => checkbox.value);
