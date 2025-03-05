@@ -696,6 +696,8 @@
 
         let house_alias, password;
         let darkmode_tf = prefersDarkMode;
+        let api_host = 'http://localhost:8000'
+        // let api_host = 'https://visualizer.electricity.works'
 
         async function downloadExcel(event) {
 
@@ -710,8 +712,7 @@
             const endUnixMilliseconds = endtime_luxon.toUTC().toMillis();
 
             try {
-                // const response = await fetch(`https://visualizer.electricity.works/flo`, {
-                const response = await fetch(`http://localhost:8000/flo`, {
+                const response = await fetch(`${api_host}/flo`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -779,8 +780,7 @@
             const timestep = timestep_wip.value;
             
             try {
-                // const response = await fetch(`https://visualizer.electricity.works/csv`, {
-                const response = await fetch(`http://localhost:8000/csv`, {
+                const response = await fetch(`${api_host}/csv`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -848,8 +848,7 @@
             showLoader()
 
             try {
-                // const response = await fetch(`https://visualizer.electricity.works/plots`, {
-                const response = await fetch(`http://localhost:8000/plots`, {
+                const response = await fetch(`${api_host}/plots`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -973,8 +972,7 @@
             showLoader()
 
             try {
-                // const response = await fetch(`https://visualizer.electricity.works/plots`, {
-                const response = await fetch(`http://localhost:8000/plots`, {
+                const response = await fetch(`${api_host}/plots`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
