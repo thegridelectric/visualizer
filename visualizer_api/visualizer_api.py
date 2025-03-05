@@ -1801,7 +1801,7 @@ class VisualizerApi():
 
         # Open and read the price CSV file
         csv_times, csv_dist, csv_lmp = [], [], []
-        with open('elec_prices.csv', newline='', encoding='utf-8') as csvfile:
+        with open('visualizer_api/elec_prices.csv', newline='', encoding='utf-8') as csvfile:
             csvreader = csv.reader(csvfile)
             next(csvreader)
             for row in csvreader:
