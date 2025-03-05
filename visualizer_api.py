@@ -290,12 +290,13 @@ class VisualizerApi():
                     self.data[request]['aa_states'][state]['values'].append(self.aa_states_order.index(state))
 
             # Weather forecasts
-            self.data[request]['weather_forecasts']: List[MessageSql] = []
+            weather_forecasts: List[MessageSql] = []
             if isinstance(request, DataRequest):
-                self.data[request]['weather_forecasts'] = sorted(
+                weather_forecasts = sorted(
                     [x for x in all_raw_messages if x.message_type_name=='weather.forecast'], 
                     key = lambda x: x.message_persisted_ms
                     )
+            self.data[request]['weather_forecasts'] = weather_forecasts.copy()
             return None
         except Exception as e:
             print(f"An error occurred in get_data():\n{traceback.format_exc()}")
