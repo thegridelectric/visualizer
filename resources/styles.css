@@ -1,11 +1,11 @@
 /* General */
 
 :root {
-    --body-bgcolor: #ffffff;
+    --body-bgcolor: #ffffff; 
     --navbar-textcolor: #555555;
-    --navbar-bgcolor: #F5F5F7;
+    --navbar-bgcolor: #F5F5F5;
     --menu-border-bottom: rgba(226, 226, 226, 0);
-    --box-bgcolor: #F5F5F7;
+    --box-bgcolor: #F5F5F5;
     --box-textcolor: rgb(87, 87, 87);
     --button-bgcolor: #e1e1e1;
     --button-hover: #d6d6d6;
@@ -16,8 +16,14 @@
     --disabled-button-text: rgb(178, 178, 178);
     --disabled-button-background:rgba(236, 236, 236, 0.782);
     --checkbox-textcolor: #555;
-    --loader-bigpart: #cdcdcd;
-    --loader-smallpart: #3f3f3f;
+    --loader-bigpart: #dbdbdb;
+    --loader-smallpart: #3f3f3f00;
+    --agg-widget-title-bgcolor: #ececec;
+    --agg-widget-textcolor: rgb(87, 87, 87);
+    --agg-widget-bgcolor: #f5f5f5;
+    --selected: #466ac4;
+    --price-table-hover: #f6f6f6;
+    --input-price: #efefef;
 }
 
 .dark-mode {
@@ -37,7 +43,12 @@
     --disabled-button-background: rgba(107, 107, 107, 0.246);
     --checkbox-textcolor: #dbdbdb;
     --loader-bigpart: #cdcdcd;
-    --loader-smallpart: #3a3a3a;
+    --loader-smallpart: #3a3a3a00;
+    --agg-widget-title-bgcolor: rgb(67, 67, 67); /*rgb(70, 36, 36) */
+    --agg-widget-textcolor: #cdcdcd;
+    --agg-widget-bgcolor: #313131;
+    --price-table-hover: #292929;
+    --input-price: #161616;
 }
 
 body {
@@ -464,7 +475,7 @@ input[type="checkbox"]:checked {
     color: #6d6d6d;
     font-size: 14px;
     width: 100%;
-    margin: 0;
+    margin-top: 30px;
     text-align: center;
     position: fixed;
     bottom: 0;
@@ -476,3 +487,129 @@ input[type="checkbox"]:checked {
 /* #footer a{
     color: #868686
 } */
+
+/* Widgets */
+
+.agg-widget {
+    margin-left: 5%;
+    margin-right: 5%;
+    margin-top: 0px;
+    /* margin-bottom: 200px; */
+    /* padding: 10px 30px 30px 30px; */
+    background-color: var(--agg-widget-bgcolor);
+    color: var(--agg-widget-textcolor);
+    border-radius: 0px 0px 10px 10px;
+    font-size: 14px;
+    border: solid 0.5px var(--agg-widget-title-bgcolor);
+    min-height: 200px;
+}
+
+.agg-widget-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-left: 5%;
+    margin-right: 5%;
+    margin-top: 30px;
+    color: var(--agg-widget-textcolor);
+    font-size: 10px;
+    padding: 5px 20px 5px 30px;
+    border-radius: 10px 10px 0px 0px;
+    background-color: var(--agg-widget-title-bgcolor);
+    border: solid 0.5px var(--agg-widget-title-bgcolor);
+}
+
+.button-container {
+    display: flex;
+    gap: 10px;
+}
+
+#agg-refresh-button, #prices-save-button, #prices-reset-button {
+    margin-top:0px;
+    height: 30px;
+}
+
+#prices-save-button {
+    background-color: var(--selected);
+    color: white;
+    display: none;
+}
+
+#prices-reset-button{
+    display: none;
+}
+
+#price-editor {
+    height: 600px;
+}
+
+#price-editor-table {
+    width: 100%;
+    max-width: 800px;
+    justify-content: center; 
+    margin: 40px;
+    margin-left: 5%;
+    margin-right: 5%;
+    max-height: 500px;
+    overflow-y: auto;
+    display: block;
+}
+
+#price-editor-table thead {
+    position: sticky;
+    top: 0;
+    background-color: #f2f2f2; /* Add a background color for better visibility */
+    z-index: 1; /* Ensures the header stays above the body content */
+}
+
+#price-editor table {
+    border-collapse: collapse;
+    border: 1px solid var(--agg-widget-title-bgcolor);
+}
+
+#price-editor th, td {
+    width: 10%;
+    min-width: 50px;
+    border: 0px solid #5a5a5a;
+    padding: 8px;
+    text-align: center;
+}
+
+#price-editor th {
+    background-color: var(--body-bgcolor)
+}
+
+#price-editor tr{
+    text-align: center;
+    background-color: var(--body-bgcolor);
+    height: 40px;
+    transition: all 0.2s ease;
+}
+
+#price-editor tr:hover {
+    background-color: var(--price-table-hover)
+}
+
+.price-edit-input {
+    font-weight: bold;
+    min-width:70px;
+    border: none;
+    font-family: 'Montserrat';
+    background-color: var(--input-price);
+    border: 2px solid var(--input-price);
+    padding: 5px;
+    border-radius: 5px;
+    color: var(--selected); 
+}
+
+.price-edit-input::placeholder{
+    font-weight: normal;
+    opacity: 0.5;
+}
+
+input:focus {
+    outline: 2px solid var(--selected); 
+    border: 2px solid var(--body-bgcolor);
+    background-color: var(--body-bgcolor);
+}
+

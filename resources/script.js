@@ -1,30 +1,30 @@
-let house_alias, password;
+let house_alias, username, password;
 let darkmode_tf = false;
 let plotsDisplayed = false;
-// let api_host = 'http://localhost:8000'
-let api_host = 'https://visualizer.electricity.works'
+let api_host = 'http://localhost:8000'
+// let api_host = 'https://visualizer.electricity.works'
 
 function clearPlots() {
     const plotDivs = [
-        document.getElementById('plot1'),
-        document.getElementById('plot2'),
-        document.getElementById('plot3'),
-        document.getElementById('plot4'),
-        document.getElementById('plot5'),
-        document.getElementById('plot6'),
-        document.getElementById('plot7'),
-        document.getElementById('plot8'),
-        document.getElementById('plot9'),
-        document.getElementById('plot10'),
-        document.getElementById('plot11'),
-        document.getElementById('plot-png')
+        'plot1', 'plot2', 'plot3', 'plot4', 'plot5', 
+        'plot6', 'plot7', 'plot8', 'plot9', 'plot10', 'plot11',
+        'plot-png', 'agg-overview-plot', 'agg-overview-plot2'
     ];
-    plotDivs.forEach(div => div.innerHTML = '');
+    plotDivs.forEach(plotId => {
+        const plotDiv = document.getElementById(plotId);
+        if (plotDiv) {
+            plotDiv.innerHTML = '';
+        }
+    });
     const plotContainer = document.getElementById('plot-container');
-    plotContainer.style.display = 'none'
+    if (plotContainer) {
+        plotContainer.style.display = 'none';
+    }
     const footer = document.getElementById('footer');
-    footer.style.position = 'fixed'
-    plotsDisplayed = false
+    // if (footer) {
+    //     footer.style.position = 'fixed';
+    // }
+    plotsDisplayed = false;
 }
 
 // Check devices's dark mode
@@ -141,6 +141,48 @@ async function LogIn(event) {
     }
 }
 
+async function LogInAggregator(event) {
+    console.log("Hello there")
+    event.preventDefault();
+    document.getElementById('footer').style.position = 'relative';
+    username = document.getElementById("username").value;
+    password = document.getElementById("password").value;
+    // if (username === ""){
+    //     return
+    // }
+    document.getElementById("login-button").style.display = "none";
+    try {
+        // const response = await fetch(`${api_host}/login`, {
+        //     method: 'POST',
+        //     headers: {'Content-Type': 'application/json'},
+        //     body: JSON.stringify({
+        //         username: `${username}`,
+        //         password: password, 
+        //     })
+        // });
+        // if (response.ok) {
+        //     const data = await response.json();
+        //     if (data === true) {
+            document.getElementById("login-div").style.display = "none";
+            document.getElementById("agg-overview").style.display = "block";
+            document.getElementById("price-editor").style.display = "block";
+            getAggOverviewPlot(event);
+            // } else {
+            //     document.getElementById("username").style.border = "1px solid red";
+            //     document.getElementById("password").style.border = "1px solid red";
+            //     document.getElementById("username").style.backgroundColor = "rgb(255, 216, 216)";
+            //     document.getElementById("password").style.backgroundColor = "rgb(255, 216, 216)";
+            //     document.getElementById("username").value = "";
+            //     document.getElementById("password").value = "";
+            // }
+        // }
+    } catch (error) {
+        console.error('Error trying to log in:', error);
+    } finally {
+        document.getElementById("login-button").style.display = "block";
+    }
+}
+
 // Re-ordering plots
 function movePlotDown(button) {
     const div = button.parentElement.parentElement;
@@ -231,8 +273,9 @@ function enable_button(buttonName) {
 }
 
 function disable_button(buttonName) {
-    document.getElementById("error-text").textContent = ""
-    document.getElementById("error-text").style.display = 'none'
+    // TODO
+    // document.getElementById("error-text").textContent = ""
+    // document.getElementById("error-text").style.display = 'none'
     showLoader()
     let enabledButton;
     if (buttonName === 'plot') {
@@ -561,5 +604,62 @@ function getData(event, get_bids) {
         fetchBids(house_alias, password, startUnixMilliseconds, endUnixMilliseconds, false)
     } else {
         fetchPlots(house_alias, password, startUnixMilliseconds, endUnixMilliseconds, selectedChannels, false)
+    }
+}
+
+async function getAggOverviewPlot(event) {
+    disable_button('agg-refresh')
+    clearPlots()
+    event.preventDefault();
+    try {
+        const response = await fetch(`${api_host}/aggregate-plot`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                house_alias: username,
+                password: password,
+                darkmode: darkmode_tf,
+            })
+        });
+        const contentType = response.headers.get("Content-Type");
+        if (contentType && contentType.includes("application/json")) {
+            const data = await response.json();
+            // if ('success' in data && data.success === false) {
+            //     document.getElementById("error-text").textContent = data.message;
+            //     document.getElementById("error-text").style.display = 'block'
+            // }
+        } else {
+            const blob = await response.blob();
+            const zip = await JSZip.loadAsync(blob);
+            let iframeCount = 0;
+            for (const filename of Object.keys(zip.files)) {
+                const fileData = await zip.files[filename].async('blob');
+                if (filename.endsWith('.html')) {
+                    const blob = new Blob([await zip.files[filename].async('text')], { type: 'text/html' });
+                    const htmlUrl = URL.createObjectURL(blob);
+                    const iframe = document.createElement('iframe');
+                    iframe.src = htmlUrl;
+                    iframe.style.width = '90%';
+                    iframe.style.maxWidth = '1500px';
+                    iframe.style.height = '375px';
+                    iframe.style.border = 'none';
+                    const plotDivs = [
+                        document.getElementById('agg-overview-plot'),
+                        document.getElementById('agg-overview-plot2'),
+                    ];
+                    const currentDiv = plotDivs[iframeCount % plotDivs.length];
+                    currentDiv.appendChild(iframe);
+                    iframeCount++;
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Error getting aggregate overview plot:', error);
+        // document.getElementById("error-text").textContent = "Error getting aggregate overview plot";
+        // document.getElementById("error-text").style.display = 'block'
+    } finally {
+        enable_button('agg-refresh')
     }
 }

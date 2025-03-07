@@ -21,6 +21,8 @@ from fastapi.responses import StreamingResponse
 from fastapi.responses import FileResponse
 from sqlalchemy import create_engine, asc, or_, and_, desc
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.future import select
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 import plotly.colors as pc
@@ -34,6 +36,7 @@ class BaseRequest(BaseModel):
     house_alias: str
     password: str
     unique_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    darkmode: Optional[bool] = False
 
     def __hash__(self):
         return hash(self.unique_id)
@@ -58,8 +61,12 @@ class VisualizerApi():
     def __init__(self, running_locally):
         self.running_locally = running_locally
         self.settings = Settings(_env_file=dotenv.find_dotenv())
+        # Sync session
         engine = create_engine(self.settings.db_url.get_secret_value())
         self.Session = sessionmaker(bind=engine)
+        # Async session
+        engine = create_async_engine(self.settings.db_url.get_secret_value())
+        self.AsyncSessionLocal = sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
         self.admin_user_password = self.settings.visualizer_api_password.get_secret_value()
         self.timezone_str = 'America/New_York'
         self.timeout_seconds = 5*60
@@ -72,6 +79,7 @@ class VisualizerApi():
         self.whitewire_threshold_watts = {'beech': 100, 'default': 20}
         self.zone_color = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']*3
         self.data = {}
+        self.timestamp_min_max = {}
 
     def start(self):
         self.app = FastAPI()
@@ -87,6 +95,7 @@ class VisualizerApi():
         self.app.post("/csv")(self.get_csv)
         self.app.post("/messages")(self.get_messages)
         self.app.post("/flo")(self.get_flo)
+        self.app.post("/aggregate-plot")(self.get_aggregate_plot)
         uvicorn.run(self.app, host="0.0.0.0", port=8000)
 
     def to_datetime(self, time_ms):
@@ -109,7 +118,7 @@ class VisualizerApi():
                 return True
         return False
     
-    def check_request(self, request: Union[DataRequest, CsvRequest, DijkstraRequest, MessagesRequest]):
+    def check_request(self, request: BaseRequest):
         if not self.check_password(request):
             return {"success": False, "message": "Wrong password.", "reload": False}
         if isinstance(request, Union[DataRequest, CsvRequest]) and not request.confirm_with_user:
@@ -129,18 +138,20 @@ class VisualizerApi():
                 return {"success": False, "message": warning_message, "reload": False}
         return None
     
-    def get_data(self, request: Union[DataRequest, CsvRequest, DijkstraRequest]):
+    async def get_data(self, request: BaseRequest):
         try:
             error = self.check_request(request)
             if error or request.selected_channels==['bids']:
                 return error
             
             self.data[request] = {}
-            with self.Session() as session:
+            async with self.AsyncSessionLocal() as session:
                 import time
-                querry_start = time.time()
+                query_start = time.time()
                 print("Querying journaldb...")
-                all_raw_messages = session.query(MessageSql).filter(
+                
+                # Use select() instead of session.query()
+                stmt = select(MessageSql).filter(
                     MessageSql.from_alias.like(f'%.{request.house_alias}.%'),
                     MessageSql.message_persisted_ms <= request.end_ms,
                     or_(
@@ -154,11 +165,16 @@ class VisualizerApi():
                         ),
                         and_(
                             MessageSql.message_type_name == "weather.forecast",
-                            MessageSql.message_persisted_ms >= request.start_ms - 24*3600*1000,
+                            MessageSql.message_persisted_ms >= request.start_ms - 24 * 3600 * 1000,
                         )
                     )
-                ).order_by(asc(MessageSql.message_persisted_ms)).all()
-                print(f"Time to fetch data: {round(time.time()-querry_start,1)} seconds")
+                ).order_by(asc(MessageSql.message_persisted_ms))
+                
+                # Execute the statement asynchronously
+                result = await session.execute(stmt)
+                all_raw_messages = result.scalars().all()  # Use scalars() to retrieve the data
+                
+                print(f"Time to fetch data: {round(time.time() - query_start, 1)} seconds")
 
             if not all_raw_messages:
                 warning_message = f"No data found for house '{request.house_alias}' in the selected timeframe."
@@ -302,6 +318,157 @@ class VisualizerApi():
         except Exception as e:
             print(f"An error occurred in get_data():\n{traceback.format_exc()}")
             return {"success": False, "message": "An error occurred when getting data", "reload": False}
+        
+    async def get_aggregate_data(self, request: BaseRequest):
+        try:
+            error = self.check_request(request)
+            if error:
+                return error
+            
+            self.data[request] = {}
+            self.timestamp_min_max[request] = {}
+            async with self.AsyncSessionLocal() as session:
+                import time
+                query_start = time.time()
+                print("Querying journaldb...")
+                stmt = select(MessageSql).filter(
+                    MessageSql.from_alias.like(f'%.scada%'),
+                    or_(
+                        MessageSql.message_type_name == "batched.readings",
+                        MessageSql.message_type_name == "report",
+                        MessageSql.message_type_name == "snapshot.spaceheat",
+                    ),
+                    MessageSql.message_persisted_ms >= query_start * 1000 - 24 * 3600 * 1000,
+                ).order_by(asc(MessageSql.message_persisted_ms))
+
+                result = await session.execute(stmt)  # Use async execute
+                all_raw_messages = result.scalars().all()  # Get the results
+                print(f"Time to fetch data: {round(time.time()-query_start,1)} seconds")
+
+            if not all_raw_messages:
+                warning_message = f"No data found for the aggregation in the selected timeframe."
+                return {"success": False, "message": warning_message, "reload": False}
+            
+            for house_alias in set([message.from_alias for message in all_raw_messages]):
+                if 'maple' in house_alias:
+                    continue
+                self.data[request][house_alias] = {}
+
+                # Process reports
+                reports: List[MessageSql] = sorted([
+                    x for x in all_raw_messages 
+                    if x.message_type_name in ['report', 'batched.readings']
+                    and x.from_alias == house_alias
+                    ], key = lambda x: x.message_persisted_ms
+                    )
+                self.data[request][house_alias] = {}
+                for message in reports:
+                    for channel in message.payload['ChannelReadingList']:
+                        if message.message_type_name == 'report':
+                            channel_name = channel['ChannelName']
+                        elif message.message_type_name == 'batched.readings':
+                            for dc in message.payload['DataChannelList']:
+                                if dc['Id'] == channel['ChannelId']:
+                                    channel_name = dc['Name']
+                        if not channel['ValueList'] or not channel['ScadaReadTimeUnixMsList']:
+                            continue
+                        if len(channel['ValueList'])!=len(channel['ScadaReadTimeUnixMsList']):
+                            continue
+                        if ((channel_name not in ['hp-idu-pwr', 'hp-odu-pwr'] and 'depth' not in channel_name) 
+                            or 'micro' in channel_name):
+                            continue
+                        if channel_name not in self.data[request][house_alias]:
+                            self.data[request][house_alias][channel_name] = {'values': [], 'times': []}
+                        self.data[request][house_alias][channel_name]['values'].extend(channel['ValueList'])
+                        self.data[request][house_alias][channel_name]['times'].extend(channel['ScadaReadTimeUnixMsList'])
+
+                # Process snapshots
+                max_timestamp = max(max(self.data[request][house_alias][channel_name]['times']) for channel_name in self.data[request][house_alias])
+                snapshots = sorted(
+                        [x for x in all_raw_messages if x.message_type_name=='snapshot.spaceheat'
+                        and x.message_persisted_ms >= max_timestamp], 
+                        key = lambda x: x.message_persisted_ms
+                        )
+                for snapshot in snapshots:
+                    for snap in snapshot.payload['LatestReadingList']:
+                        if snap['ChannelName'] in self.data[request][house_alias]:
+                            self.data[request][house_alias][snap['ChannelName']]['times'].append(snap['ScadaReadTimeUnixMs'])
+                            self.data[request][house_alias][snap['ChannelName']]['values'].append(snap['Value'])
+
+                # Get minimum and maximum timestamp for plots
+                max_timestamp = max(max(self.data[request][house_alias][x]['times']) for x in self.data[request][house_alias])
+                min_timestamp = min(min(self.data[request][house_alias][x]['times']) for x in self.data[request][house_alias])
+                min_timestamp += -(max_timestamp-min_timestamp)*0.05
+                max_timestamp += (max_timestamp-min_timestamp)*0.05
+                self.timestamp_min_max[request][house_alias] = {
+                    'min_timestamp': self.to_datetime(min_timestamp),
+                    'max_timestamp': self.to_datetime(max_timestamp)
+                }
+
+                # Sort values according to time and convert to datetime
+                for channel_name in self.data[request][house_alias].keys():
+                    sorted_times_values = sorted(zip(self.data[request][house_alias][channel_name]['times'], self.data[request][house_alias][channel_name]['values']))
+                    sorted_times, sorted_values = zip(*sorted_times_values)
+                    self.data[request][house_alias][channel_name]['values'] = list(sorted_values)
+                    self.data[request][house_alias][channel_name]['times'] = pd.to_datetime(list(sorted_times), unit='ms', utc=True)
+                    self.data[request][house_alias][channel_name]['times'] = self.data[request][house_alias][channel_name]['times'].tz_convert(self.timezone_str)
+                    self.data[request][house_alias][channel_name]['times'] = [x.replace(tzinfo=None) for x in self.data[request][house_alias][channel_name]['times']]        
+                
+            # Minimum and maximum timestamps overall
+            min_timestamp_overall = min(self.timestamp_min_max[request][ha]['min_timestamp'] for ha in self.timestamp_min_max[request])
+            max_timestamp_overall = max(self.timestamp_min_max[request][ha]['max_timestamp'] for ha in self.timestamp_min_max[request])
+            self.timestamp_min_max[request]['overall'] = {
+                'min_timestamp': min_timestamp_overall,
+                'max_timestamp': max_timestamp_overall
+            }
+
+            # Re-sample to equal timesteps
+            print("Re-sampling...")
+            start_ms = query_start*1000 - 24*3600*1000
+            end_ms = query_start*1000 + 60*1000
+            timestep_s = 10
+            num_points = int((end_ms - start_ms) / (timestep_s * 1000) + 1)
+            sampling_times = np.linspace(start_ms, end_ms, num_points)
+            sampling_times = pd.to_datetime(sampling_times, unit='ms', utc=True)
+            sampling_times = [x.tz_convert(self.timezone_str).replace(tzinfo=None) for x in sampling_times]
+
+            agg_data = {}
+            for house_alias in self.data[request]:
+                agg_data[house_alias] = {'timestamps': sampling_times}
+                for channel in self.data[request][house_alias]:
+                    sampled = await asyncio.to_thread(
+                        pd.merge_asof, 
+                        pd.DataFrame({'times': sampling_times}),
+                        pd.DataFrame(self.data[request][house_alias][channel]),
+                        on='times', 
+                        direction='backward'
+                        )
+                    sampled['values'] = sampled['values'].bfill() #TODO!!!!
+                    agg_data[house_alias][channel] = list(sampled['values'])
+
+                # Compute average temperature and energy
+                temperature_channels = [value for key, value in agg_data[house_alias].items() if 'depth' in key]
+                num_lists = len(temperature_channels)
+                num_elements = len(temperature_channels[0])
+                sums = [0] * num_elements
+                for channel in temperature_channels:
+                    for i in range(num_elements):
+                        sums[i] += channel[i]
+                averaged_temperature = [sum_value / num_lists for sum_value in sums]
+                m_total_kg = 120*4*3.785
+                agg_data[house_alias]['energy'] = [m_total_kg*4.187/3600*(avg_temp/1000-30) for avg_temp in averaged_temperature]
+                agg_data[house_alias] = {k: v for k, v in agg_data[house_alias].items() if 'depth' not in k}
+            
+            energy_list, hp_list = [], []
+            for i in range(len(agg_data[house_alias]['energy'])):
+                energy_list.append(sum([agg_data[ha]['energy'][i] for ha in agg_data]))
+                hp_list.append(sum([(agg_data[ha]['hp-idu-pwr'][i]+agg_data[ha]['hp-odu-pwr'][i])/1000 for ha in agg_data]))
+            self.data[request] = {'timestamp': sampling_times, 'hp':hp_list, 'energy': energy_list}
+            print("Done.")
+
+        except Exception as e:
+            print(f"An error occurred in get_aggregate_data():\n{traceback.format_exc()}")
+            return {"success": False, "message": "An error occurred when getting aggregate data", "reload": False}
     
     async def get_messages(self, request: MessagesRequest):
         try:
@@ -386,7 +553,7 @@ class VisualizerApi():
     async def get_csv(self, request: CsvRequest):
         try:
             async with async_timeout.timeout(self.timeout_seconds):
-                error = await asyncio.to_thread(self.get_data, request)
+                error = await self.get_data(request)
                 if error:
                     return error
                 
@@ -610,11 +777,46 @@ class VisualizerApi():
         except Exception as e:
             print(f"An error occurred in get_bids():\n{traceback.format_exc()}")
             return {"success": False, "message": "An error occured while getting bids", "reload": False}
+        
+    async def get_aggregate_plot(self, request: BaseRequest):
+        try:
+            async with async_timeout.timeout(self.timeout_seconds):
+                error = await self.get_aggregate_data(request)
+                if error:
+                    return error
+                
+                # Get plots, zip and return
+                zip_buffer = io.BytesIO()
+                with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
+                    html_buffer = await self.plot_aggregate(request)
+                    zip_file.writestr('plot1.html', html_buffer.read())
+
+                    html_buffer = await self.plot_prices(request, aggregate=True)
+                    zip_file.writestr('plot2.html', html_buffer.read())
+
+                zip_buffer.seek(0)
+
+                return StreamingResponse(
+                    zip_buffer, 
+                    media_type='application/zip', 
+                    headers={"Content-Disposition": "attachment; filename=plots.zip"}
+                    )
+        except asyncio.TimeoutError:
+            print("Timed out in get_aggregate_plot()")
+            return {"success": False, "message": "The request timed out.", "reload": False}
+        except Exception as e:
+            print(f"An error occurred in get_aggregate_plot():\n{traceback.format_exc()}")
+            return {"success": False, "message": "An error occured while getting aggregate plot", "reload": False}
+        finally:
+            if request in self.data:
+                del self.data[request]
+                print(f"Deleted request data")
+            print(f"Unfinished requests in data: {len(self.data)}")
 
     async def get_plots(self, request: DataRequest):
         try:
             async with async_timeout.timeout(self.timeout_seconds):
-                error = await asyncio.to_thread(self.get_data, request)
+                error = await self.get_data(request)
                 if error:
                     return error
                 
@@ -623,16 +825,6 @@ class VisualizerApi():
                     zip_bids = await self.get_bids(request)
                     return zip_bids
                 
-                # Plot colors depend on user's dark mode settings
-                self.plot_background_hex = '#222222' if request.darkmode else 'white'
-                self.gridcolor_hex = '#424242' if request.darkmode else 'LightGray'
-                self.fontcolor_hex = '#b5b5b5' if request.darkmode else 'rgb(42,63,96)'
-                self.home_alone_line = '#f0f0f0' if request.darkmode else '#5e5e5e'
-                self.oat_color = 'gray' if request.darkmode else '#d6d6d6'
-
-                # Show markers if the user selected the "show points" option
-                self.line_style = 'lines+markers' if 'show-points'in request.selected_channels else 'lines'
-
                 # Get plots, zip and return
                 zip_buffer = io.BytesIO()
                 with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
@@ -688,6 +880,83 @@ class VisualizerApi():
                 del self.data[request]
                 print(f"Deleted request data")
             print(f"Unfinished requests in data: {len(self.data)}")
+
+    async def plot_aggregate(self, request: BaseRequest):
+        plot_start = time.time()
+        fig = go.Figure()
+        fig.add_trace(
+            go.Scatter(
+                x=self.data[request]['timestamp'], 
+                y=self.data[request]['hp'], 
+                mode='lines',
+                opacity=0.6,
+                line=dict(color='#d62728', dash='solid'),
+                name='Aggregated load'
+                )
+            )
+        fig.add_trace(
+            go.Scatter(
+                x=self.data[request]['timestamp'], 
+                y=self.data[request]['energy'], 
+                mode='lines',
+                opacity=0.9,
+                line=dict(color='#2a4ca2', dash='solid'),
+                name='Aggregated storage',
+                yaxis='y2'
+                )
+            )
+        fig.update_layout(yaxis=dict(title='Power [kWe]'))
+        fig.update_layout(yaxis2=dict(title='Thermal energy [kWht]'))
+        fig.update_layout(
+            # title=dict(text='', x=0.5, xanchor='center'),
+            margin=dict(t=30, b=30),
+            plot_bgcolor='#313131' if request.darkmode else '#F5F5F7',
+            paper_bgcolor='#313131' if request.darkmode else '#F5F5F7',
+            font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
+            title_font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
+            xaxis=dict(
+                range=[self.timestamp_min_max[request]['overall']['min_timestamp'], 
+                       self.timestamp_min_max[request]['overall']['max_timestamp']],
+                mirror=True,
+                ticks='outside',
+                showline=True,
+                linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
+                showgrid=False
+                ),
+            yaxis=dict(
+                mirror=True,
+                ticks='outside',
+                showline=True,
+                linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
+                zeroline=False,
+                showgrid=True, 
+                gridwidth=1, 
+                gridcolor='#424242' if request.darkmode else 'LightGray'
+                ),
+            yaxis2=dict(
+                mirror=True,
+                ticks='outside',
+                zeroline=False,
+                showline=True,
+                linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
+                showgrid=False,
+                overlaying='y', 
+                side='right'
+                ),
+            legend=dict(
+                x=0,
+                y=1,
+                xanchor='left',
+                yanchor='top',
+                bgcolor='rgba(0, 0, 0, 0)'
+                )
+            )
+        html_buffer = io.StringIO()
+        fig.write_html(html_buffer)
+        html_buffer.seek(0)
+        print(f"Aggregation plot done in {round(time.time()-plot_start,1)} seconds")
+        return html_buffer
+        
         
     async def plot_heatpump(self, request: DataRequest):
         plot_start = time.time()
@@ -700,7 +969,7 @@ class VisualizerApi():
                 go.Scatter(
                     x=self.data[request]['channels']['hp-lwt']['times'], 
                     y=[self.to_fahrenheit(x/1000) for x in self.data[request]['channels']['hp-lwt']['values']], 
-                    mode=self.line_style,
+                    mode='lines+markers' if 'show-points'in request.selected_channels else 'lines',
                     opacity=0.7,
                     line=dict(color='#d62728', dash='solid'),
                     name='HP LWT'
@@ -712,7 +981,7 @@ class VisualizerApi():
                 go.Scatter(
                     x=self.data[request]['channels']['hp-ewt']['times'], 
                     y=[self.to_fahrenheit(x/1000) for x in self.data[request]['channels']['hp-ewt']['values']], 
-                    mode=self.line_style, 
+                    mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
                     opacity=0.7,
                     line=dict(color='#1f77b4', dash='solid'),
                     name='HP EWT'
@@ -728,7 +997,7 @@ class VisualizerApi():
                 go.Scatter(
                     x=self.data[request]['channels']['hp-odu-pwr']['times'], 
                     y=[x/1000 for x in self.data[request]['channels']['hp-odu-pwr']['values']], 
-                    mode=self.line_style, 
+                    mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
                     opacity=0.7,
                     line=dict(color='#2ca02c', dash='solid'),
                     name='HP outdoor power',
@@ -741,7 +1010,7 @@ class VisualizerApi():
                 go.Scatter(
                     x=self.data[request]['channels']['hp-idu-pwr']['times'], 
                     y=[x/1000 for x in self.data[request]['channels']['hp-idu-pwr']['values']], 
-                    mode=self.line_style, 
+                    mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
                     opacity=0.7,
                     line=dict(color='#ff7f0e', dash='solid'),
                     name='HP indoor power',
@@ -754,9 +1023,9 @@ class VisualizerApi():
                 go.Scatter(
                     x=self.data[request]['channels']['oil-boiler-pwr']['times'], 
                     y=[x/100 for x in self.data[request]['channels']['oil-boiler-pwr']['values']], 
-                    mode=self.line_style, 
+                    mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
                     opacity=0.7,
-                    line=dict(color=self.home_alone_line, dash='solid'),
+                    line=dict(color='#f0f0f0' if request.darkmode else '#5e5e5e', dash='solid'),
                     name='Oil boiler power x10',
                     yaxis=y_axis_power
                     )
@@ -767,7 +1036,7 @@ class VisualizerApi():
                 go.Scatter(
                     x=self.data[request]['channels']['primary-flow']['times'],
                     y=[x/100 for x in self.data[request]['channels']['primary-flow']['values']], 
-                    mode=self.line_style, 
+                    mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
                     opacity=0.4,
                     line=dict(color='purple', dash='solid'),
                     name='Primary pump flow',
@@ -780,7 +1049,7 @@ class VisualizerApi():
                 go.Scatter(
                     x=self.data[request]['channels']['primary-pump-pwr']['times'], 
                     y=[x/1000*100 for x in self.data[request]['channels']['primary-pump-pwr']['values']], 
-                    mode=self.line_style, 
+                    mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
                     opacity=0.7,
                     line=dict(color='pink', dash='solid'),
                     name='Primary pump power x100',
@@ -799,34 +1068,34 @@ class VisualizerApi():
         fig.update_layout(
             title=dict(text='Heat pump', x=0.5, xanchor='center'),
             margin=dict(t=30, b=30),
-            plot_bgcolor=self.plot_background_hex,
-            paper_bgcolor=self.plot_background_hex,
-            font_color=self.fontcolor_hex,
-            title_font_color=self.fontcolor_hex,
+            plot_bgcolor='#222222' if request.darkmode else 'white',
+            paper_bgcolor='#222222' if request.darkmode else 'white',
+            font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
+            title_font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
             xaxis=dict(
                 range=[self.data[request]['min_timestamp'], self.data[request]['max_timestamp']],
                 mirror=True,
                 ticks='outside',
                 showline=True,
-                linecolor=self.fontcolor_hex,
+                linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
                 showgrid=False
                 ),
             yaxis=dict(
                 mirror=True,
                 ticks='outside',
                 showline=True,
-                linecolor=self.fontcolor_hex,
+                linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
                 zeroline=False,
                 showgrid=True, 
                 gridwidth=1, 
-                gridcolor=self.gridcolor_hex
+                gridcolor='#424242' if request.darkmode else 'LightGray'
                 ),
             yaxis2=dict(
                 mirror=True,
                 ticks='outside',
                 zeroline=False,
                 showline=True,
-                linecolor=self.fontcolor_hex,
+                linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
                 showgrid=False,
                 overlaying='y', 
                 side='right'
@@ -856,7 +1125,7 @@ class VisualizerApi():
                 go.Scatter(
                     x=self.data[request]['channels']['dist-swt']['times'], 
                     y=[self.to_fahrenheit(x/1000) for x in self.data[request]['channels']['dist-swt']['values']], 
-                    mode=self.line_style, 
+                    mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
                     opacity=0.7,
                     line=dict(color='#d62728', dash='solid'),
                     name='Distribution SWT'
@@ -868,7 +1137,7 @@ class VisualizerApi():
                 go.Scatter(
                     x=self.data[request]['channels']['dist-rwt']['times'], 
                     y=[self.to_fahrenheit(x/1000) for x in self.data[request]['channels']['dist-rwt']['values']], 
-                    mode=self.line_style, 
+                    mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
                     opacity=0.7,
                     line=dict(color='#1f77b4', dash='solid'),
                     name='Distribution RWT'
@@ -884,7 +1153,7 @@ class VisualizerApi():
                 go.Scatter(
                     x=self.data[request]['channels']['dist-flow']['times'], 
                     y=[x/100 for x in self.data[request]['channels']['dist-flow']['values']], 
-                    mode=self.line_style, 
+                    mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
                     opacity=0.4,
                     line=dict(color='purple', dash='solid'),
                     name='Distribution flow',
@@ -897,7 +1166,7 @@ class VisualizerApi():
                 go.Scatter(
                     x=self.data[request]['channels']['dist-pump-pwr']['times'], 
                     y=[x/10 for x in self.data[request]['channels']['dist-pump-pwr']['values']], 
-                    mode=self.line_style, 
+                    mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
                     opacity=0.7,
                     line=dict(color='pink', dash='solid'),
                     name='Distribution pump power /10',
@@ -916,34 +1185,34 @@ class VisualizerApi():
 
         fig.update_layout(
             title=dict(text='Distribution', x=0.5, xanchor='center'),
-            plot_bgcolor=self.plot_background_hex,
-            paper_bgcolor=self.plot_background_hex,
-            font_color=self.fontcolor_hex,
-            title_font_color=self.fontcolor_hex,
+            plot_bgcolor='#222222' if request.darkmode else 'white',
+            paper_bgcolor='#222222' if request.darkmode else 'white',
+            font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
+            title_font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
             margin=dict(t=30, b=30),
             xaxis=dict(
                 range=[self.data[request]['min_timestamp'], self.data[request]['max_timestamp']],
                 mirror=True,
                 ticks='outside',
                 showline=True,
-                linecolor=self.fontcolor_hex,
+                linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
                 showgrid=False
                 ),
             yaxis=dict(
                 mirror=True,
                 ticks='outside',
                 showline=True,
-                linecolor=self.fontcolor_hex,
+                linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
                 zeroline=False,
                 showgrid=True, 
                 gridwidth=1, 
-                gridcolor=self.gridcolor_hex
+                gridcolor='#424242' if request.darkmode else 'LightGray'
                 ),
             yaxis2=dict(
                 mirror=True,
                 ticks='outside',
                 showline=True,
-                linecolor=self.fontcolor_hex,
+                linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
                 zeroline=False,
                 overlaying='y', 
                 side='right', 
@@ -1046,17 +1315,17 @@ class VisualizerApi():
 
         fig.update_layout(
             title=dict(text='Heat calls', x=0.5, xanchor='center'),
-            plot_bgcolor=self.plot_background_hex,
-            paper_bgcolor=self.plot_background_hex,
-            font_color=self.fontcolor_hex,
-            title_font_color=self.fontcolor_hex,
+            plot_bgcolor='#222222' if request.darkmode else 'white',
+            paper_bgcolor='#222222' if request.darkmode else 'white',
+            font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
+            title_font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
             margin=dict(t=30, b=30),
             xaxis=dict(
                 range=[self.data[request]['min_timestamp'], self.data[request]['max_timestamp']],
                 mirror=True,
                 ticks='outside',
                 showline=True,
-                linecolor=self.fontcolor_hex,
+                linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
                 showgrid=False
                 ),
             yaxis=dict(
@@ -1064,18 +1333,18 @@ class VisualizerApi():
                 mirror=True,
                 ticks='outside',
                 showline=True,
-                linecolor=self.fontcolor_hex,
+                linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
                 zeroline=False,
                 showgrid=True, 
                 gridwidth=1, 
-                gridcolor=self.gridcolor_hex, 
+                gridcolor='#424242' if request.darkmode else 'LightGray', 
                 tickvals=list(range(len(self.data[request]['channels_by_zone'].keys())+1)),
                 ),
             yaxis2=dict(
                 mirror=True,
                 ticks='outside',
                 showline=True,
-                linecolor=self.fontcolor_hex,
+                linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
                 ),
             legend=dict(
                 x=0,
@@ -1105,7 +1374,7 @@ class VisualizerApi():
                     go.Scatter(
                         x=self.data[request]['channels'][temp_channel]['times'], 
                         y=[x/1000 for x in self.data[request]['channels'][temp_channel]['values']], 
-                        mode=self.line_style, 
+                        mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
                         opacity=0.7,
                         line=dict(color=self.zone_color[int(zone[4])-1], dash='solid'),
                         name=self.data[request]['channels_by_zone'][zone]['temp'].replace('-temp','')
@@ -1119,7 +1388,7 @@ class VisualizerApi():
                     go.Scatter(
                         x=self.data[request]['channels'][set_channel]['times'], 
                         y=[x/1000 for x in self.data[request]['channels'][set_channel]['values']], 
-                        mode=self.line_style, 
+                        mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
                         opacity=0.7,
                         line=dict(color=self.zone_color[int(zone[4])-1], dash='dash'),
                         name=self.data[request]['channels_by_zone'][zone]['set'].replace('-set',''),
@@ -1136,9 +1405,9 @@ class VisualizerApi():
                 go.Scatter(
                     x=self.data[request]['channels']['oat']['times'], 
                     y=[self.to_fahrenheit(x/1000) for x in self.data[request]['channels']['oat']['values']], 
-                    mode=self.line_style, 
+                    mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
                     opacity=0.8,
-                    line=dict(color=self.oat_color, dash='solid'),
+                    line=dict(color='gray' if request.darkmode else '#d6d6d6', dash='solid'),
                     name='Outside air',
                     yaxis='y2',
                     )
@@ -1150,17 +1419,17 @@ class VisualizerApi():
         fig.update_layout(yaxis=dict(title='Zone temperature [F]'))
         fig.update_layout(
             title=dict(text='Zones', x=0.5, xanchor='center'),
-            plot_bgcolor=self.plot_background_hex,
-            paper_bgcolor=self.plot_background_hex,
-            font_color=self.fontcolor_hex,
-            title_font_color=self.fontcolor_hex,
+            plot_bgcolor='#222222' if request.darkmode else 'white',
+            paper_bgcolor='#222222' if request.darkmode else 'white',
+            font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
+            title_font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
             margin=dict(t=30, b=30),
             xaxis=dict(
                 range=[self.data[request]['min_timestamp'], self.data[request]['max_timestamp']],
                 mirror=True,
                 ticks='outside',
                 showline=True,
-                linecolor=self.fontcolor_hex,
+                linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
                 showgrid=False
                 ),
             yaxis=dict(
@@ -1168,18 +1437,18 @@ class VisualizerApi():
                 mirror=True,
                 ticks='outside',
                 showline=True,
-                linecolor=self.fontcolor_hex,
+                linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
                 zeroline=False,
                 showgrid=True, 
                 gridwidth=1, 
-                gridcolor=self.gridcolor_hex
+                gridcolor='#424242' if request.darkmode else 'LightGray'
                 ),
             yaxis2=dict(
                 range = [min_oat-2, max_oat+20],
                 mirror=True,
                 ticks='outside',
                 showline=True,
-                linecolor=self.fontcolor_hex,
+                linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
                 overlaying='y', 
                 side='right', 
                 zeroline=False,
@@ -1223,7 +1492,7 @@ class VisualizerApi():
                     go.Scatter(
                         x=self.data[request]['channels'][buffer_channel]['times'], 
                         y=[self.to_fahrenheit(x/1000) for x in self.data[request]['channels'][buffer_channel]['values']], 
-                        mode=self.line_style, 
+                        mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
                         opacity=0.7,
                         name=buffer_channel.replace('buffer-',''),
                         line=dict(color=buffer_layer_colors[buffer_channel], dash='solid')
@@ -1236,7 +1505,7 @@ class VisualizerApi():
                 go.Scatter(
                     x=self.data[request]['channels']['buffer-hot-pipe']['times'], 
                     y=[self.to_fahrenheit(x/1000) for x in self.data[request]['channels']['buffer-hot-pipe']['values']], 
-                    mode=self.line_style, 
+                    mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
                     opacity=0.7,
                     name='Hot pipe',
                     line=dict(color='#d62728', dash='solid')
@@ -1249,7 +1518,7 @@ class VisualizerApi():
                 go.Scatter(
                     x=self.data[request]['channels']['buffer-cold-pipe']['times'], 
                     y=[self.to_fahrenheit(x/1000) for x in self.data[request]['channels']['buffer-cold-pipe']['values']], 
-                    mode=self.line_style, 
+                    mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
                     opacity=0.7,
                     name='Cold pipe',
                     line=dict(color='#1f77b4', dash='solid')
@@ -1258,17 +1527,17 @@ class VisualizerApi():
                
         fig.update_layout(
             title=dict(text='Buffer', x=0.5, xanchor='center'),
-            plot_bgcolor=self.plot_background_hex,
-            paper_bgcolor=self.plot_background_hex,
-            font_color=self.fontcolor_hex,
-            title_font_color=self.fontcolor_hex,
+            plot_bgcolor='#222222' if request.darkmode else 'white',
+            paper_bgcolor='#222222' if request.darkmode else 'white',
+            font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
+            title_font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
             margin=dict(t=30, b=30),
             xaxis=dict(
                 range=[self.data[request]['min_timestamp'], self.data[request]['max_timestamp']],
                 mirror=True,
                 ticks='outside',
                 showline=True,
-                linecolor=self.fontcolor_hex,
+                linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
                 showgrid=False,
                 ),
             yaxis=dict(
@@ -1276,12 +1545,12 @@ class VisualizerApi():
                 mirror=True,
                 ticks='outside',
                 showline=True,
-                linecolor=self.fontcolor_hex,
+                linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
                 title='Temperature [F]', 
                 zeroline=False,
                 showgrid=True, 
                 gridwidth=1, 
-                gridcolor=self.gridcolor_hex,
+                gridcolor='#424242' if request.darkmode else 'LightGray',
                 ),
             legend=dict(
                 x=0,
@@ -1333,7 +1602,7 @@ class VisualizerApi():
                     go.Scatter(
                         x=self.data[request]['channels'][tank_channel]['times'], 
                         y=[self.to_fahrenheit(x/1000) for x in self.data[request]['channels'][tank_channel]['values']], 
-                        mode=self.line_style, opacity=0.7,
+                        mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', opacity=0.7,
                         name=tank_channel.replace('storage-',''),
                         line=dict(color=storage_layer_colors[tank_channel], dash='solid')
                         )
@@ -1346,7 +1615,7 @@ class VisualizerApi():
                 go.Scatter(
                     x=self.data[request]['channels']['store-hot-pipe']['times'], 
                     y=[self.to_fahrenheit(x/1000) for x in self.data[request]['channels']['store-hot-pipe']['values']], 
-                    mode=self.line_style, 
+                    mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
                     opacity=0.7,
                     name='Hot pipe',
                     line=dict(color='#d62728', dash='solid')
@@ -1360,7 +1629,7 @@ class VisualizerApi():
                 go.Scatter(
                     x=self.data[request]['channels']['store-cold-pipe']['times'], 
                     y=[self.to_fahrenheit(x/1000) for x in self.data[request]['channels']['store-cold-pipe']['values']], 
-                    mode=self.line_style, 
+                    mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
                     opacity=0.7,
                     name='Cold pipe',
                     line=dict(color='#1f77b4', dash='solid')
@@ -1376,7 +1645,7 @@ class VisualizerApi():
                 go.Scatter(
                     x=self.data[request]['channels']['store-pump-pwr']['times'], 
                     y=[x for x in self.data[request]['channels']['store-pump-pwr']['values']], 
-                    mode=self.line_style, 
+                    mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
                     opacity=0.7,
                     line=dict(color='pink', dash='solid'),
                     name='Storage pump power x1000',
@@ -1390,7 +1659,7 @@ class VisualizerApi():
                 go.Scatter(
                     x=self.data[request]['channels']['store-flow']['times'], 
                     y=[x/100*10 for x in self.data[request]['channels']['store-flow']['values']], 
-                    mode=self.line_style, 
+                    mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
                     opacity=0.4,
                     line=dict(color='purple', dash='solid'),
                     name='Storage pump flow x10',
@@ -1404,7 +1673,7 @@ class VisualizerApi():
                 go.Scatter(
                     x=self.data[request]['channels']['usable-energy']['times'], 
                     y=[x/1000 for x in self.data[request]['channels']['usable-energy']['values']], 
-                    mode=self.line_style, 
+                    mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
                     opacity=0.4,
                     line=dict(color='#2ca02c', dash='solid'),
                     name='Usable',
@@ -1416,7 +1685,7 @@ class VisualizerApi():
                 go.Scatter(
                     x=self.data[request]['channels']['required-energy']['times'], 
                     y=[x/1000 for x in self.data[request]['channels']['required-energy']['values']], 
-                    mode=self.line_style, 
+                    mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
                     opacity=0.4,
                     line=dict(color='#2ca02c', dash='dash'),
                     name='Required',
@@ -1437,34 +1706,34 @@ class VisualizerApi():
 
         fig.update_layout(
             title=dict(text='Storage', x=0.5, xanchor='center'),
-            plot_bgcolor=self.plot_background_hex,
-            paper_bgcolor=self.plot_background_hex,
-            font_color=self.fontcolor_hex,
-            title_font_color=self.fontcolor_hex,
+            plot_bgcolor='#222222' if request.darkmode else 'white',
+            paper_bgcolor='#222222' if request.darkmode else 'white',
+            font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
+            title_font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
             margin=dict(t=30, b=30),
             xaxis=dict(
                 range=[self.data[request]['min_timestamp'], self.data[request]['max_timestamp']],
                 mirror=True,
                 ticks='outside',
                 showline=True,
-                linecolor=self.fontcolor_hex,
+                linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
                 showgrid=False,
                 ),
             yaxis=dict(
                 mirror=True,
                 ticks='outside',
                 showline=True,
-                linecolor=self.fontcolor_hex,
+                linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
                 zeroline=False,
                 showgrid=True, 
                 gridwidth=1, 
-                gridcolor=self.gridcolor_hex
+                gridcolor='#424242' if request.darkmode else 'LightGray'
                 ),
             yaxis2=dict(
                 mirror=True,
                 ticks='outside',
                 showline=True,
-                linecolor=self.fontcolor_hex,
+                linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
                 overlaying='y', 
                 side='right', 
                 zeroline=False,
@@ -1502,7 +1771,7 @@ class VisualizerApi():
                     x=self.data[request]['top_states']['all']['times'],
                     y=self.data[request]['top_states']['all']['values'],
                     mode='lines',
-                    line=dict(color=self.home_alone_line, width=2),
+                    line=dict(color='#f0f0f0' if request.darkmode else '#5e5e5e', width=2),
                     opacity=0.3,
                     showlegend=False,
                     line_shape='hv'
@@ -1523,17 +1792,17 @@ class VisualizerApi():
 
         fig.update_layout(
             title=dict(text='Top State', x=0.5, xanchor='center'),
-            plot_bgcolor=self.plot_background_hex,
-            paper_bgcolor=self.plot_background_hex,
-            font_color=self.fontcolor_hex,
-            title_font_color=self.fontcolor_hex,
+            plot_bgcolor='#222222' if request.darkmode else 'white',
+            paper_bgcolor='#222222' if request.darkmode else 'white',
+            font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
+            title_font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
             margin=dict(t=30, b=30),
             xaxis=dict(
                 range=[self.data[request]['min_timestamp'], self.data[request]['max_timestamp']],
                 mirror=True,
                 ticks='outside',
                 showline=True,
-                linecolor=self.fontcolor_hex,
+                linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
                 showgrid=False
                 ),
             yaxis=dict(
@@ -1541,11 +1810,11 @@ class VisualizerApi():
                 mirror=True,
                 ticks='outside',
                 showline=True,
-                linecolor=self.fontcolor_hex,
+                linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
                 zeroline=False,
                 showgrid=True, 
                 gridwidth=1, 
-                gridcolor=self.gridcolor_hex, 
+                gridcolor='#424242' if request.darkmode else 'LightGray', 
                 tickvals=list(range(len(self.data[request]['top_states'])-1)),
                 ),
             legend=dict(
@@ -1584,7 +1853,7 @@ class VisualizerApi():
                     x=self.data[request]['ha_states']['all']['times'],
                     y=self.data[request]['ha_states']['all']['values'],
                     mode='lines',
-                    line=dict(color=self.home_alone_line, width=2),
+                    line=dict(color='#f0f0f0' if request.darkmode else '#5e5e5e', width=2),
                     opacity=0.3,
                     showlegend=False,
                     line_shape='hv'
@@ -1605,17 +1874,17 @@ class VisualizerApi():
 
         fig.update_layout(
             title=dict(text='HomeAlone State', x=0.5, xanchor='center'),
-            plot_bgcolor=self.plot_background_hex,
-            paper_bgcolor=self.plot_background_hex,
-            font_color=self.fontcolor_hex,
-            title_font_color=self.fontcolor_hex,
+            plot_bgcolor='#222222' if request.darkmode else 'white',
+            paper_bgcolor='#222222' if request.darkmode else 'white',
+            font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
+            title_font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
             margin=dict(t=30, b=30),
             xaxis=dict(
                 range=[self.data[request]['min_timestamp'], self.data[request]['max_timestamp']],
                 mirror=True,
                 ticks='outside',
                 showline=True,
-                linecolor=self.fontcolor_hex,
+                linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
                 showgrid=False
                 ),
             yaxis=dict(
@@ -1623,11 +1892,11 @@ class VisualizerApi():
                 mirror=True,
                 ticks='outside',
                 showline=True,
-                linecolor=self.fontcolor_hex,
+                linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
                 zeroline=False,
                 showgrid=True, 
                 gridwidth=1, 
-                gridcolor=self.gridcolor_hex, 
+                gridcolor='#424242' if request.darkmode else 'LightGray', 
                 tickvals=list(range(6)),
                 ),
             legend=dict(
@@ -1666,7 +1935,7 @@ class VisualizerApi():
                     x=self.data[request]['aa_states']['all']['times'],
                     y=self.data[request]['aa_states']['all']['values'],
                     mode='lines',
-                    line=dict(color=self.home_alone_line, width=2),
+                    line=dict(color='#f0f0f0' if request.darkmode else '#5e5e5e', width=2),
                     opacity=0.3,
                     showlegend=False,
                     line_shape='hv'
@@ -1687,17 +1956,17 @@ class VisualizerApi():
 
         fig.update_layout(
             title=dict(text='AtomicAlly State', x=0.5, xanchor='center'),
-            plot_bgcolor=self.plot_background_hex,
-            paper_bgcolor=self.plot_background_hex,
-            font_color=self.fontcolor_hex,
-            title_font_color=self.fontcolor_hex,
+            plot_bgcolor='#222222' if request.darkmode else 'white',
+            paper_bgcolor='#222222' if request.darkmode else 'white',
+            font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
+            title_font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
             margin=dict(t=30, b=30),
             xaxis=dict(
                 range=[self.data[request]['min_timestamp'], self.data[request]['max_timestamp']],
                 mirror=True,
                 ticks='outside',
                 showline=True,
-                linecolor=self.fontcolor_hex,
+                linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
                 showgrid=False
                 ),
             yaxis=dict(
@@ -1705,11 +1974,11 @@ class VisualizerApi():
                 mirror=True,
                 ticks='outside',
                 showline=True,
-                linecolor=self.fontcolor_hex,
+                linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
                 zeroline=False,
                 showgrid=True, 
                 gridwidth=1, 
-                gridcolor=self.gridcolor_hex, 
+                gridcolor='#424242' if request.darkmode else 'LightGray', 
                 tickvals=list(range(7)),
                 ),
             legend=dict(
@@ -1757,28 +2026,28 @@ class VisualizerApi():
 
         fig.update_layout(
             title=dict(text='Weather Forecasts', x=0.5, xanchor='center'),
-            plot_bgcolor=self.plot_background_hex,
-            paper_bgcolor=self.plot_background_hex,
-            font_color=self.fontcolor_hex,
-            title_font_color=self.fontcolor_hex,
+            plot_bgcolor='#222222' if request.darkmode else 'white',
+            paper_bgcolor='#222222' if request.darkmode else 'white',
+            font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
+            title_font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
             margin=dict(t=30, b=30),
             xaxis=dict(
                 range=[self.data[request]['min_timestamp'], self.data[request]['max_timestamp']],
                 mirror=True,
                 ticks='outside',
                 showline=True,
-                linecolor=self.fontcolor_hex,
+                linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
                 showgrid=False
                 ),
             yaxis=dict(
                 mirror=True,
                 ticks='outside',
                 showline=True,
-                linecolor=self.fontcolor_hex,
+                linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
                 zeroline=False,
                 showgrid=True, 
                 gridwidth=1, 
-                gridcolor=self.gridcolor_hex, 
+                gridcolor='#424242' if request.darkmode else 'LightGray', 
                 ),
             legend=dict(
                 x=0,
@@ -1796,7 +2065,10 @@ class VisualizerApi():
         print(f"Weather plot done in {round(time.time()-plot_start,1)} seconds")
         return html_buffer
     
-    async def plot_prices(self, request: DataRequest):
+    async def plot_prices(self, request: Union[DataRequest, BaseRequest], aggregate=False):
+        if not isinstance(request, DataRequest) and not aggregate:
+            raise Exception()
+        
         plot_start = time.time()
         fig = go.Figure()
 
@@ -1812,11 +2084,20 @@ class VisualizerApi():
                 csv_lmp.append(float(row[2])/10)
         csv_times = [pendulum.from_format(x, 'M/D/YY H:m', tz=self.timezone_str).timestamp() for x in csv_times]
 
-        request_hours = int((request.end_ms - request.start_ms)/1000 / 3600)
-        price_times_s = [request.start_ms/1000 + x*3600 for x in range(request_hours+2+48)]
-        price_values = [lmp for time, dist, lmp in zip(csv_times, csv_dist, csv_lmp) if time in price_times_s]
-        csv_times = [time for time in csv_times if time in price_times_s]
-        price_times = [self.to_datetime(x*1000) for x in csv_times]
+        if aggregate:
+            start_ms = (int(time.time() * 1000 - 24 * 3600 * 1000) // (60 * 60 * 1000)) * (60 * 60 * 1000)
+            end_ms = (int(time.time() * 1000) // (60 * 60 * 1000)) * (60 * 60 * 1000) 
+            request_hours = int((end_ms - start_ms)/1000 / 3600)
+            price_times_s = [start_ms/1000 + x*3600 for x in range(request_hours+2+48)]
+            price_values = [lmp for time, dist, lmp in zip(csv_times, csv_dist, csv_lmp) if time in price_times_s]
+            csv_times = [time for time in csv_times if time in price_times_s]
+            price_times = [self.to_datetime(x*1000) for x in csv_times]
+        else:
+            request_hours = int((request.end_ms - request.start_ms)/1000 / 3600)
+            price_times_s = [request.start_ms/1000 + x*3600 for x in range(request_hours+2+48)]
+            price_values = [lmp for time, dist, lmp in zip(csv_times, csv_dist, csv_lmp) if time in price_times_s]
+            csv_times = [time for time in csv_times if time in price_times_s]
+            price_times = [self.to_datetime(x*1000) for x in csv_times]
 
         # Plot LMP
         fig.add_trace(
@@ -1824,7 +2105,7 @@ class VisualizerApi():
                 x=price_times,
                 y=price_values,
                 mode='lines',
-                line=dict(color=self.home_alone_line),
+                line=dict(color='#f0f0f0' if request.darkmode else '#5e5e5e'),
                 opacity=0.8,
                 showlegend=False,
                 line_shape='hv',
@@ -1855,33 +2136,47 @@ class VisualizerApi():
                             line=dict(width=0)
                         )
                     )
-        
+        if aggregate:
+            min_timestep = self.timestamp_min_max[request]['overall']['min_timestamp']
+            max_timestep = self.timestamp_min_max[request]['overall']['max_timestamp']
+            plot_bgcolor='#313131' if request.darkmode else '#F5F5F7'
+            paper_bgcolor='#313131' if request.darkmode else '#F5F5F7'
+            font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)'
+            title_font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)'
+        else: 
+            min_timestep = self.data[request]['min_timestamp']
+            max_timestep = self.data[request]['max_timestamp']
+            plot_bgcolor='#222222' if request.darkmode else 'white'
+            paper_bgcolor='#222222' if request.darkmode else 'white'
+            font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)'
+            title_font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)'
+            
         fig.update_layout(yaxis=dict(title='LMP [cts/kWh]'))
         fig.update_layout(
             shapes = shapes_list,
-            title=dict(text='Price Forecast', x=0.5, xanchor='center'),
-            plot_bgcolor=self.plot_background_hex,
-            paper_bgcolor=self.plot_background_hex,
-            font_color=self.fontcolor_hex,
-            title_font_color=self.fontcolor_hex,
+            title=dict(text='Price Forecast' if not aggregate else '', x=0.5, xanchor='center'),
+            plot_bgcolor=plot_bgcolor,
+            paper_bgcolor=paper_bgcolor,
+            font_color=font_color,
+            title_font_color=title_font_color,
             margin=dict(t=30, b=30),
             xaxis=dict(
-                range=[self.data[request]['min_timestamp'], self.data[request]['max_timestamp']],
+                range=[min_timestep, max_timestep],
                 mirror=True,
                 ticks='outside',
                 showline=True,
-                linecolor=self.fontcolor_hex,
+                linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
                 showgrid=False
                 ),
             yaxis=dict(
                 mirror=True,
                 ticks='outside',
                 showline=True,
-                linecolor=self.fontcolor_hex,
+                linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
                 zeroline=False,
                 showgrid=True, 
                 gridwidth=1, 
-                gridcolor=self.gridcolor_hex, 
+                gridcolor='#424242' if request.darkmode else 'LightGray', 
                 ),
             legend=dict(
                 x=0,
@@ -1901,5 +2196,5 @@ class VisualizerApi():
 
 
 if __name__ == "__main__":
-    a = VisualizerApi(running_locally=False)
+    a = VisualizerApi(running_locally=True)
     a.start()
