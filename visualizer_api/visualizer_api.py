@@ -2196,5 +2196,5 @@ class VisualizerApi():
 
 
 if __name__ == "__main__":
-    a = VisualizerApi(running_locally=True)
+    a = VisualizerApi(running_locally=False)
     a.start()
