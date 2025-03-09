@@ -142,6 +142,7 @@ class VisualizerApi():
         try:
             error = self.check_request(request)
             if error or request.selected_channels==['bids']:
+                if error: print(error)
                 return error
             
             self.data[request] = {}
@@ -320,7 +321,6 @@ class VisualizerApi():
             return {"success": False, "message": "An error occurred when getting data", "reload": False}
         
     async def get_aggregate_data(self, request: BaseRequest):
-        print("Getting aggregate data...")
         try:
             error = self.check_request(request)
             if error:
@@ -476,6 +476,7 @@ class VisualizerApi():
         try:
             error = self.check_request(request)
             if error:
+                print(error)
                 return error
             async with async_timeout.timeout(self.timeout_seconds):
                 print("Querrying journaldb for messages...")
@@ -557,6 +558,7 @@ class VisualizerApi():
             async with async_timeout.timeout(self.timeout_seconds):
                 error = await self.get_data(request)
                 if error:
+                    print(error)
                     return error
                 
                 # Find the channels to export
@@ -786,6 +788,7 @@ class VisualizerApi():
             async with async_timeout.timeout(self.timeout_seconds):
                 error = await self.get_aggregate_data(request)
                 if error:
+                    print(error)
                     return error
                 print("No error")
                 
@@ -825,6 +828,7 @@ class VisualizerApi():
             async with async_timeout.timeout(self.timeout_seconds):
                 error = await self.get_data(request)
                 if error:
+                    print(error)
                     return error
                 
                 # If the request is just to plot bids
