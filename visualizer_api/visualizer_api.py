@@ -785,18 +785,22 @@ class VisualizerApi():
                 error = await self.get_aggregate_data(request)
                 if error:
                     return error
+                print("No error")
                 
                 # Get plots, zip and return
                 zip_buffer = io.BytesIO()
                 with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
+                    print("Getting plot1...")
                     html_buffer = await self.plot_aggregate(request)
                     zip_file.writestr('plot1.html', html_buffer.read())
 
+                    print("Getting plot2...")
                     html_buffer = await self.plot_prices(request, aggregate=True)
                     zip_file.writestr('plot2.html', html_buffer.read())
 
                 zip_buffer.seek(0)
 
+                print("Returning...")
                 return StreamingResponse(
                     zip_buffer, 
                     media_type='application/zip', 
