@@ -226,7 +226,31 @@
         }
     
         async function sendPrices(event) {
+            return
             event.preventDefault();
+            try {
+                const response = await fetch('http://localhost:8000/update_prices', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        newLmpList: lmpList,
+                        newTariffList: tariffList
+                    })
+                });
+                if (!response.ok) {
+                    throw new Error('Failed to update prices');
+                }
+                const data = await response.json();
+                defaultTariffList = data.dist;
+                defaultLmpList = data.lmp;
+                lmpList = data.lmp;
+                tariffList = data.dist;
+                return data;
+            } catch (error) {
+                console.error('Error fetching default prices:', error);
+            }
         }
     
         document.addEventListener('DOMContentLoaded', fillTableWithDateAndTime);
@@ -269,7 +293,7 @@
     </div>
 
     <!-- Aggregation overview -->
-    <div class="agg-widget-title">
+    <div class="agg-widget-title" id="agg-overview-title">
         <h2>Aggregation overview</h2>
         <div>
             <button class='enabled' id="agg-refresh-button" onclick="getAggOverviewPlot(event)">Refresh</button>
@@ -285,7 +309,7 @@
     </div>
 
     <!-- Price editor -->
-    <div class="agg-widget-title">
+    <div class="agg-widget-title" id="price-editor-title">
         <h2>Price editor</h2>
         <div class="button-container">
             <button class='enabled' id="prices-save-button" onclick="sendPrices(event)">Save prices</button>

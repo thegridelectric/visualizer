@@ -143,38 +143,42 @@ async function LogIn(event) {
 
 async function LogInAggregator(event) {
     event.preventDefault();
+    document.getElementById("agg-overview-title").style.display = "none";
+    document.getElementById("price-editor-title").style.display = "none";
     document.getElementById('footer').style.position = 'relative';
     username = document.getElementById("username").value;
     password = document.getElementById("password").value;
-    // if (username === ""){
-    //     return
-    // }
+    if (username === ""){
+        return
+    }
     document.getElementById("login-button").style.display = "none";
     try {
-        // const response = await fetch(`${api_host}/login`, {
-        //     method: 'POST',
-        //     headers: {'Content-Type': 'application/json'},
-        //     body: JSON.stringify({
-        //         username: `${username}`,
-        //         password: password, 
-        //     })
-        // });
-        // if (response.ok) {
-        //     const data = await response.json();
-        //     if (data === true) {
-            document.getElementById("login-div").style.display = "none";
-            document.getElementById("agg-overview").style.display = "block";
-            document.getElementById("price-editor").style.display = "block";
-            getAggOverviewPlot(event);
-            // } else {
-            //     document.getElementById("username").style.border = "1px solid red";
-            //     document.getElementById("password").style.border = "1px solid red";
-            //     document.getElementById("username").style.backgroundColor = "rgb(255, 216, 216)";
-            //     document.getElementById("password").style.backgroundColor = "rgb(255, 216, 216)";
-            //     document.getElementById("username").value = "";
-            //     document.getElementById("password").value = "";
-            // }
-        // }
+        const response = await fetch(`${api_host}/login`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                house_alias: `${username}`,
+                password: password, 
+            })
+        });
+        if (response.ok) {
+            const data = await response.json();
+            if (data === true) {
+                document.getElementById("login-div").style.display = "none";
+                document.getElementById("agg-overview").style.display = "block";
+                document.getElementById("price-editor").style.display = "block";
+                document.getElementById("agg-overview-title").style.display = "flex";
+                document.getElementById("price-editor-title").style.display = "flex";
+                getAggOverviewPlot(event);
+            } else {
+                document.getElementById("username").style.border = "1px solid red";
+                document.getElementById("password").style.border = "1px solid red";
+                document.getElementById("username").style.backgroundColor = "rgb(255, 216, 216)";
+                document.getElementById("password").style.backgroundColor = "rgb(255, 216, 216)";
+                document.getElementById("username").value = "";
+                document.getElementById("password").value = "";
+            }
+        }
     } catch (error) {
         console.error('Error trying to log in:', error);
     } finally {
@@ -607,7 +611,6 @@ function getData(event, get_bids) {
 }
 
 async function getAggOverviewPlot(event) {
-    return
     disable_button('agg-refresh')
     clearPlots()
     event.preventDefault();
