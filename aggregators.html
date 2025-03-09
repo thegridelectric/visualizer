@@ -23,12 +23,11 @@
 
     <script>
         let defaultLmpList = Array(48).fill(0.0).map((_, index) => 0);
-        let lmpList = [...defaultLmpList];
         let defaultTariffList = Array(48).fill(0.0).map((_, index) => 0);
-        let tariffList = [...defaultTariffList];
+        let lmpList = JSON.parse(JSON.stringify(defaultLmpList));
+        let tariffList = JSON.parse(JSON.stringify(defaultTariffList));
     
         async function getPrices() {
-            console.log("Getting prices...")
             try {
                 const response = await fetch('http://localhost:8000/get_prices', {
                     method: 'POST',
@@ -36,32 +35,46 @@
                         'Content-Type': 'application/json',
                     },
                 });
-    
                 if (!response.ok) {
                     throw new Error('Failed to fetch prices');
                 }
-    
                 const data = await response.json();
-                defaultTariffList = data.dist;
-                defaultLmpList = data.lmp;
-                lmpList = data.lmp;
-                tariffList = data.dist;
-                // console.log('Prices:', data);
-                // console.log('LMPs:', data.lmp)
+                defaultTariffList = [...data.dist];  // Make a shallow copy (deep copy not needed here)
+                defaultLmpList = [...data.lmp];      // Same here
+                lmpList = JSON.parse(JSON.stringify(data.lmp)); // Create deep copy for lmpList
+                tariffList = JSON.parse(JSON.stringify(data.dist)); // Same for tariffList
                 return data;
             } catch (error) {
                 console.error('Error fetching prices:', error);
             }
         }
+
+
+        async function getDefaultPrices() {
+            try {
+                const response = await fetch('http://localhost:8000/get_default_prices', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                });
+                if (!response.ok) {
+                    throw new Error('Failed to fetch prices');
+                }
+                const data = await response.json();
+                defaultTariffList = data.dist;
+                defaultLmpList = data.lmp;
+                lmpList = data.lmp;
+                tariffList = data.dist;
+                return data;
+            } catch (error) {
+                console.error('Error fetching default prices:', error);
+            }
+        }
     
         function resetPrices() {
-            // Hide the save and reset buttons when resetting
             document.getElementById('prices-save-button').style.display = 'none';
             document.getElementById('prices-reset-button').style.display = 'none';
-
-            // Reset the lmpList and tariffList back to their default values
-            lmpList = [...defaultLmpList];  // Ensure this is reset to the default value
-            tariffList = [...defaultTariffList]; // Ensure this is reset to the default value
 
             // Select all table rows in the price editor
             const tableRows = document.querySelectorAll('#price-editor-table tbody tr');
@@ -76,11 +89,9 @@
                 lmpDefaultCell.textContent = defaultLmpList[index];
                 tariffDefaultCell.textContent = defaultTariffList[index];
 
-                // Reset the input fields to be empty
+                // Reset the input fields
                 lmpInput.value = '';
                 tariffInput.value = '';
-
-                // Remove any styling that was applied (like color or font weight)
                 lmpDefaultCell.style.removeProperty('color');
                 lmpDefaultCell.style.removeProperty('font-weight');
                 tariffDefaultCell.style.removeProperty('color');
@@ -89,7 +100,7 @@
         }
     
         function checkIfPricesChanged() {
-            const allDefault = lmpList.every((price, index) => price === (index + 1) * 1.5);
+            const allDefault = (lmpList === defaultLmpList && tariffList === defaultTariffList);
             const saveButton = document.getElementById('prices-save-button');
             
             if (allDefault) {
@@ -116,8 +127,8 @@
                 const row = document.createElement('tr');
     
                 // Get the price from lmpList and tariffList for the current index
-                const defaultLmpValue = lmpList[i];
-                const defaultTariffValue = tariffList[i];
+                const defaultLmpValue = defaultLmpList[i];
+                const defaultTariffValue = defaultTariffList[i];
     
                 row.innerHTML = `
                     <td>${formattedDate}</td>
@@ -224,7 +235,7 @@
     
 </head>
 
-<body onload="LogInAggregator(event); getPrices()"> <!--TODO remove-->
+<body onload="LogInAggregator(event)"> <!--TODO remove-->
     <!-- Navigation bar -->
     <div id="navbar" style="height: 75px;">
         <div id="dropdown-menu-button" onclick="dropDownMenu()">

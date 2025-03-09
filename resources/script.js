@@ -142,7 +142,6 @@ async function LogIn(event) {
 }
 
 async function LogInAggregator(event) {
-    console.log("Hello there")
     event.preventDefault();
     document.getElementById('footer').style.position = 'relative';
     username = document.getElementById("username").value;
@@ -608,6 +607,7 @@ function getData(event, get_bids) {
 }
 
 async function getAggOverviewPlot(event) {
+    return
     disable_button('agg-refresh')
     clearPlots()
     event.preventDefault();
