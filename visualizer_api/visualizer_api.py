@@ -320,9 +320,11 @@ class VisualizerApi():
             return {"success": False, "message": "An error occurred when getting data", "reload": False}
         
     async def get_aggregate_data(self, request: BaseRequest):
+        print("Getting aggregate data...")
         try:
             error = self.check_request(request)
             if error:
+                print(error)
                 return error
             
             self.data[request] = {}
