@@ -779,6 +779,7 @@ class VisualizerApi():
             return {"success": False, "message": "An error occured while getting bids", "reload": False}
         
     async def get_aggregate_plot(self, request: BaseRequest):
+        print("Getting aggregate plot...")
         try:
             async with async_timeout.timeout(self.timeout_seconds):
                 error = await self.get_aggregate_data(request)
