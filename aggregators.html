@@ -22,26 +22,74 @@
     <link rel="android-chrome" sizes="512x512" href="resources/images/favicon_light/android-chrome-512x512.png">
 
     <script>
-        let defaultPricesList = Array(48).fill(0.0).map((_, index) => (index + 1) * 1.5);
-        let pricesList = [...defaultPricesList];
-
+        let defaultLmpList = Array(48).fill(0.0).map((_, index) => 0);
+        let lmpList = [...defaultLmpList];
+        let defaultTariffList = Array(48).fill(0.0).map((_, index) => 0);
+        let tariffList = [...defaultTariffList];
+    
+        async function getPrices() {
+            console.log("Getting prices...")
+            try {
+                const response = await fetch('http://localhost:8000/get_prices', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                });
+    
+                if (!response.ok) {
+                    throw new Error('Failed to fetch prices');
+                }
+    
+                const data = await response.json();
+                defaultTariffList = data.dist;
+                defaultLmpList = data.lmp;
+                lmpList = data.lmp;
+                tariffList = data.dist;
+                // console.log('Prices:', data);
+                // console.log('LMPs:', data.lmp)
+                return data;
+            } catch (error) {
+                console.error('Error fetching prices:', error);
+            }
+        }
+    
         function resetPrices() {
+            // Hide the save and reset buttons when resetting
             document.getElementById('prices-save-button').style.display = 'none';
             document.getElementById('prices-reset-button').style.display = 'none';
-            pricesList = [...defaultPricesList];
+
+            // Reset the lmpList and tariffList back to their default values
+            lmpList = [...defaultLmpList];  // Ensure this is reset to the default value
+            tariffList = [...defaultTariffList]; // Ensure this is reset to the default value
+
+            // Select all table rows in the price editor
             const tableRows = document.querySelectorAll('#price-editor-table tbody tr');
+
             tableRows.forEach((row, index) => {
-                const defaultCell = row.querySelector('.default-value');
-                const input = row.querySelector('input');
-                defaultCell.textContent = defaultPricesList[index];
-                input.value = '';
-                defaultCell.style.removeProperty('color');
-                defaultCell.style.removeProperty('font-weight');
+                const lmpDefaultCell = row.querySelectorAll('.default-value')[0]; // First column for LMP default value
+                const tariffDefaultCell = row.querySelectorAll('.default-value')[1]; // Second column for Tariff default value
+                const lmpInput = row.querySelectorAll('input')[0]; // LMP input field
+                const tariffInput = row.querySelectorAll('input')[1]; // Tariff input field
+
+                // Reset the default value cells with the default values
+                lmpDefaultCell.textContent = defaultLmpList[index];
+                tariffDefaultCell.textContent = defaultTariffList[index];
+
+                // Reset the input fields to be empty
+                lmpInput.value = '';
+                tariffInput.value = '';
+
+                // Remove any styling that was applied (like color or font weight)
+                lmpDefaultCell.style.removeProperty('color');
+                lmpDefaultCell.style.removeProperty('font-weight');
+                tariffDefaultCell.style.removeProperty('color');
+                tariffDefaultCell.style.removeProperty('font-weight');
             });
         }
     
         function checkIfPricesChanged() {
-            const allDefault = pricesList.every((price, index) => price === (index + 1) * 1.5);
+            const allDefault = lmpList.every((price, index) => price === (index + 1) * 1.5);
             const saveButton = document.getElementById('prices-save-button');
             
             if (allDefault) {
@@ -52,8 +100,11 @@
                 document.getElementById('prices-reset-button').style.display = 'block';
             }
         }
-
-        function fillTableWithDateAndTime() {
+    
+        async function fillTableWithDateAndTime() {
+            // Wait until prices are fetched before proceeding
+            await getPrices();
+    
             const tableBody = document.querySelector('#price-editor-table tbody');
             const currentDate = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
     
@@ -64,75 +115,116 @@
                 const formattedHour = `${date.getHours()}:00`;
                 const row = document.createElement('tr');
     
-                const defaultValue = pricesList[i];
+                // Get the price from lmpList and tariffList for the current index
+                const defaultLmpValue = lmpList[i];
+                const defaultTariffValue = tariffList[i];
     
                 row.innerHTML = `
                     <td>${formattedDate}</td>
                     <td>${formattedHour}</td>
-                    <td class="default-value">${defaultValue}</td>
-                    <td><input class='price-edit-input' type="text" style="width:50px" placeholder="${defaultValue}"/></td>
-                    <td class="default-value">${defaultValue}</td>
-                    <td><input class='price-edit-input' type="text" style="width:50px" placeholder="${defaultValue}"/></td>
+                    <td class="default-value">${defaultLmpValue}</td>
+                    <td><input class='price-edit-input' type="text" style="width:50px" placeholder="${defaultLmpValue}"/></td>
+                    <td class="default-value">${defaultTariffValue}</td>
+                    <td><input class='price-edit-input' type="text" style="width:50px" placeholder="${defaultTariffValue}"/></td>
                 `;
     
-                const input = row.querySelector('input');
-                input.addEventListener('keydown', function(event) {
-                    if (event.key === 'Enter' || event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-                        let inputValue = input.value;
-                        const defaultCell = row.querySelector('.default-value');
-                        if ((isNaN(inputValue) || inputValue === '') && event.key === 'Enter') {
-                            inputValue = defaultValue;
-                        }
-                        if ((isNaN(inputValue) || inputValue === '') && event.key !== 'Enter') {
-                            inputValue = pricesList[i];
-                        }
-                        defaultCell.textContent = inputValue;
-                        pricesList[i] = parseFloat(inputValue);
-                        if (parseFloat(inputValue) !== defaultValue) {
-                            defaultCell.style.color = '#466ac4';
-                            defaultCell.style.fontWeight = 'bold';
-                        } else {
-                            defaultCell.style.removeProperty('color');
-                            defaultCell.style.removeProperty('font-weight');
-                        }
-                        input.value = '';
-                        checkIfPricesChanged();
-                        const nextRow = row.nextElementSibling;
-                        if (nextRow) {
-                            const nextInput = nextRow.querySelector('input');
-                            if (nextInput) {
-                                nextInput.focus();
-                            }
-                        }
-                    }
-                    if (event.key === 'ArrowDown') {
-                        const nextRow = row.nextElementSibling;
-                        if (nextRow) {
-                            const nextInput = nextRow.querySelector('input');
-                            if (nextInput) {
-                                nextInput.focus();
-                            }
-                        }
-                    }
-                    if (event.key === 'ArrowUp') {
-                        const prevRow = row.previousElementSibling;
-                        if (prevRow) {
-                            const prevInput = prevRow.querySelector('input');
-                            if (prevInput) {
-                                prevInput.focus();
-                            }
-                        }
-                    }
+                const lmpInput = row.querySelectorAll('input')[0];
+                const tariffInput = row.querySelectorAll('input')[1];
+    
+                // LMP input event listener
+                lmpInput.addEventListener('keydown', function(event) {
+                    handleArrowKey(event, row, lmpList, defaultLmpValue, lmpInput, 'lmp');
+                });
+    
+                // Tariff input event listener
+                tariffInput.addEventListener('keydown', function(event) {
+                    handleArrowKey(event, row, tariffList, defaultTariffValue, tariffInput, 'tariff');
                 });
     
                 tableBody.appendChild(row);
             }
         }
+    
+        function handleArrowKey(event, row, priceList, defaultValue, input, type) {
+            const columnIndex = type === 'lmp' ? 0 : 1;  // 0 for LMP column, 1 for Tariff column
+            const defaultCell = row.querySelectorAll('.default-value')[columnIndex];  // Select the correct default-value cell (LMP or Tariff)
+            let inputValue = input.value;
+    
+            // Handle Enter key
+            if (event.key === 'Enter') {
+                if ((isNaN(inputValue) || inputValue === '')) {
+                    inputValue = defaultValue;
+                }
+    
+                // Update the correct value in the default-value cell
+                defaultCell.textContent = inputValue;
+    
+                // Update the appropriate list (LMP or Tariff)
+                if (type === 'lmp') {
+                    priceList[parseInt(row.rowIndex) - 1] = parseFloat(inputValue);
+                } else if (type === 'tariff') {
+                    priceList[parseInt(row.rowIndex) - 1] = parseFloat(inputValue);
+                }
+    
+                // Update the default cell styling
+                updateCellStyle(defaultCell, inputValue, defaultValue);
+                input.value = '';
+                checkIfPricesChanged();
+    
+                // Move to the next input in the same column
+                const nextRow = row.nextElementSibling;
+                if (nextRow) {
+                    const nextInput = nextRow.querySelectorAll('input')[columnIndex]; // Focus on the same column in the next row
+                    if (nextInput) {
+                        nextInput.focus();
+                    }
+                }
+            }
+    
+            // Handle ArrowDown key (move to next input in the same column)
+            if (event.key === 'ArrowDown') {
+                const nextRow = row.nextElementSibling;
+                if (nextRow) {
+                    const nextInput = nextRow.querySelectorAll('input')[columnIndex]; // Focus on the same column in the next row
+                    if (nextInput) {
+                        nextInput.focus();
+                    }
+                }
+            }
+    
+            // Handle ArrowUp key (move to previous input in the same column)
+            if (event.key === 'ArrowUp') {
+                const prevRow = row.previousElementSibling;
+                if (prevRow) {
+                    const prevInput = prevRow.querySelectorAll('input')[columnIndex]; // Focus on the same column in the previous row
+                    if (prevInput) {
+                        prevInput.focus();
+                    }
+                }
+            }
+        }
+    
+        function updateCellStyle(cell, inputValue, defaultValue) {
+            if (parseFloat(inputValue) !== defaultValue) {
+                cell.style.color = '#466ac4';
+                cell.style.fontWeight = 'bold';
+            } else {
+                cell.style.removeProperty('color');
+                cell.style.removeProperty('font-weight');
+            }
+        }
+    
+        async function sendPrices(event) {
+            event.preventDefault();
+        }
+    
+        document.addEventListener('DOMContentLoaded', fillTableWithDateAndTime);
     </script>
+        
     
 </head>
 
-<body onload="LogInAggregator(event)"> <!--TODO remove-->
+<body onload="LogInAggregator(event); getPrices()"> <!--TODO remove-->
     <!-- Navigation bar -->
     <div id="navbar" style="height: 75px;">
         <div id="dropdown-menu-button" onclick="dropDownMenu()">
