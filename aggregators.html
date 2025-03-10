@@ -22,10 +22,27 @@
     <link rel="android-chrome" sizes="512x512" href="resources/images/favicon_light/android-chrome-512x512.png">
 
     <script>
-        let defaultLmpList = Array(48).fill(0.0).map((_, index) => 0);
-        let defaultTariffList = Array(48).fill(0.0).map((_, index) => 0);
-        let lmpList = JSON.parse(JSON.stringify(defaultLmpList));
-        let tariffList = JSON.parse(JSON.stringify(defaultTariffList));
+        let currentLmpList = new Array(48).fill(0.0);
+        let currentTariffList = new Array(48).fill(0.0);
+        let lmpList = JSON.parse(JSON.stringify(currentLmpList));
+        let tariffList = JSON.parse(JSON.stringify(currentTariffList));
+
+        async function updateTable() {
+            const tableRows = document.querySelectorAll('#price-editor-table tbody tr');
+                tableRows.forEach((row, index) => {
+                    const lmpCell = row.querySelectorAll('.current-value')[0];
+                    const tariffCell = row.querySelectorAll('.current-value')[1];
+                    const lmpInput = row.querySelectorAll('input')[0];
+                    const tariffInput = row.querySelectorAll('input')[1];
+                    lmpCell.textContent = lmpList[index];
+                    tariffCell.textContent = tariffList[index];
+                    updateCellStyle(lmpCell, lmpList[index], currentLmpList[index]);
+                    updateCellStyle(tariffCell, tariffList[index], currentTariffList[index]);
+                    lmpInput.placeholder = currentLmpList[index];
+                    tariffInput.placeholder = currentTariffList[index];
+                });
+                checkIfPricesChanged();
+        }
     
         async function getPrices() {
             try {
@@ -39,24 +56,22 @@
                     throw new Error('Failed to fetch prices');
                 }
                 const data = await response.json();
-                defaultTariffList = [...data.dist];  // Make a shallow copy (deep copy not needed here)
-                defaultLmpList = [...data.lmp];      // Same here
-                lmpList = JSON.parse(JSON.stringify(data.lmp)); // Create deep copy for lmpList
-                tariffList = JSON.parse(JSON.stringify(data.dist)); // Same for tariffList
-                return data;
+                currentLmpList = data.lmp.map(parseFloat);
+                currentTariffList = data.dist.map(parseFloat);
+                lmpList = data.lmp.map(parseFloat);
+                tariffList = data.dist.map(parseFloat);
+                updateTable()
+                // TOOD: call this function at the top of the hour?
             } catch (error) {
                 console.error('Error fetching prices:', error);
             }
         }
 
-
         async function getDefaultPrices() {
             try {
                 const response = await fetch('http://localhost:8000/get_default_prices', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
+                    headers: {'Content-Type': 'application/json'},
                 });
                 if (!response.ok) {
                     throw new Error('Failed to fetch prices');
@@ -64,202 +79,18 @@
                 const data = await response.json();
                 lmpList = data.lmp;
                 tariffList = data.dist;
-
-                const tableRows = document.querySelectorAll('#price-editor-table tbody tr');
-                tableRows.forEach((row, index) => {
-                    const lmpCell = row.querySelectorAll('.default-value')[0];
-                    const tariffCell = row.querySelectorAll('.default-value')[1];
-                    lmpCell.textContent = lmpList[index];
-                    tariffCell.textContent = tariffList[index];
-                    updateCellStyle(lmpCell, lmpList[index], defaultLmpList[index]);
-                    updateCellStyle(tariffCell, tariffList[index], defaultTariffList[index]);
-                });
-                checkIfPricesChanged();
+                updateTable()
             } catch (error) {
                 console.error('Error fetching default prices:', error);
             }
         }
     
         function resetPrices() {
-            document.getElementById('prices-save-button').style.display = 'none';
-            document.getElementById('prices-reset-button').style.display = 'none';
-
-            // Select all table rows in the price editor
-            const tableRows = document.querySelectorAll('#price-editor-table tbody tr');
-
-            tableRows.forEach((row, index) => {
-                const lmpDefaultCell = row.querySelectorAll('.default-value')[0]; // First column for LMP default value
-                const tariffDefaultCell = row.querySelectorAll('.default-value')[1]; // Second column for Tariff default value
-                const lmpInput = row.querySelectorAll('input')[0]; // LMP input field
-                const tariffInput = row.querySelectorAll('input')[1]; // Tariff input field
-
-                // Reset the default value cells with the default values
-                lmpDefaultCell.textContent = defaultLmpList[index];
-                tariffDefaultCell.textContent = defaultTariffList[index];
-
-                // Reset the input fields
-                lmpInput.value = '';
-                tariffInput.value = '';
-                lmpDefaultCell.style.removeProperty('color');
-                lmpDefaultCell.style.removeProperty('font-weight');
-                tariffDefaultCell.style.removeProperty('color');
-                tariffDefaultCell.style.removeProperty('font-weight');
-            });
-        }
-    
-        function checkIfPricesChanged() {
-            const allDefault = JSON.stringify(lmpList) === JSON.stringify(defaultLmpList) && JSON.stringify(tariffList) === JSON.stringify(defaultTariffList);
-            console.log("Checking if default...")
-            console.log(lmpList[0])
-            console.log(defaultLmpList[0])
-            console.log(lmpList[1])
-            console.log(defaultLmpList[1])
-            console.log(allDefault)
-            const saveButton = document.getElementById('prices-save-button');
-            
-            if (allDefault) {
-                document.getElementById('prices-save-button').style.display = 'none';
-                document.getElementById('prices-reset-button').style.display = 'none';
-            } else {
-                document.getElementById('prices-save-button').style.display = 'block';
-                document.getElementById('prices-reset-button').style.display = 'block';
-            }
+            lmpList = JSON.parse(JSON.stringify(currentLmpList));
+            tariffList = JSON.parse(JSON.stringify(currentTariffList));
+            updateTable()
         }
 
-        function setPlaceholders(row, lmpIndex, tariffIndex) {
-            const lmpInput = row.querySelectorAll('input')[0];
-            const tariffInput = row.querySelectorAll('input')[1];
-            lmpInput.placeholder = lmpList[lmpIndex];
-            tariffInput.placeholder = tariffList[tariffIndex];
-        }
-    
-        async function fillTableWithDateAndTime() {
-            // Wait until prices are fetched before proceeding
-            await getPrices();
-    
-            const tableBody = document.querySelector('#price-editor-table tbody');
-            const currentDate = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
-    
-            for (let i = 0; i < 24; i++) {
-                let date = new Date(currentDate);
-                date.setHours(currentDate.getHours() + 1 + i);
-                const formattedDate = date.toDateString();
-                const formattedHour = `${date.getHours()}:00`;
-                const row = document.createElement('tr');
-    
-                // Get the price from lmpList and tariffList for the current index
-                const defaultLmpValue = defaultLmpList[i];
-                const defaultTariffValue = defaultTariffList[i];
-    
-                row.innerHTML = `
-                    <td>${formattedDate}</td>
-                    <td>${formattedHour}</td>
-                    <td class="default-value">${defaultLmpValue}</td>
-                    <td><input class='price-edit-input' type="text" style="width:50px" /></td>
-                    <td class="default-value">${defaultTariffValue}</td>
-                    <td><input class='price-edit-input' type="text" style="width:50px" /></td>
-                `;
-
-                setPlaceholders(row, i, i);
-    
-                const lmpInput = row.querySelectorAll('input')[0];
-                const tariffInput = row.querySelectorAll('input')[1];
-    
-                // LMP input event listener
-                lmpInput.addEventListener('keydown', function(event) {
-                    handleArrowKey(event, row, defaultLmpValue, lmpInput, 'lmp');
-                });
-    
-                // Tariff input event listener
-                tariffInput.addEventListener('keydown', function(event) {
-                    handleArrowKey(event, row, defaultTariffValue, tariffInput, 'tariff');
-                });
-    
-                tableBody.appendChild(row);
-            }
-        }
-    
-        function handleArrowKey(event, row, defaultValue, input, type) {
-            const columnIndex = type === 'lmp' ? 0 : 1;
-            const defaultCell = row.querySelectorAll('.default-value')[columnIndex];  // Select the correct default-value cell (LMP or Tariff)
-            let inputValue = input.value;
-    
-            // Handle Enter key
-            if (event.key === 'Enter') {
-                if ((isNaN(inputValue) || inputValue === '')) {
-                    inputValue = defaultValue;
-                }
-
-                console.log("Checking 1...")
-                console.log(lmpList[0])
-                console.log(defaultLmpList[0])
-                console.log(lmpList[1])
-                console.log(defaultLmpList[1])
-    
-                // Update the correct value in the default-value cell
-                defaultCell.textContent = inputValue;
-
-                console.log("Checking 2...")
-                console.log(defaultLmpList[1])
-    
-                // Update the appropriate list (LMP or Tariff)
-                if (type === 'lmp') {
-                    lmpList[parseInt(row.rowIndex) - 1] = parseFloat(inputValue);
-                } else if (type === 'tariff') {
-                    tariffList[parseInt(row.rowIndex) - 1] = parseFloat(inputValue);
-                }
-
-                console.log("Checking 3...")
-                console.log(defaultLmpList[1])
-    
-                // Update the default cell styling
-                updateCellStyle(defaultCell, inputValue, defaultValue);
-                input.value = '';
-                checkIfPricesChanged();
-    
-                // Move to the next input in the same column
-                const nextRow = row.nextElementSibling;
-                if (nextRow) {
-                    const nextInput = nextRow.querySelectorAll('input')[columnIndex]; // Focus on the same column in the next row
-                    if (nextInput) {
-                        nextInput.focus();
-                    }
-                }
-            }
-    
-            // Handle ArrowDown key (move to next input in the same column)
-            if (event.key === 'ArrowDown') {
-                const nextRow = row.nextElementSibling;
-                if (nextRow) {
-                    const nextInput = nextRow.querySelectorAll('input')[columnIndex]; // Focus on the same column in the next row
-                    if (nextInput) {
-                        nextInput.focus();
-                    }
-                }
-            }
-    
-            // Handle ArrowUp key (move to previous input in the same column)
-            if (event.key === 'ArrowUp') {
-                const prevRow = row.previousElementSibling;
-                if (prevRow) {
-                    const prevInput = prevRow.querySelectorAll('input')[columnIndex]; // Focus on the same column in the previous row
-                    if (prevInput) {
-                        prevInput.focus();
-                    }
-                }
-            }
-        }
-    
-        function updateCellStyle(cell, inputValue, defaultValue) {
-            if (parseFloat(inputValue) !== defaultValue) {
-                cell.style.color = '#466ac4';
-                cell.style.fontWeight = 'bold';
-            } else {
-                cell.style.removeProperty('color');
-                cell.style.removeProperty('font-weight');
-            }
-        }
-    
         async function sendPrices(event) {
             event.preventDefault();
             document.getElementById('prices-save-button').style.display = 'none';
@@ -279,30 +110,128 @@
                     throw new Error('Failed to update prices');
                 }
                 const data = await response.json();
-                lmpList = data.lmp;
-                tariffList = data.dist;
-                defaultLmpList = data.lmp;
-                defaultTariffList = data.dist;
-
-                const tableRows = document.querySelectorAll('#price-editor-table tbody tr');
-                tableRows.forEach((row, index) => {
-                    const lmpCell = row.querySelectorAll('.default-value')[0];
-                    const tariffCell = row.querySelectorAll('.default-value')[1];
-                    lmpCell.textContent = lmpList[index];
-                    tariffCell.textContent = tariffList[index];
-                    setPlaceholders(row, index, index);
-                    updateCellStyle(lmpCell, lmpList[index], defaultLmpList[index]);
-                    updateCellStyle(tariffCell, tariffList[index], defaultTariffList[index]);
-                });
-                
-                checkIfPricesChanged();
-
+                currentLmpList = data.lmp.map(parseFloat);
+                currentTariffList = data.dist.map(parseFloat);
+                lmpList = data.lmp.map(parseFloat);
+                tariffList = data.dist.map(parseFloat);
+                updateTable()
             } catch (error) {
                 console.error('Error sending prices:', error);
             }
         }
     
-        document.addEventListener('DOMContentLoaded', fillTableWithDateAndTime);
+        function checkIfPricesChanged() {
+            function areArraysEqual(arr1, arr2) {
+                if (arr1.length !== arr2.length) return false;
+                for (let i = 0; i < arr1.length; i++) {
+                    if (arr1[i] !== arr2[i]) return false;
+                }
+                return true;
+            }
+            const allCurrent = areArraysEqual(lmpList, currentLmpList) && areArraysEqual(tariffList, currentTariffList);
+            if (allCurrent) {
+                document.getElementById('prices-save-button').style.display = 'none';
+                document.getElementById('prices-reset-button').style.display = 'none';
+            } else {
+                document.getElementById('prices-save-button').style.display = 'block';
+                document.getElementById('prices-reset-button').style.display = 'block';
+            }
+        }
+
+        async function initializeTable() {
+            await getPrices();
+            const tableBody = document.querySelector('#price-editor-table tbody');
+            const currentDate = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
+            for (let i = 0; i < 24; i++) {
+                // Find date and time for new row
+                let date = new Date(currentDate);
+                date.setHours(currentDate.getHours() + 1 + i);
+                // Add row
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${date.toDateString()}</td>
+                    <td>${`${date.getHours()}:00`}</td>
+                    <td class="current-value">${currentLmpList[i]}</td>
+                    <td><input class='price-edit-input' type="text" style="width:50px" placeholder=${currentLmpList[i]}></td>
+                    <td class="current-value">${currentTariffList[i]}</td>
+                    <td><input class='price-edit-input' type="text" style="width:50px" placeholder=${currentTariffList[i]}></td>
+                `;
+                // LMP input event listener
+                const lmpInput = row.querySelectorAll('input')[0];
+                lmpInput.addEventListener('keydown', function(event) {
+                    handleArrowKey(event, row, currentLmpList[i], lmpInput, 'lmp');
+                });
+                // Tariff input event listener
+                const tariffInput = row.querySelectorAll('input')[1];
+                tariffInput.addEventListener('keydown', function(event) {
+                    handleArrowKey(event, row, currentTariffList[i], tariffInput, 'tariff');
+                });
+                tableBody.appendChild(row);
+            }
+        }
+    
+        function handleArrowKey(event, row, currentValue, input, type) {
+            const columnIndex = type === 'lmp' ? 0 : 1;
+            const currentCell = row.querySelectorAll('.current-value')[columnIndex];
+            let inputValue = input.value;
+    
+            // Handle Enter key
+            if (event.key === 'Enter') {
+                if ((isNaN(inputValue) || inputValue === '')) {
+                    inputValue = currentValue;
+                }
+                currentCell.textContent = inputValue;
+                if (type === 'lmp') {
+                    lmpList[parseInt(row.rowIndex) - 1] = parseFloat(inputValue);
+                } else if (type === 'tariff') {
+                    tariffList[parseInt(row.rowIndex) - 1] = parseFloat(inputValue);
+                }
+    
+                updateCellStyle(currentCell, inputValue, currentValue);
+                input.value = '';
+                checkIfPricesChanged();
+    
+                const nextRow = row.nextElementSibling;
+                if (nextRow) {
+                    const nextInput = nextRow.querySelectorAll('input')[columnIndex]; // Focus on the same column in the next row
+                    if (nextInput) {
+                        nextInput.focus();
+                    }
+                }
+            }
+            // Handle ArrowDown key
+            if (event.key === 'ArrowDown') {
+                const nextRow = row.nextElementSibling;
+                if (nextRow) {
+                    const nextInput = nextRow.querySelectorAll('input')[columnIndex];
+                    if (nextInput) {
+                        nextInput.focus();
+                    }
+                }
+            }
+            // Handle ArrowUp key
+            if (event.key === 'ArrowUp') {
+                const prevRow = row.previousElementSibling;
+                if (prevRow) {
+                    const prevInput = prevRow.querySelectorAll('input')[columnIndex];
+                    if (prevInput) {
+                        prevInput.focus();
+                    }
+                }
+            }
+        }
+    
+        function updateCellStyle(cell, inputValue, currentValue) {
+            if (parseFloat(inputValue) !== currentValue) {
+                cell.style.color = '#466ac4';
+                cell.style.fontWeight = 'bold';
+            } else {
+                cell.style.removeProperty('color');
+                cell.style.removeProperty('font-weight');
+            }
+        }
+    
+        document.addEventListener('DOMContentLoaded', initializeTable);
     </script>
         
     
@@ -392,7 +321,7 @@
     </div>
 
     <script>
-            document.addEventListener('DOMContentLoaded', fillTableWithDateAndTime);
+            document.addEventListener('DOMContentLoaded', initializeTable);
     </script>
     
 </body>
