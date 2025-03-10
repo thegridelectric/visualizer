@@ -61,10 +61,6 @@ class VisualizerApi():
     def __init__(self, running_locally):
         self.running_locally = running_locally
         self.settings = Settings(_env_file=dotenv.find_dotenv())
-        # Sync session
-        engine = create_engine(self.settings.db_url.get_secret_value())
-        self.Session = sessionmaker(bind=engine)
-        # Async session
         engine = create_async_engine(self.settings.db_url.get_secret_value())
         self.AsyncSessionLocal = sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
         self.admin_user_password = self.settings.visualizer_api_password.get_secret_value()
@@ -479,14 +475,19 @@ class VisualizerApi():
                 print(error)
                 return error
             async with async_timeout.timeout(self.timeout_seconds):
-                print("Querrying journaldb for messages...")
-                with self.Session() as session:
-                    messages: List[MessageSql] = session.query(MessageSql).filter(
+                print("Querying journaldb for messages...")
+
+                async with self.AsyncSessionLocal() as session:
+                    stmt = select(MessageSql).filter(
                         MessageSql.from_alias.like(f'%.{request.house_alias}.%'),
                         MessageSql.message_type_name.in_(request.selected_message_types),
                         MessageSql.message_persisted_ms >= request.start_ms,
                         MessageSql.message_persisted_ms <= request.end_ms,
-                    ).order_by(asc(MessageSql.message_persisted_ms)).all()
+                    ).order_by(asc(MessageSql.message_persisted_ms))
+
+                    result = await session.execute(stmt)
+                    messages: List[MessageSql] = result.scalars().all()
+
                 if not messages:
                     print("No messages found.")
                     return {"success": False, "message": f"No data found.", "reload":False}
@@ -711,14 +712,18 @@ class VisualizerApi():
         try:
             async with async_timeout.timeout(self.timeout_seconds):
                 print("Getting bids...")
-                
-                with self.Session() as session:
-                    flo_params_messages = session.query(MessageSql).filter(
+
+                async with self.AsyncSessionLocal() as session:
+                    stmt = select(MessageSql).filter(
                         MessageSql.message_type_name == "flo.params.house0",
                         MessageSql.from_alias.like(f'%{request.house_alias}%'),
                         MessageSql.message_persisted_ms >= request.start_ms,
                         MessageSql.message_persisted_ms <= request.end_ms,
-                    ).order_by(desc(MessageSql.payload['StartUnixS'])).all()
+                    ).order_by(desc(MessageSql.payload['StartUnixS']))
+                    
+                    result = await session.execute(stmt)
+                    flo_params_messages = result.scalars().all()
+
                     flo_params_messages = [FloParamsHouse0(**x.payload) for x in flo_params_messages]
                 print(f"Found {len(flo_params_messages)} FLOs for {request.house_alias}")
 
