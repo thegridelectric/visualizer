@@ -551,7 +551,7 @@ class VisualizerApi():
             return {"success": False, "message": "The request timed out.", "reload": False}
         except Exception as e:
             print(f"An error occurred in get_messages():\n{traceback.format_exc()}")
-            return {"success": False, "message": "An error occured while getting messages", "reload": False}
+            return {"success": False, "message": "An error occurred while getting messages", "reload": False}
         
     async def get_csv(self, request: CsvRequest):
         try:
@@ -645,7 +645,7 @@ class VisualizerApi():
             return {"success": False, "message": "The request timed out.", "reload": False}
         except Exception as e:
             print(f"An error occurred in get_csv():\n{traceback.format_exc()}")
-            return {"success": False, "message": "An error occured while getting CSV", "reload": False}
+            return {"success": False, "message": "An error occurred while getting CSV", "reload": False}
         finally:
             if request in self.data:
                 del self.data[request]
@@ -656,13 +656,17 @@ class VisualizerApi():
         try:
             async with async_timeout.timeout(self.timeout_seconds):
                 print("Finding latest FLO run...")
-                with self.Session() as session:
-                    flo_params_msg = session.query(MessageSql).filter(
+                flo_params_msg = None
+                async with self.AsyncSessionLocal() as session:
+                    stmt = select(MessageSql).filter(
                         MessageSql.message_type_name == "flo.params.house0",
                         MessageSql.from_alias.like(f'%{request.house_alias}%'),
                         MessageSql.message_persisted_ms >= request.time_ms - 48*3600*1000,
                         MessageSql.message_persisted_ms <= request.time_ms,
-                    ).order_by(desc(MessageSql.message_persisted_ms)).first()
+                    ).order_by(desc(MessageSql.message_persisted_ms))
+                    result = await session.execute(stmt)
+                    flo_params_msg: MessageSql = result.scalars().first()
+                
                 print(f"Found FLO run at {self.to_datetime(flo_params_msg.message_persisted_ms)}")
 
                 if not flo_params_msg:
@@ -696,7 +700,7 @@ class VisualizerApi():
             return {"success": False, "message": "The request timed out.", "reload": False}
         except Exception as e:
             print(f"An error occurred in get_flo():\n{traceback.format_exc()}")
-            return {"success": False, "message": "An error occured while getting FLO", "reload": False}
+            return {"success": False, "message": "An error occurred while getting FLO", "reload": False}
         finally:
             if request in self.data:
                 del self.data[request]
@@ -780,7 +784,7 @@ class VisualizerApi():
             return {"success": False, "message": "The request timed out.", "reload": False}
         except Exception as e:
             print(f"An error occurred in get_bids():\n{traceback.format_exc()}")
-            return {"success": False, "message": "An error occured while getting bids", "reload": False}
+            return {"success": False, "message": "An error occurred while getting bids", "reload": False}
         
     async def get_aggregate_plot(self, request: BaseRequest):
         print("Getting aggregate plot...")
@@ -816,7 +820,7 @@ class VisualizerApi():
             return {"success": False, "message": "The request timed out.", "reload": False}
         except Exception as e:
             print(f"An error occurred in get_aggregate_plot():\n{traceback.format_exc()}")
-            return {"success": False, "message": "An error occured while getting aggregate plot", "reload": False}
+            return {"success": False, "message": "An error occurred while getting aggregate plot", "reload": False}
         finally:
             if request in self.data:
                 del self.data[request]
@@ -885,7 +889,7 @@ class VisualizerApi():
             return {"success": False, "message": "The request timed out.", "reload": False}
         except Exception as e:
             print(f"An error occurred in get_plots():\n{traceback.format_exc()}")
-            return {"success": False, "message": "An error occured while getting plots", "reload": False}
+            return {"success": False, "message": "An error occurred while getting plots", "reload": False}
         finally:
             if request in self.data:
                 del self.data[request]
@@ -2207,5 +2211,5 @@ class VisualizerApi():
 
 
 if __name__ == "__main__":
-    a = VisualizerApi(running_locally=True)
+    a = VisualizerApi(running_locally=False)
     a.start()
