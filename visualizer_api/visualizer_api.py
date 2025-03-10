@@ -146,7 +146,7 @@ class VisualizerApi():
     async def receive_prices(self, request: Prices):
         try:
             rows = []
-            file_path = Path("basic_api/visualizer_api/price_forecast_dates.csv")
+            file_path = Path("visualizer_api/price_forecast_dates.csv")
             with open(file_path, mode='r', newline='') as file:
                 reader = csv.reader(file)
                 header = next(reader)
@@ -172,7 +172,7 @@ class VisualizerApi():
                 writer.writerow(header)
                 writer.writerows(rows)
             print(f"Prices updated successfully in {file_path}")
-            
+
         except Exception as e:
             print(f"Error updating prices: {e}")
 
