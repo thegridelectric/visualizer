@@ -442,7 +442,7 @@ class VisualizerApi():
                 max_timestamp += (max_timestamp-min_timestamp)*0.05
                 self.timestamp_min_max[request][house_alias] = {
                     'min_timestamp': self.to_datetime(min_timestamp),
-                    'max_timestamp': self.to_datetime(max_timestamp)
+                    'max_timestamp': self.to_datetime(max_timestamp+3*60*60*1000)
                 }
 
                 # Sort values according to time and convert to datetime
