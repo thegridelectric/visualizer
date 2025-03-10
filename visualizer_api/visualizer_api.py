@@ -26,11 +26,19 @@ from sqlalchemy.future import select
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 import plotly.colors as pc
+from datetime import datetime
+from pathlib import Path
 from config import Settings
 from models import MessageSql
 from flo import DGraph
 from hinge import FloHinge
 from named_types import FloParamsHouse0
+
+class Prices(BaseModel):
+    unix_s: List[float]
+    lmp: List[float]
+    dist: List[float]
+    energy: List[float]
     
 class BaseRequest(BaseModel):
     house_alias: str
@@ -92,6 +100,7 @@ class VisualizerApi():
         self.app.post("/messages")(self.get_messages)
         self.app.post("/flo")(self.get_flo)
         self.app.post("/aggregate-plot")(self.get_aggregate_plot)
+        self.app.post("/prices")(self.receive_prices)
         uvicorn.run(self.app, host="0.0.0.0", port=8000)
 
     def to_datetime(self, time_ms):
@@ -134,6 +143,33 @@ class VisualizerApi():
                 return {"success": False, "message": warning_message, "reload": False}
         return None
     
+    async def receive_prices(self, request: Prices):
+        try:
+            elec_file = 'price_forecast_dates.csv' if os.path.exists('price_forecast_dates.csv') else 'visualizer_api/price_forecast_dates.csv'
+            
+            updated_rows = []
+            with open(elec_file, mode='r', newline='') as file:
+                reader = csv.reader(file)
+                header = next(reader)
+                updated_rows.append(header)
+                existing_data = {row[0]: row for row in reader}
+            
+            for unix_time, tariff, lmp in zip(request.unix_s, request.dist, request.lmp):
+                if str(unix_time) in existing_data:
+                    existing_data[str(unix_time)][1] = tariff
+                    existing_data[str(unix_time)][2] = lmp
+                else:
+                    existing_data[str(unix_time)] = [str(unix_time), tariff, lmp]
+
+            with open(elec_file, mode='w', newline='') as file:
+                writer = csv.writer(file)
+                for row in existing_data.values():
+                    writer.writerow(row)
+
+        except Exception as e:
+            print(f"An error occurred while updating the prices: {str(e)}")
+            raise Exception("Failed to update prices")
+
     async def get_data(self, request: BaseRequest):
         try:
             error = self.check_request(request)
@@ -2094,15 +2130,15 @@ class VisualizerApi():
 
         # Open and read the price CSV file
         csv_times, csv_dist, csv_lmp = [], [], []
-        elec_file = 'elec_prices.csv' if os.path.exists('elec_prices.csv') else 'visualizer_api/elec_prices.csv'
+        elec_file = 'price_forecast_dates.csv' if os.path.exists('price_forecast_dates.csv') else 'visualizer_api/price_forecast_dates.csv'
         with open(elec_file, newline='', encoding='utf-8') as csvfile:
             csvreader = csv.reader(csvfile)
             next(csvreader)
             for row in csvreader:
-                csv_times.append(row[0])
+                csv_times.append(float(row[0]))
                 csv_dist.append(float(row[1]))
                 csv_lmp.append(float(row[2])/10)
-        csv_times = [pendulum.from_format(x, 'M/D/YY H:m', tz=self.timezone_str).timestamp() for x in csv_times]
+        # csv_times = [pendulum.from_format(x, 'M/D/YY H:m', tz=self.timezone_str).timestamp() for x in csv_times]
 
         if aggregate:
             start_ms = (int(time.time() * 1000 - 24 * 3600 * 1000) // (60 * 60 * 1000)) * (60 * 60 * 1000)
