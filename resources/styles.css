@@ -607,9 +607,12 @@ input[type="checkbox"]:checked {
     opacity: 0.5;
 }
 
-input:focus {
-    outline: 2px solid var(--selected); 
-    border: 2px solid var(--body-bgcolor);
+.price-edit-input:focus {
     background-color: var(--body-bgcolor);
+    border: 2px solid var(--body-bgcolor);     
+}
+
+input:focus {
+    outline: 2px solid var(--selected);     
 }
 
