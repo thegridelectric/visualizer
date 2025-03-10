@@ -145,30 +145,36 @@ class VisualizerApi():
     
     async def receive_prices(self, request: Prices):
         try:
-            elec_file = 'price_forecast_dates.csv' if os.path.exists('price_forecast_dates.csv') else 'visualizer_api/price_forecast_dates.csv'
-            
-            updated_rows = []
-            with open(elec_file, mode='r', newline='') as file:
+            rows = []
+            file_path = Path("basic_api/visualizer_api/price_forecast_dates.csv")
+            with open(file_path, mode='r', newline='') as file:
                 reader = csv.reader(file)
                 header = next(reader)
-                updated_rows.append(header)
-                existing_data = {row[0]: row for row in reader}
-            
-            for unix_time, tariff, lmp in zip(request.unix_s, request.dist, request.lmp):
-                if str(unix_time) in existing_data:
-                    existing_data[str(unix_time)][1] = tariff
-                    existing_data[str(unix_time)][2] = lmp
-                else:
-                    existing_data[str(unix_time)] = [str(unix_time), tariff, lmp]
+                rows = list(reader)
 
-            with open(elec_file, mode='w', newline='') as file:
+            updated_prices = {float(timestamp): (lmp, dist) 
+                            for timestamp, lmp, dist in zip(request.unix_s, request.lmp, request.dist)}
+
+            # Update the rows based on the new prices
+            for row in rows:
+                try:
+                    unix_timestamp = float(row[0])
+                    if unix_timestamp in updated_prices:
+                        lmp, dist = updated_prices[unix_timestamp]
+                        row[1] = dist
+                        row[2] = lmp
+                except Exception as e:
+                    print(f"Error processing row {row}: {e}")
+                    continue
+
+            with open(file_path, mode='w', newline='') as file:
                 writer = csv.writer(file)
-                for row in existing_data.values():
-                    writer.writerow(row)
-
+                writer.writerow(header)
+                writer.writerows(rows)
+            print(f"Prices updated successfully in {file_path}")
+            
         except Exception as e:
-            print(f"An error occurred while updating the prices: {str(e)}")
-            raise Exception("Failed to update prices")
+            print(f"Error updating prices: {e}")
 
     async def get_data(self, request: BaseRequest):
         try:

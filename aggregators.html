@@ -26,6 +26,7 @@
         let currentTariffList = new Array(48).fill(0.0);
         let lmpList = JSON.parse(JSON.stringify(currentLmpList));
         let tariffList = JSON.parse(JSON.stringify(currentTariffList));
+        let unix_s = [];
 
         async function updateTable() {
             const tableRows = document.querySelectorAll('#price-editor-table tbody tr');
@@ -60,7 +61,7 @@
                 currentTariffList = data.dist.map(parseFloat);
                 lmpList = data.lmp.map(parseFloat);
                 tariffList = data.dist.map(parseFloat);
-                updateTable()
+                updateTable();
                 // TOOD: call this function at the top of the hour?
             } catch (error) {
                 console.error('Error fetching prices:', error);
@@ -79,7 +80,7 @@
                 const data = await response.json();
                 lmpList = data.lmp;
                 tariffList = data.dist;
-                updateTable()
+                updateTable();
             } catch (error) {
                 console.error('Error fetching default prices:', error);
             }
@@ -88,7 +89,7 @@
         function resetPrices() {
             lmpList = JSON.parse(JSON.stringify(currentLmpList));
             tariffList = JSON.parse(JSON.stringify(currentTariffList));
-            updateTable()
+            updateTable();
         }
 
         async function sendPrices(event) {
@@ -102,8 +103,9 @@
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                        newLmpList: lmpList,
-                        newTariffList: tariffList
+                        unix_s: unix_s,
+                        lmp: lmpList,
+                        dist: tariffList
                     })
                 });
                 if (!response.ok) {
@@ -114,7 +116,8 @@
                 currentTariffList = data.dist.map(parseFloat);
                 lmpList = data.lmp.map(parseFloat);
                 tariffList = data.dist.map(parseFloat);
-                updateTable()
+                updateTable();
+                getAggOverviewPlot(event);
             } catch (error) {
                 console.error('Error sending prices:', error);
             }
@@ -138,19 +141,25 @@
             }
         }
 
+        // Import Luxon library (make sure you include it in your HTML or install it in your project)
+        const { DateTime } = luxon;
+
         async function initializeTable() {
             await getPrices();
             const tableBody = document.querySelector('#price-editor-table tbody');
-            const currentDate = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
+            const currentDate = DateTime.now().setZone('America/New_York').startOf('hour');
+            unix_s = [];
+            
             for (let i = 0; i < 24; i++) {
-                // Find date and time for new row
-                let date = new Date(currentDate);
-                date.setHours(currentDate.getHours() + 1 + i);
-                // Add row
+                // Adjust the current time by adding 1 + i hours
+                let date = currentDate.plus({ hours: i + 1 });                
+                unix_s.push(date.toUnixInteger());
+                
+                // Add row to the table
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td>${date.toDateString()}</td>
-                    <td>${`${date.getHours()}:00`}</td>
+                    <td>${date.toFormat('cccc, LLL dd, yyyy')}</td>
+                    <td>${date.toFormat('HH:00')}</td>
                     <td class="current-value">${currentLmpList[i]}</td>
                     <td><input class='price-edit-input' type="text" style="width:50px" placeholder=${currentLmpList[i]}></td>
                     <td class="current-value">${currentTariffList[i]}</td>
