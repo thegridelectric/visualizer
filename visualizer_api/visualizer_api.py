@@ -146,7 +146,7 @@ class VisualizerApi():
     async def receive_prices(self, request: Prices):
         try:
             rows = []
-            file_path = Path("visualizer_api/price_forecast_dates.csv")
+            file_path = Path("price_forecast_dates.csv")
             with open(file_path, mode='r', newline='') as file:
                 reader = csv.reader(file)
                 header = next(reader)
