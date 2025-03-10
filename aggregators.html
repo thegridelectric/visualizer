@@ -62,11 +62,19 @@
                     throw new Error('Failed to fetch prices');
                 }
                 const data = await response.json();
-                defaultTariffList = data.dist;
-                defaultLmpList = data.lmp;
                 lmpList = data.lmp;
                 tariffList = data.dist;
-                return data;
+
+                const tableRows = document.querySelectorAll('#price-editor-table tbody tr');
+                tableRows.forEach((row, index) => {
+                    const lmpCell = row.querySelectorAll('.default-value')[0];
+                    const tariffCell = row.querySelectorAll('.default-value')[1];
+                    lmpCell.textContent = lmpList[index];
+                    tariffCell.textContent = tariffList[index];
+                    updateCellStyle(lmpCell, lmpList[index], defaultLmpList[index]);
+                    updateCellStyle(tariffCell, tariffList[index], defaultTariffList[index]);
+                });
+                checkIfPricesChanged();
             } catch (error) {
                 console.error('Error fetching default prices:', error);
             }
@@ -100,7 +108,13 @@
         }
     
         function checkIfPricesChanged() {
-            const allDefault = (lmpList === defaultLmpList && tariffList === defaultTariffList);
+            const allDefault = JSON.stringify(lmpList) === JSON.stringify(defaultLmpList) && JSON.stringify(tariffList) === JSON.stringify(defaultTariffList);
+            console.log("Checking if default...")
+            console.log(lmpList[0])
+            console.log(defaultLmpList[0])
+            console.log(lmpList[1])
+            console.log(defaultLmpList[1])
+            console.log(allDefault)
             const saveButton = document.getElementById('prices-save-button');
             
             if (allDefault) {
@@ -110,6 +124,13 @@
                 document.getElementById('prices-save-button').style.display = 'block';
                 document.getElementById('prices-reset-button').style.display = 'block';
             }
+        }
+
+        function setPlaceholders(row, lmpIndex, tariffIndex) {
+            const lmpInput = row.querySelectorAll('input')[0];
+            const tariffInput = row.querySelectorAll('input')[1];
+            lmpInput.placeholder = lmpList[lmpIndex];
+            tariffInput.placeholder = tariffList[tariffIndex];
         }
     
         async function fillTableWithDateAndTime() {
@@ -134,30 +155,32 @@
                     <td>${formattedDate}</td>
                     <td>${formattedHour}</td>
                     <td class="default-value">${defaultLmpValue}</td>
-                    <td><input class='price-edit-input' type="text" style="width:50px" placeholder="${defaultLmpValue}"/></td>
+                    <td><input class='price-edit-input' type="text" style="width:50px" /></td>
                     <td class="default-value">${defaultTariffValue}</td>
-                    <td><input class='price-edit-input' type="text" style="width:50px" placeholder="${defaultTariffValue}"/></td>
+                    <td><input class='price-edit-input' type="text" style="width:50px" /></td>
                 `;
+
+                setPlaceholders(row, i, i);
     
                 const lmpInput = row.querySelectorAll('input')[0];
                 const tariffInput = row.querySelectorAll('input')[1];
     
                 // LMP input event listener
                 lmpInput.addEventListener('keydown', function(event) {
-                    handleArrowKey(event, row, lmpList, defaultLmpValue, lmpInput, 'lmp');
+                    handleArrowKey(event, row, defaultLmpValue, lmpInput, 'lmp');
                 });
     
                 // Tariff input event listener
                 tariffInput.addEventListener('keydown', function(event) {
-                    handleArrowKey(event, row, tariffList, defaultTariffValue, tariffInput, 'tariff');
+                    handleArrowKey(event, row, defaultTariffValue, tariffInput, 'tariff');
                 });
     
                 tableBody.appendChild(row);
             }
         }
     
-        function handleArrowKey(event, row, priceList, defaultValue, input, type) {
-            const columnIndex = type === 'lmp' ? 0 : 1;  // 0 for LMP column, 1 for Tariff column
+        function handleArrowKey(event, row, defaultValue, input, type) {
+            const columnIndex = type === 'lmp' ? 0 : 1;
             const defaultCell = row.querySelectorAll('.default-value')[columnIndex];  // Select the correct default-value cell (LMP or Tariff)
             let inputValue = input.value;
     
@@ -166,16 +189,28 @@
                 if ((isNaN(inputValue) || inputValue === '')) {
                     inputValue = defaultValue;
                 }
+
+                console.log("Checking 1...")
+                console.log(lmpList[0])
+                console.log(defaultLmpList[0])
+                console.log(lmpList[1])
+                console.log(defaultLmpList[1])
     
                 // Update the correct value in the default-value cell
                 defaultCell.textContent = inputValue;
+
+                console.log("Checking 2...")
+                console.log(defaultLmpList[1])
     
                 // Update the appropriate list (LMP or Tariff)
                 if (type === 'lmp') {
-                    priceList[parseInt(row.rowIndex) - 1] = parseFloat(inputValue);
+                    lmpList[parseInt(row.rowIndex) - 1] = parseFloat(inputValue);
                 } else if (type === 'tariff') {
-                    priceList[parseInt(row.rowIndex) - 1] = parseFloat(inputValue);
+                    tariffList[parseInt(row.rowIndex) - 1] = parseFloat(inputValue);
                 }
+
+                console.log("Checking 3...")
+                console.log(defaultLmpList[1])
     
                 // Update the default cell styling
                 updateCellStyle(defaultCell, inputValue, defaultValue);
@@ -226,8 +261,9 @@
         }
     
         async function sendPrices(event) {
-            return
             event.preventDefault();
+            document.getElementById('prices-save-button').style.display = 'none';
+            document.getElementById('prices-reset-button').style.display = 'none';
             try {
                 const response = await fetch('http://localhost:8000/update_prices', {
                     method: 'POST',
@@ -243,13 +279,26 @@
                     throw new Error('Failed to update prices');
                 }
                 const data = await response.json();
-                defaultTariffList = data.dist;
-                defaultLmpList = data.lmp;
                 lmpList = data.lmp;
                 tariffList = data.dist;
-                return data;
+                defaultLmpList = data.lmp;
+                defaultTariffList = data.dist;
+
+                const tableRows = document.querySelectorAll('#price-editor-table tbody tr');
+                tableRows.forEach((row, index) => {
+                    const lmpCell = row.querySelectorAll('.default-value')[0];
+                    const tariffCell = row.querySelectorAll('.default-value')[1];
+                    lmpCell.textContent = lmpList[index];
+                    tariffCell.textContent = tariffList[index];
+                    setPlaceholders(row, index, index);
+                    updateCellStyle(lmpCell, lmpList[index], defaultLmpList[index]);
+                    updateCellStyle(tariffCell, tariffList[index], defaultTariffList[index]);
+                });
+                
+                checkIfPricesChanged();
+
             } catch (error) {
-                console.error('Error fetching default prices:', error);
+                console.error('Error sending prices:', error);
             }
         }
     
@@ -312,8 +361,9 @@
     <div class="agg-widget-title" id="price-editor-title">
         <h2>Price editor</h2>
         <div class="button-container">
-            <button class='enabled' id="prices-save-button" onclick="sendPrices(event)">Save prices</button>
+            <button class='enabled' id="prices-save-button" onclick="sendPrices(event)">Save</button>
             <button class='enabled' id="prices-reset-button" onclick="resetPrices()">Reset</button>
+            <button class='enabled' id="prices-default-button" onclick="getDefaultPrices()">Default</button>
         </div>
     </div>    
     <div class="agg-widget" id="price-editor" style="display: none;">

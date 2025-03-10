@@ -524,7 +524,9 @@ input[type="checkbox"]:checked {
     gap: 10px;
 }
 
-#agg-refresh-button, #prices-save-button, #prices-reset-button {
+#agg-refresh-button, #prices-save-button, #prices-reset-button, #prices-default-button {
+    padding-left: 15px;
+    padding-right: 15px;
     margin-top:0px;
     height: 30px;
 }
