@@ -2142,7 +2142,7 @@ class VisualizerApi():
             next(csvreader)
             for row in csvreader:
                 csv_times.append(float(row[0]))
-                csv_dist.append(float(row[1]))
+                csv_dist.append(float(row[1])/10)
                 csv_lmp.append(float(row[2])/10)
         # csv_times = [pendulum.from_format(x, 'M/D/YY H:m', tz=self.timezone_str).timestamp() for x in csv_times]
 
