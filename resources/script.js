@@ -633,7 +633,7 @@ function getData(event, get_bids) {
     }
 }
 
-async function getAggOverviewPlot(event) {
+async function getAggOverviewPlot(event, just_prices=false) {
     const startdate = document.getElementById('start-date-picker').value;
     const starttime = document.getElementById('start-time-picker').value;
     const starttime_luxon = luxon.DateTime.fromFormat(`${startdate} ${starttime}`, 'yyyy-MM-dd HH:mm', { zone: 'America/New_York' });
@@ -643,9 +643,16 @@ async function getAggOverviewPlot(event) {
     const endtime_luxon = luxon.DateTime.fromFormat(`${enddate} ${endtime}`, 'yyyy-MM-dd HH:mm', { zone: 'America/New_York' });
     const endUnixMilliseconds = endtime_luxon.toUTC().toMillis();
 
-    disable_button('agg-refresh')
-    clearPlots()
     event.preventDefault();
+    let selectedChannelsAgg = []
+
+    disable_button('agg-refresh')
+    if (just_prices) {
+        document.getElementById('agg-overview-plot2').innerHTML = ''
+        selectedChannelsAgg = ['prices']
+    } else {
+        clearPlots()
+    }
     try {
         const response = await fetch(`${api_host}/aggregate-plot`, {
             method: 'POST',
@@ -657,7 +664,7 @@ async function getAggOverviewPlot(event) {
                 password: password,
                 start_ms: startUnixMilliseconds,
                 end_ms: endUnixMilliseconds,
-                selected_channels: [],
+                selected_channels: selectedChannelsAgg,
                 darkmode: darkmode_tf,
             })
         });
@@ -683,10 +690,15 @@ async function getAggOverviewPlot(event) {
                     iframe.style.maxWidth = '1500px';
                     iframe.style.height = '375px';
                     iframe.style.border = 'none';
-                    const plotDivs = [
+                    let plotDivs = [
                         document.getElementById('agg-overview-plot'),
                         document.getElementById('agg-overview-plot2'),
                     ];
+                    if (just_prices){
+                        plotDivs = [
+                            document.getElementById('agg-overview-plot2'),
+                        ];
+                    }
                     const currentDiv = plotDivs[iframeCount % plotDivs.length];
                     currentDiv.appendChild(iframe);
                     iframeCount++;

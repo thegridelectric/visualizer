@@ -117,7 +117,7 @@
                 lmpList = data.lmp.map(parseFloat);
                 tariffList = data.dist.map(parseFloat);
                 updateTable();
-                getAggOverviewPlot(event);
+                getAggOverviewPlot(event, just_prices=true);
             } catch (error) {
                 console.error('Error sending prices:', error);
             }

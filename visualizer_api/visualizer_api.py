@@ -458,14 +458,6 @@ class VisualizerApi():
                     self.data[request][house_alias][channel_name]['times'] = self.data[request][house_alias][channel_name]['times'].tz_convert(self.timezone_str)
                     self.data[request][house_alias][channel_name]['times'] = [x.replace(tzinfo=None) for x in self.data[request][house_alias][channel_name]['times']]        
                 
-            # Minimum and maximum timestamps overall
-            min_timestamp_overall = min(self.timestamp_min_max[request][ha]['min_timestamp'] for ha in self.timestamp_min_max[request])
-            max_timestamp_overall = max(self.timestamp_min_max[request][ha]['max_timestamp'] for ha in self.timestamp_min_max[request])
-            self.timestamp_min_max[request]['overall'] = {
-                'min_timestamp': min_timestamp_overall,
-                'max_timestamp': max_timestamp_overall
-            }
-
             # Re-sample to equal timesteps
             print("Re-sampling...")
             start_ms = request.start_ms
@@ -847,6 +839,9 @@ class VisualizerApi():
             return {"success": False, "message": "An error occurred while getting bids", "reload": False}
         
     async def get_aggregate_plot(self, request: DataRequest):
+        if request.selected_channels == ['prices']:
+            result = await self.get_aggregate_price_plot(request)
+            return result
         try:
             async with async_timeout.timeout(self.timeout_seconds):
                 error = await self.get_aggregate_data(request)
@@ -868,7 +863,33 @@ class VisualizerApi():
 
                 zip_buffer.seek(0)
 
-                print("Returning...")
+                return StreamingResponse(
+                    zip_buffer, 
+                    media_type='application/zip', 
+                    headers={"Content-Disposition": "attachment; filename=plots.zip"}
+                    )
+        except asyncio.TimeoutError:
+            print("Timed out in get_aggregate_plot()")
+            return {"success": False, "message": "The request timed out.", "reload": False}
+        except Exception as e:
+            print(f"An error occurred in get_aggregate_plot():\n{traceback.format_exc()}")
+            return {"success": False, "message": "An error occurred while getting aggregate plot", "reload": False}
+        finally:
+            if request in self.data:
+                del self.data[request]
+                print(f"Deleted request data")
+            print(f"Unfinished requests in data: {len(self.data)}")
+        
+    async def get_aggregate_price_plot(self, request: DataRequest):
+        try:    
+                # Get plots, zip and return
+                zip_buffer = io.BytesIO()
+                with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
+                    html_buffer = await self.plot_prices(request, aggregate=True)
+                    zip_file.writestr('plot.html', html_buffer.read())
+
+                zip_buffer.seek(0)
+
                 return StreamingResponse(
                     zip_buffer, 
                     media_type='application/zip', 
@@ -989,8 +1010,7 @@ class VisualizerApi():
             font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
             title_font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
             xaxis=dict(
-                range=[self.timestamp_min_max[request]['overall']['min_timestamp'], 
-                       self.timestamp_min_max[request]['overall']['max_timestamp']],
+                range=[self.to_datetime(request.start_ms), self.to_datetime(request.end_ms+5*60*60*1000)],
                 mirror=True,
                 ticks='outside',
                 showline=True,
@@ -2160,50 +2180,71 @@ class VisualizerApi():
 
         request_hours = int((request.end_ms - request.start_ms)/1000 / 3600)
         price_times_s = [request.start_ms/1000 + x*3600 for x in range(request_hours+2+48)]
-        price_values = [lmp for time, dist, lmp in zip(csv_times, csv_dist, csv_lmp) if time in price_times_s]
+        lmp_values = [lmp for time, dist, lmp in zip(csv_times, csv_dist, csv_lmp) if time in price_times_s]
+        total_price_values = [lmp+dist for time, dist, lmp in zip(csv_times, csv_dist, csv_lmp) if time in price_times_s]
         csv_times = [time for time in csv_times if time in price_times_s]
         price_times = [self.to_datetime(x*1000) for x in csv_times]
 
-        # Plot LMP
         fig.add_trace(
             go.Scatter(
                 x=price_times,
-                y=price_values,
+                y=total_price_values,
                 mode='lines',
                 line=dict(color='#f0f0f0' if request.darkmode else '#5e5e5e'),
                 opacity=0.8,
-                showlegend=False,
+                showlegend=True,
                 line_shape='hv',
+                name='Total'
             )
         )
 
-        # Shading on-peak
-        shapes_list = []
-        for x in price_times:
-            x1 = None
-            if x==price_times[0] and x.hour in [8,9,10,11]:
-                x1 = x+timedelta(hours=5-(x.hour-7))
-            elif x.hour==7:
-                x1 = x+timedelta(hours=5)
-            elif x==price_times[0] and x.hour in [17,18,19]:
-                x1 = x+timedelta(hours=4-(x.hour-16))
-            elif x.hour==16:
-                x1 = x+timedelta(hours=4)
-            if x1 and x.hour in [7,8,9,10,11,16,17,18,19] and x.weekday()<5:
-                shapes_list.append(
-                        go.layout.Shape(
-                            type='rect',
-                            x0=x, x1=x1,
-                            y0=0, y1=1,
-                            xref="x", yref="paper",
-                            fillcolor="rgba(0, 100, 255, 0.1)",
-                            layer="below",
-                            line=dict(width=0)
-                        )
-                    )
+        fig.add_trace(
+            go.Scatter(
+                x=price_times,
+                y=lmp_values,
+                mode='lines',
+                line=dict(color='#f0f0f0' if request.darkmode else '#5e5e5e', dash='dash'),
+                opacity=0.4,
+                showlegend=True,
+                line_shape='hv',
+                yaxis='y2',
+                name='LMP'
+            )
+        )
+
+        top_state_color = {
+            'HomeAlone': '#EF553B',
+            'Atn': '#00CC96',
+            'Admin': '#636EFA'
+        }
+
+        # # Shading on-peak
+        # shapes_list = []
+        # for x in price_times:
+        #     x1 = None
+        #     if x==price_times[0] and x.hour in [8,9,10,11]:
+        #         x1 = x+timedelta(hours=5-(x.hour-7))
+        #     elif x.hour==7:
+        #         x1 = x+timedelta(hours=5)
+        #     elif x==price_times[0] and x.hour in [17,18,19]:
+        #         x1 = x+timedelta(hours=4-(x.hour-16))
+        #     elif x.hour==16:
+        #         x1 = x+timedelta(hours=4)
+        #     if x1 and x.hour in [7,8,9,10,11,16,17,18,19] and x.weekday()<5:
+        #         shapes_list.append(
+        #                 go.layout.Shape(
+        #                     type='rect',
+        #                     x0=x, x1=x1,
+        #                     y0=0, y1=1,
+        #                     xref="x", yref="paper",
+        #                     fillcolor="rgba(0, 100, 255, 0.1)",
+        #                     layer="below",
+        #                     line=dict(width=0)
+        #                 )
+        #             )
+
         if aggregate:
-            min_timestep = self.timestamp_min_max[request]['overall']['min_timestamp']
-            max_timestep = self.timestamp_min_max[request]['overall']['max_timestamp']
+            min_timestep, max_timestep = self.to_datetime(request.start_ms), self.to_datetime(request.end_ms+5*60*60*1000)
             plot_bgcolor='#313131' if request.darkmode else '#F5F5F7'
             paper_bgcolor='#313131' if request.darkmode else '#F5F5F7'
             font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)'
@@ -2216,9 +2257,10 @@ class VisualizerApi():
             font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)'
             title_font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)'
             
-        fig.update_layout(yaxis=dict(title='LMP [cts/kWh]'))
+        fig.update_layout(yaxis=dict(title='Total price [cts/kWh]'))
+        fig.update_layout(yaxis2=dict(title='LMP [cts/kWh]'))
         fig.update_layout(
-            shapes = shapes_list,
+            # shapes = shapes_list,
             title=dict(text='Price Forecast' if not aggregate else '', x=0.5, xanchor='center'),
             plot_bgcolor=plot_bgcolor,
             paper_bgcolor=paper_bgcolor,
@@ -2243,12 +2285,21 @@ class VisualizerApi():
                 gridwidth=1, 
                 gridcolor='#424242' if request.darkmode else 'LightGray', 
                 ),
+            yaxis2=dict(
+                mirror=True,
+                ticks='outside',
+                zeroline=False,
+                showline=True,
+                linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
+                showgrid=False,
+                overlaying='y', 
+                side='right'
+                ),
             legend=dict(
                 x=0,
                 y=1,
                 xanchor='left',
                 yanchor='top',
-                orientation='h',
                 bgcolor='rgba(0, 0, 0, 0)'
             )
         )
