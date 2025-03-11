@@ -45,7 +45,6 @@ class BaseRequest(BaseModel):
     house_alias: str
     password: str
     unique_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    darkmode: Optional[bool] = False
 
     def __hash__(self):
         return hash(self.unique_id)
@@ -516,6 +515,7 @@ class VisualizerApi():
             return {"success": False, "message": "An error occurred when getting aggregate data", "reload": False}
     
     async def get_messages(self, request: MessagesRequest):
+        print("Recieved message request")
         try:
             error = self.check_request(request)
             if error:
@@ -526,7 +526,7 @@ class VisualizerApi():
 
                 async with self.AsyncSessionLocal() as session:
                     stmt = select(MessageSql).filter(
-                        MessageSql.from_alias.like(f'%.{request.house_alias}.%'),
+                        MessageSql.from_alias.like(f"%{f'.{request.house_alias}.' if request.house_alias else ''}%"),
                         MessageSql.message_type_name.in_(request.selected_message_types),
                         MessageSql.message_persisted_ms >= request.start_ms,
                         MessageSql.message_persisted_ms <= request.end_ms,
@@ -571,7 +571,7 @@ class VisualizerApi():
                     pb_types.append(str(message.payload['Type']).lower())
                     summaries.append(message.payload['Summary'])
                     details.append(message.payload['Details'].replace('<','').replace('>','').replace('\n','<br>'))
-                    times_created.append(str(self.to_datetime(message.payload['CreatedMs']/1000).replace(microsecond=0)))
+                    times_created.append(str(self.to_datetime(message.payload['CreatedMs']).replace(microsecond=0)))
                 
                 summary_table = {
                     'critical': str(len([x for x in pb_types if x=='critical'])),
