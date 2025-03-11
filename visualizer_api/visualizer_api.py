@@ -973,7 +973,7 @@ class VisualizerApi():
         fig.update_layout(
             # title=dict(text='', x=0.5, xanchor='center'),
             margin=dict(t=30, b=30),
-            plot_bgcolor='#222222' if request.darkmode else '#F5F5F7',
+            plot_bgcolor='#313131' if request.darkmode else '#F5F5F7',
             paper_bgcolor='#313131' if request.darkmode else '#F5F5F7',
             font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
             title_font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
