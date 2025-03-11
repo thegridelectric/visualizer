@@ -141,12 +141,38 @@
             }
         }
 
-        // Import Luxon library (make sure you include it in your HTML or install it in your project)
+        function setupHourlyRefresh() {
+            function scheduleNextRefresh() {
+                const now = DateTime.now().setZone('America/New_York');
+                const nextHour = now.plus({ hours: 1 }).startOf('hour');
+                const millisToNextHour = nextHour.toMillis() - now.toMillis();
+                
+                console.log(`Next price refresh scheduled for ${nextHour.toFormat('yyyy-MM-dd HH:mm:ss')}`);
+                
+                setTimeout(() => {
+                    console.log('Refreshing prices at the top of the hour');
+                    
+                    const tableBody = document.querySelector('#price-editor-table tbody');
+                    tableBody.innerHTML = '';
+                    
+                    initializeTable(true).then(() => {
+                        scheduleNextRefresh();
+                    }).catch(error => {
+                        console.error('Error refreshing prices:', error);
+                        scheduleNextRefresh();
+                    });
+                }, millisToNextHour);
+            }
+            
+            scheduleNextRefresh();
+        }
+
         const { DateTime } = luxon;
 
-        async function initializeTable() {
+        async function initializeTable(isRefresh = false) {
             await getPrices();
             const tableBody = document.querySelector('#price-editor-table tbody');
+            tableBody.innerHTML = '';            
             const currentDate = DateTime.now().setZone('America/New_York').startOf('hour');
             unix_s = [];
             
@@ -176,6 +202,9 @@
                     handleArrowKey(event, row, currentTariffList[i], tariffInput, 'tariff');
                 });
                 tableBody.appendChild(row);
+            }
+            if (!isRefresh) {
+                setupHourlyRefresh();
             }
         }
     
@@ -240,7 +269,6 @@
             }
         }
     
-        document.addEventListener('DOMContentLoaded', initializeTable);
     </script>
         
     
@@ -342,10 +370,6 @@
         GridWorks 2025 • <a href="mailto:gbaker@gridworks-consulting.com">Email</a> • <a href="tel:+16173207950">Call</a>
          <!-- • <span style="cursor:pointer" onclick="toggleDarkMode()">Dark mode</span> -->
     </div>
-
-    <script>
-            document.addEventListener('DOMContentLoaded', initializeTable);
-    </script>
     
 </body>
 </html>

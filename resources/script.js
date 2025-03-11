@@ -185,6 +185,7 @@ async function LogInAggregator(event) {
                 document.getElementById('start-time-picker').value = getDefaultTime(true);
                 document.getElementById('end-date-picker').value = getDefaultDate();
                 document.getElementById('end-time-picker').value = getDefaultTime();
+                initializeTable()
                 getAggOverviewPlot(event);
             } else {
                 document.getElementById("username").style.border = "1px solid red";
