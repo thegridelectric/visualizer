@@ -246,7 +246,7 @@
     
 </head>
 
-<body> <!--onload="LogInAggregator(event)"-->
+<body onload="LogInAggregator(event)">
     <!-- Navigation bar -->
     <div id="navbar" style="height: 75px;">
         <div id="dropdown-menu-button" onclick="dropDownMenu()">
@@ -283,15 +283,30 @@
     <div class="agg-widget-title" id="agg-overview-title">
         <h2>Aggregation overview</h2>
         <div>
-            <button class='enabled' id="agg-refresh-button" onclick="getAggOverviewPlot(event)">Refresh</button>
+            <button class='enabled' id="agg-refresh-button" onclick="getAggOverviewPlot(event)">Plot</button>
         </div>
     </div>
     <div class="agg-widget" id="agg-overview" style="display: none;">
         <div style="width: 100%; height: 100%; display: flex; justify-content: center;">
-            <div id="loader" style="display: none; margin-top:75px"></div>
+            <div class="wrapper" id="agg-dates-wrapper">
+                <div style="margin-right: 20px;">
+                    <label style="color: var(--agg-widget-textcolor)" for="start-date-picker">Start<br></label>
+                    <input class="agg-date-input" type="date" id="start-date-picker" name="start-date-picker">
+                    <input class="agg-date-input" type="time" id="start-time-picker" name="start-time-picker"><br><br>
+                </div>
+                <div>
+                    <label style="color: var(--agg-widget-textcolor)" for="end-date-picker">End<br></label>
+                    <input class="agg-date-input" type="date" id="end-date-picker" name="end-date-picker">
+                    <input class="agg-date-input" type="time" id="end-time-picker" name="end-time-picker">
+                    <button type="button" id="agg-now-button" onclick="setNowAgg()">Now</button><br><br>
+                </div>
+            </div>
         </div>
-        <div style="width: 100%; display: flex; justify-content: center; margin: 20px 0px 0px 0px" id="agg-overview-plot"></div>
-        <div style="width: 100%; display: flex; justify-content: center; margin: -20px 0px 20px 0px" id="agg-overview-plot2"></div>
+        <div style="width: 100%; height: 100%; display: flex; justify-content: center;">
+            <div id="loader" style="display: none; margin-top:25px; margin-bottom: 60px;"></div>
+        </div>
+        <div style="width: 100%; display: flex; justify-content: center; margin: -20px 0px 0px 0px" id="agg-overview-plot"></div>
+        <div style="width: 100%; display: flex; justify-content: center; margin: -20px 0px 40px 0px" id="agg-overview-plot2"></div>
     </div>
 
     <!-- Price editor -->

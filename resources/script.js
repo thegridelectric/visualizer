@@ -1,7 +1,7 @@
 let house_alias, username, password;
 let darkmode_tf = false;
 let plotsDisplayed = false;
-let isRunningLocally = true;
+let isRunningLocally = false;
 let api_host = isRunningLocally ? 'http://localhost:8000' : 'https://visualizer.electricity.works';
 
 function clearPlots() {
@@ -87,6 +87,23 @@ function setNow() {
     getData(event, false)
 }
 
+function setNowAgg() {
+    const nyDate = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
+    nyDate.setMinutes(nyDate.getMinutes() + 1);
+    document.getElementById('end-date-picker').value = nyDate.toISOString().split('T')[0];
+    document.getElementById('end-time-picker').value = nyDate.toTimeString().split(' ')[0].substring(0, 5);
+    getAggOverviewPlot(event)
+}
+
+const aggDateInputs = document.querySelectorAll('.agg-date-input');
+aggDateInputs.forEach(input => {
+  input.addEventListener('keydown', function(event) {
+    if (event.key === 'Enter') {
+      getAggOverviewPlot(event);
+    }
+  });
+});
+
 function handleKey(event) {
     if (event.key === "Enter") {
         const target = document.activeElement;
@@ -164,7 +181,11 @@ async function LogInAggregator(event) {
                 document.getElementById("price-editor").style.display = "block";
                 document.getElementById("agg-overview-title").style.display = "flex";
                 document.getElementById("price-editor-title").style.display = "flex";
-                getAggOverviewPlot(event);
+                document.getElementById('start-date-picker').value = getDefaultDate(true);
+                document.getElementById('start-time-picker').value = getDefaultTime(true);
+                document.getElementById('end-date-picker').value = getDefaultDate();
+                document.getElementById('end-time-picker').value = getDefaultTime();
+                // getAggOverviewPlot(event);
             } else {
                 document.getElementById("username").style.border = "1px solid red";
                 document.getElementById("password").style.border = "1px solid red";
@@ -610,6 +631,15 @@ function getData(event, get_bids) {
 }
 
 async function getAggOverviewPlot(event) {
+    const startdate = document.getElementById('start-date-picker').value;
+    const starttime = document.getElementById('start-time-picker').value;
+    const starttime_luxon = luxon.DateTime.fromFormat(`${startdate} ${starttime}`, 'yyyy-MM-dd HH:mm', { zone: 'America/New_York' });
+    const startUnixMilliseconds = starttime_luxon.toUTC().toMillis();
+    const enddate = document.getElementById('end-date-picker').value;
+    const endtime = document.getElementById('end-time-picker').value;
+    const endtime_luxon = luxon.DateTime.fromFormat(`${enddate} ${endtime}`, 'yyyy-MM-dd HH:mm', { zone: 'America/New_York' });
+    const endUnixMilliseconds = endtime_luxon.toUTC().toMillis();
+
     disable_button('agg-refresh')
     clearPlots()
     event.preventDefault();
@@ -622,6 +652,9 @@ async function getAggOverviewPlot(event) {
             body: JSON.stringify({
                 house_alias: username,
                 password: password,
+                start_ms: startUnixMilliseconds,
+                end_ms: endUnixMilliseconds,
+                selected_channels: [],
                 darkmode: darkmode_tf,
             })
         });

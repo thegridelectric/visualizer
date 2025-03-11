@@ -361,7 +361,7 @@ class VisualizerApi():
             print(f"An error occurred in get_data():\n{traceback.format_exc()}")
             return {"success": False, "message": "An error occurred when getting data", "reload": False}
         
-    async def get_aggregate_data(self, request: BaseRequest):
+    async def get_aggregate_data(self, request: DataRequest):
         try:
             error = self.check_request(request)
             if error:
@@ -381,7 +381,8 @@ class VisualizerApi():
                         MessageSql.message_type_name == "report",
                         MessageSql.message_type_name == "snapshot.spaceheat",
                     ),
-                    MessageSql.message_persisted_ms >= (query_start-24*3600)*1000,
+                    MessageSql.message_persisted_ms >= request.start_ms,
+                    MessageSql.message_persisted_ms <= request.end_ms,
                 ).order_by(asc(MessageSql.message_persisted_ms))
 
                 result = await session.execute(stmt)  # Use async execute
@@ -467,8 +468,8 @@ class VisualizerApi():
 
             # Re-sample to equal timesteps
             print("Re-sampling...")
-            start_ms = query_start*1000 - 24*3600*1000
-            end_ms = query_start*1000 + 60*1000
+            start_ms = request.start_ms
+            end_ms = request.end_ms
             timestep_s = 10
             num_points = int((end_ms - start_ms) / (timestep_s * 1000) + 1)
             sampling_times = np.linspace(start_ms, end_ms, num_points)
@@ -508,8 +509,12 @@ class VisualizerApi():
                 hp_list.append(sum([(agg_data[ha]['hp-idu-pwr'][i]+agg_data[ha]['hp-odu-pwr'][i])/1000 for ha in agg_data]))
             # Remove the last minutes of the energy plot to avoid wierd behaviour
             energy_list = [
-                energy if t<datetime.fromtimestamp(query_start-5*60,pytz.timezone(self.timezone_str)).replace(tzinfo=None) else np.nan
+                energy if t<datetime.fromtimestamp(query_start-8*60,pytz.timezone(self.timezone_str)).replace(tzinfo=None) else np.nan
                 for t, energy in zip(sampling_times, energy_list)
+                ]
+            hp_list = [
+                power if t<=datetime.fromtimestamp(query_start,pytz.timezone(self.timezone_str)).replace(tzinfo=None) else np.nan
+                for t, power in zip(sampling_times, hp_list)
                 ]
             self.data[request] = {'timestamp': sampling_times, 'hp':hp_list, 'energy': energy_list}
             print("Done.")
@@ -841,7 +846,7 @@ class VisualizerApi():
             print(f"An error occurred in get_bids():\n{traceback.format_exc()}")
             return {"success": False, "message": "An error occurred while getting bids", "reload": False}
         
-    async def get_aggregate_plot(self, request: BaseRequest):
+    async def get_aggregate_plot(self, request: DataRequest):
         try:
             async with async_timeout.timeout(self.timeout_seconds):
                 error = await self.get_aggregate_data(request)
@@ -2153,20 +2158,11 @@ class VisualizerApi():
                 csv_dist.append(float(row[1])/10)
                 csv_lmp.append(float(row[2])/10)
 
-        if aggregate:
-            start_ms = (int(time.time() * 1000 - 24 * 3600 * 1000) // (60 * 60 * 1000)) * (60 * 60 * 1000)
-            end_ms = (int(time.time() * 1000) // (60 * 60 * 1000)) * (60 * 60 * 1000) 
-            request_hours = int((end_ms - start_ms)/1000 / 3600)
-            price_times_s = [start_ms/1000 + x*3600 for x in range(request_hours+2+48)]
-            price_values = [lmp for time, dist, lmp in zip(csv_times, csv_dist, csv_lmp) if time in price_times_s]
-            csv_times = [time for time in csv_times if time in price_times_s]
-            price_times = [self.to_datetime(x*1000) for x in csv_times]
-        else:
-            request_hours = int((request.end_ms - request.start_ms)/1000 / 3600)
-            price_times_s = [request.start_ms/1000 + x*3600 for x in range(request_hours+2+48)]
-            price_values = [lmp for time, dist, lmp in zip(csv_times, csv_dist, csv_lmp) if time in price_times_s]
-            csv_times = [time for time in csv_times if time in price_times_s]
-            price_times = [self.to_datetime(x*1000) for x in csv_times]
+        request_hours = int((request.end_ms - request.start_ms)/1000 / 3600)
+        price_times_s = [request.start_ms/1000 + x*3600 for x in range(request_hours+2+48)]
+        price_values = [lmp for time, dist, lmp in zip(csv_times, csv_dist, csv_lmp) if time in price_times_s]
+        csv_times = [time for time in csv_times if time in price_times_s]
+        price_times = [self.to_datetime(x*1000) for x in csv_times]
 
         # Plot LMP
         fig.add_trace(

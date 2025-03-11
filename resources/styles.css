@@ -88,6 +88,36 @@ a {
     font-family: 'Montserrat';
 }
 
+.agg-date-input {
+    margin-top: 10px;
+    /* height: 40px; */
+    border-radius: 5px;
+    background-color: var(--input-price);
+    border: 2px solid var(--input-price);
+    padding: 5px;
+    color: gray; 
+    /* padding-left: 15px;
+    padding-right: 10px; */
+    /* margin-bottom: 10px; */
+    /* font-size: 14px; */
+    font-family: 'Montserrat';
+}
+
+.agg-date:focus {
+    background-color: var(--body-bgcolor);
+    border: 2px solid var(--body-bgcolor);     
+}
+
+#agg-now-button {
+    font-family: 'Montserrat';
+    height:34px;
+    padding: 5px;
+    color: gray; 
+    border-radius: 5px;
+    background-color: var(--input-price);
+    border: none;
+}
+
 /* Navigation bar */
 
 #navbar{
@@ -247,7 +277,7 @@ a {
     z-index: 0;
 }
 
-#buttons-wrapper {
+.wrapper {
     margin-top: 0px; 
     margin-bottom: 5px;
     display: flex;
@@ -255,7 +285,7 @@ a {
     gap: 10px;
 }
 
-#buttons-wrapper > div {
+.wrapper > div {
     display: inline-block;
 }
 
@@ -568,6 +598,7 @@ input[type="checkbox"]:checked {
 }
 
 #price-editor th, td {
+    font-size: 14px;
     width: 10%;
     min-width: 50px;
     border: 0px solid #5a5a5a;
@@ -616,3 +647,14 @@ input:focus {
     outline: 2px solid var(--selected);     
 }
 
+#agg-dates-wrapper {
+    max-width: 1000px;
+    border-radius: 10px;
+    border: 1px solid var(--agg-widget-title-bgcolor);
+    background-color: var(--body-bgcolor);
+    padding: 15px 30px 0px 30px;
+    margin-top: 30px;
+    margin-bottom: 30px;
+    margin-left: 5%;
+    margin-right: 5%;
+}
