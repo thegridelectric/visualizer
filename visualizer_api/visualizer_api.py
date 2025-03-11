@@ -2137,7 +2137,7 @@ class VisualizerApi():
 
         # Open and read the price CSV file
         csv_times, csv_dist, csv_lmp = [], [], []
-        elec_file = Path("price_forecast_dates.csv")
+        elec_file = 'price_forecast_dates.csv' if os.path.exists('price_forecast_dates.csv') else 'visualizer_api/price_forecast_dates.csv'
         with open(elec_file, newline='', encoding='utf-8') as csvfile:
             csvreader = csv.reader(csvfile)
             next(csvreader)
