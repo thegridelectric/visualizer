@@ -3,6 +3,7 @@ import os
 import csv
 import time
 import uuid
+import pytz
 import dotenv
 import uvicorn
 import zipfile
@@ -380,7 +381,7 @@ class VisualizerApi():
                         MessageSql.message_type_name == "report",
                         MessageSql.message_type_name == "snapshot.spaceheat",
                     ),
-                    MessageSql.message_persisted_ms >= query_start * 1000 - 24 * 3600 * 1000,
+                    MessageSql.message_persisted_ms >= (query_start-24*3600)*1000,
                 ).order_by(asc(MessageSql.message_persisted_ms))
 
                 result = await session.execute(stmt)  # Use async execute
@@ -485,7 +486,7 @@ class VisualizerApi():
                         on='times', 
                         direction='backward'
                         )
-                    sampled['values'] = sampled['values'].bfill() #TODO!!!!
+                    sampled['values'] = sampled['values'].bfill()
                     agg_data[house_alias][channel] = list(sampled['values'])
 
                 # Compute average temperature and energy
@@ -505,6 +506,11 @@ class VisualizerApi():
             for i in range(len(agg_data[house_alias]['energy'])):
                 energy_list.append(sum([agg_data[ha]['energy'][i] for ha in agg_data]))
                 hp_list.append(sum([(agg_data[ha]['hp-idu-pwr'][i]+agg_data[ha]['hp-odu-pwr'][i])/1000 for ha in agg_data]))
+            # Remove the last minutes of the energy plot to avoid wierd behaviour
+            energy_list = [
+                energy if t<datetime.fromtimestamp(query_start-5*60,pytz.timezone(self.timezone_str)).replace(tzinfo=None) else np.nan
+                for t, energy in zip(sampling_times, energy_list)
+                ]
             self.data[request] = {'timestamp': sampling_times, 'hp':hp_list, 'energy': energy_list}
             print("Done.")
 
@@ -836,7 +842,6 @@ class VisualizerApi():
             return {"success": False, "message": "An error occurred while getting bids", "reload": False}
         
     async def get_aggregate_plot(self, request: BaseRequest):
-        print("Getting aggregate plot...")
         try:
             async with async_timeout.timeout(self.timeout_seconds):
                 error = await self.get_aggregate_data(request)
@@ -2147,7 +2152,6 @@ class VisualizerApi():
                 csv_times.append(float(row[0]))
                 csv_dist.append(float(row[1])/10)
                 csv_lmp.append(float(row[2])/10)
-        # csv_times = [pendulum.from_format(x, 'M/D/YY H:m', tz=self.timezone_str).timestamp() for x in csv_times]
 
         if aggregate:
             start_ms = (int(time.time() * 1000 - 24 * 3600 * 1000) // (60 * 60 * 1000)) * (60 * 60 * 1000)
