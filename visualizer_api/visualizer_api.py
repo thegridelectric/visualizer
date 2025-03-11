@@ -461,7 +461,7 @@ class VisualizerApi():
             print("Re-sampling...")
             start_ms = request.start_ms
             end_ms = request.end_ms
-            timestep_s = 10
+            timestep_s = 60
             num_points = int((end_ms - start_ms) / (timestep_s * 1000) + 1)
             sampling_times = np.linspace(start_ms, end_ms, num_points)
             sampling_times = pd.to_datetime(sampling_times, unit='ms', utc=True)
