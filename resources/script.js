@@ -146,9 +146,6 @@ async function LogInAggregator(event) {
     document.getElementById('footer').style.position = 'relative';
     username = document.getElementById("username").value;
     password = document.getElementById("password").value;
-    if (username === ""){
-        return
-    }
     document.getElementById("login-button").style.display = "none";
     try {
         const response = await fetch(`${api_host}/login`, {
