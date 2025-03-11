@@ -124,7 +124,7 @@ class VisualizerApi():
                 return True
         return False
     
-    def check_request(self, request: BaseRequest):
+    def check_request(self, request: BaseRequest, aggregate=False):
         if not self.check_password(request):
             return {"success": False, "message": "Wrong password.", "reload": False}
         if isinstance(request, Union[DataRequest, CsvRequest]) and not request.confirm_with_user:
@@ -132,10 +132,13 @@ class VisualizerApi():
                 warning_message = f"That's a lot of data! Are you sure you want to proceed?"
                 return {"success": False, "message": warning_message, "reload": False, "confirm_with_user": True}
         if not self.running_locally: 
-            if (isinstance(request, DataRequest) and not isinstance(request, CsvRequest) 
-                and (request.end_ms-request.start_ms)/1000/3600/24 > 5):
-                warning_message = "Plotting data for this many days is not permitted. Please reduce the range and try again."
-                return {"success": False, "message": warning_message, "reload": False}
+            if isinstance(request, DataRequest) and not isinstance(request, CsvRequest): 
+                if (request.end_ms-request.start_ms)/1000/3600/24 > 5:
+                    warning_message = "Plotting data for this many days is not permitted. Please reduce the range and try again."
+                    return {"success": False, "message": warning_message, "reload": False}
+                if aggregate and (request.end_ms-request.start_ms)/1000/3600/24 > 2:
+                    warning_message = "Plotting data for this many days is not permitted. Please reduce the range and try again."
+                    return {"success": False, "message": warning_message, "reload": False}
             if isinstance(request, CsvRequest) and (request.end_ms-request.start_ms)/1000/3600/24 > 21:
                 warning_message = "Downloading data for this many days is not permitted. Please reduce the range and try again."
                 return {"success": False, "message": warning_message, "reload": False}
@@ -362,7 +365,7 @@ class VisualizerApi():
         
     async def get_aggregate_data(self, request: DataRequest):
         try:
-            error = self.check_request(request)
+            error = self.check_request(request, aggregate=True)
             if error:
                 print(error)
                 return error
@@ -461,7 +464,7 @@ class VisualizerApi():
             print("Re-sampling...")
             start_ms = request.start_ms
             end_ms = request.end_ms
-            timestep_s = 60
+            timestep_s = 30
             num_points = int((end_ms - start_ms) / (timestep_s * 1000) + 1)
             sampling_times = np.linspace(start_ms, end_ms, num_points)
             sampling_times = pd.to_datetime(sampling_times, unit='ms', utc=True)
