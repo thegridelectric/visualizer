@@ -14,8 +14,8 @@
     <script>
         let password;
         let darkmode_tf = false;
-        let api_host = 'http://localhost:8000'
-        // let api_host = 'https://visualizer.electricity.works'
+        // let api_host = 'http://localhost:8000'
+        let api_host = 'https://visualizer.electricity.works'
 
         async function getMessages(password, start_ms, end_ms, message_types, house_alias) {
 
@@ -29,9 +29,10 @@
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        password: password, 
-                        selected_message_types: message_types,
                         house_alias: house_alias,
+                        password: password, 
+                        selected_channels: [],
+                        selected_message_types: message_types,
                         start_ms: start_ms, 
                         end_ms: end_ms,
                         darkmode: darkmode_tf,
