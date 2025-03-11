@@ -3,7 +3,8 @@
 :root {
     --body-bgcolor: #ffffff; 
     --navbar-textcolor: #555555;
-    --navbar-bgcolor: #F5F5F5;
+    --navbar-bgcolor: #ffffff;
+    /* --navbar-bgcolor: #F5F5F5; */
     --menu-border-bottom: rgba(226, 226, 226, 0);
     --box-bgcolor: #F5F5F5;
     --box-textcolor: rgb(87, 87, 87);
