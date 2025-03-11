@@ -66,10 +66,10 @@ class DijkstraRequest(BaseRequest):
     time_ms: int
 
 class VisualizerApi():
-    def __init__(self, running_locally):
-        self.running_locally = running_locally
+    def __init__(self):
         self.settings = Settings(_env_file=dotenv.find_dotenv())
         engine = create_async_engine(self.settings.db_url.get_secret_value())
+        self.running_locally = self.settings.running_locally
         self.AsyncSessionLocal = sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
         self.admin_user_password = self.settings.visualizer_api_password.get_secret_value()
         self.timezone_str = 'America/New_York'
@@ -84,6 +84,7 @@ class VisualizerApi():
         self.zone_color = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']*3
         self.data = {}
         self.timestamp_min_max = {}
+        print(f"Running {'locally' if self.running_locally else 'on EC2'}")
 
     def start(self):
         self.app = FastAPI()
@@ -2258,5 +2259,5 @@ class VisualizerApi():
 
 
 if __name__ == "__main__":
-    a = VisualizerApi(running_locally=False)
+    a = VisualizerApi()
     a.start()

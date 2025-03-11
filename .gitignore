@@ -1,6 +1,7 @@
 results/
 messages.json
 result.xlsx
+config.js
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
