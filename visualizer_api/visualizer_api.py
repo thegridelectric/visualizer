@@ -169,11 +169,11 @@ class VisualizerApi():
                     print(f"Error processing row {row}: {e}")
                     continue
 
-            with open(file_path, mode='w', newline='') as file:
+            with open(elec_file, mode='w', newline='') as file:
                 writer = csv.writer(file)
                 writer.writerow(header)
                 writer.writerows(rows)
-            print(f"Prices updated successfully in {file_path}")
+            print(f"Prices updated successfully in {elec_file}")
 
         except Exception as e:
             print(f"Error updating prices: {e}")
