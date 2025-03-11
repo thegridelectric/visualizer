@@ -381,7 +381,12 @@ a {
 }
 
 #housealias, #username {
+    border: solid 1px transparent;
     margin-bottom: 0px;
+}
+
+#password {
+    border: solid 1px transparent;
 }
 
 #login-button {
