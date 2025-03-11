@@ -147,8 +147,9 @@ class VisualizerApi():
     async def receive_prices(self, request: Prices):
         try:
             rows = []
-            file_path = Path("price_forecast_dates.csv")
-            with open(file_path, mode='r', newline='') as file:
+            project_dir = os.path.dirname(os.path.abspath(__file__))
+            elec_file = os.path.join(project_dir, 'price_forecast_dates.csv')
+            with open(elec_file, mode='r', newline='') as file:
                 reader = csv.reader(file)
                 header = next(reader)
                 rows = list(reader)
@@ -2137,7 +2138,8 @@ class VisualizerApi():
 
         # Open and read the price CSV file
         csv_times, csv_dist, csv_lmp = [], [], []
-        elec_file = 'price_forecast_dates.csv' if os.path.exists('price_forecast_dates.csv') else 'visualizer_api/price_forecast_dates.csv'
+        project_dir = os.path.dirname(os.path.abspath(__file__))
+        elec_file = os.path.join(project_dir, 'price_forecast_dates.csv')
         with open(elec_file, newline='', encoding='utf-8') as csvfile:
             csvreader = csv.reader(csvfile)
             next(csvreader)
