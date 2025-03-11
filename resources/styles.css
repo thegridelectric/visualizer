@@ -349,7 +349,7 @@ a {
     margin: 0px;
 }
 
-#housealias {
+#housealias, #username {
     margin-bottom: 0px;
 }
 
@@ -505,7 +505,7 @@ input[type="checkbox"]:checked {
 }
 
 .agg-widget-title {
-    display: flex;
+    display: none;
     justify-content: space-between;
     align-items: center;
     margin-left: 5%;
@@ -541,27 +541,25 @@ input[type="checkbox"]:checked {
     display: none;
 }
 
-#price-editor {
-    height: 600px;
-}
-
 #price-editor-table {
     width: 100%;
-    max-width: 800px;
+    max-width: 1000px;
     justify-content: center; 
-    margin: 40px;
+    margin-top: 45px;
+    margin-bottom: 50px;
     margin-left: 5%;
     margin-right: 5%;
     max-height: 500px;
     overflow-y: auto;
     display: block;
+    border-radius: 10px;
 }
 
 #price-editor-table thead {
     position: sticky;
     top: 0;
-    background-color: #f2f2f2; /* Add a background color for better visibility */
-    z-index: 1; /* Ensures the header stays above the body content */
+    background-color: #f2f2f2;
+    z-index: 1;
 }
 
 #price-editor table {

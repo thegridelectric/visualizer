@@ -246,7 +246,7 @@
     
 </head>
 
-<body onload="LogInAggregator(event)"> <!--TODO remove-->
+<body> <!--onload="LogInAggregator(event)"-->
     <!-- Navigation bar -->
     <div id="navbar" style="height: 75px;">
         <div id="dropdown-menu-button" onclick="dropDownMenu()">
@@ -284,7 +284,6 @@
         <h2>Aggregation overview</h2>
         <div>
             <button class='enabled' id="agg-refresh-button" onclick="getAggOverviewPlot(event)">Refresh</button>
-            <button class='disabled' id="agg-refresh-button-disabled">Refresh</button>
         </div>
     </div>
     <div class="agg-widget" id="agg-overview" style="display: none;">
@@ -311,10 +310,10 @@
                 <tr>
                     <th style="width: 15%;">Day</th>
                     <th>Hour start</th>
-                    <th>LMP<br><span style="font-weight: normal; color: gray">USD/MWh</span></th>
-                    <th style="width: 10%;">Edit LMP<br><span style="font-weight: normal; color: gray">USD/MWh</span></th>
-                    <th>Tariff<br><span style="font-weight: normal; color: gray">USD/MWh</span></th>
-                    <th style="width: 10%;">Edit Tariff<br><span style="font-weight: normal; color: gray">USD/MWh</span></th>
+                    <th>LMP<br><span style="font-weight: normal; color: gray">$/MWh</span></th>
+                    <th style="width: 10%;">Edit LMP<br><span style="font-weight: normal; color: gray">$/MWh</span></th>
+                    <th>Tariff<br><span style="font-weight: normal; color: gray">$/MWh</span></th>
+                    <th style="width: 10%;">Edit Tariff<br><span style="font-weight: normal; color: gray">$/MWh</span></th>
                 </tr>
             </thead>
             <tbody>

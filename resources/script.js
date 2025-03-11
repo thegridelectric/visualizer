@@ -143,8 +143,6 @@ async function LogIn(event) {
 
 async function LogInAggregator(event) {
     event.preventDefault();
-    document.getElementById("agg-overview-title").style.display = "none";
-    document.getElementById("price-editor-title").style.display = "none";
     document.getElementById('footer').style.position = 'relative';
     username = document.getElementById("username").value;
     password = document.getElementById("password").value;
@@ -269,8 +267,10 @@ function enable_button(buttonName) {
         enabledButton = document.getElementById(`${buttonName}-button`);
     }
     const disabledButton = document.getElementById(`${buttonName}-button-disabled`);
-    if (enabledButton && disabledButton) {
+    if (enabledButton) {
         enabledButton.style.display = 'inline';
+    }
+    if (disabledButton) {
         disabledButton.style.display = 'none';
     }
 }
@@ -289,8 +289,10 @@ function disable_button(buttonName) {
         enabledButton = document.getElementById(`${buttonName}-button`);
     }
     const disabledButton = document.getElementById(`${buttonName}-button-disabled`);
-    if (enabledButton && disabledButton) {
+    if (enabledButton) {
         enabledButton.style.display = 'none';
+    }
+    if (disabledButton) {
         disabledButton.style.display = 'inline';
     }
 }
