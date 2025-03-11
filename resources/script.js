@@ -224,7 +224,7 @@ function movePlotUp(button) {
 function dropDownMenu(){
     const navbar = document.getElementById("navbar");
     if (navbar.style.height === '75px') {
-        document.getElementById("navbar").style.height = "238px";
+        document.getElementById("navbar").style.height = "156.5px";
     } else {
         document.getElementById("navbar").style.height = "75px";
     }
@@ -295,8 +295,11 @@ function enable_button(buttonName) {
 
 function disable_button(buttonName) {
     // TODO
-    // document.getElementById("error-text").textContent = ""
-    // document.getElementById("error-text").style.display = 'none'
+    const errorText = document.getElementById("error-text")
+    if (errorText) {
+        errorText.textContent = "";
+        errorText.style.display = 'none';
+    }
     showLoader()
     let enabledButton;
     if (buttonName === 'plot') {
