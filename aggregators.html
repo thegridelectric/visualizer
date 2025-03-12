@@ -226,6 +226,7 @@
 
             // If the input is empty or invalid, revert to the current value
             if (isNaN(inputValue) || inputValue === '') {
+                input.value = ''
                 return
             }
 
