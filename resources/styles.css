@@ -6,6 +6,7 @@
     --navbar-bgcolor: #ffffff;
     /* --navbar-bgcolor: #F5F5F5; */
     --menu-border-bottom: rgba(226, 226, 226, 0);
+    /* --box-bgcolor: #ffffff; */
     --box-bgcolor: #F5F5F5;
     --box-textcolor: rgb(87, 87, 87);
     --button-bgcolor: #e1e1e1;
@@ -80,6 +81,7 @@ a {
     height: 40px;
     border-radius: 5px;
     border: none;
+    /* background-color: var(--); */
     background-color: var(--inputs-bgcolor);
     color: rgb(53, 53, 53);
     padding-left: 15px;
@@ -117,6 +119,7 @@ a {
     border-radius: 5px;
     background-color: var(--input-price);
     border: none;
+    cursor: pointer;
 }
 
 /* Navigation bar */
@@ -357,7 +360,9 @@ a {
     margin-top:30px;
     padding: 30px;
     background-color: var(--box-bgcolor);
+    /* border: solid var(--button-bgcolor) 1px; */
     border-radius: 10px;
+    /* box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); */
 }
 
 #error-text {
@@ -641,7 +646,7 @@ input[type="checkbox"]:checked {
 
 .price-edit-input::placeholder{
     font-weight: normal;
-    opacity: 0.5;
+    opacity: 0.3;
 }
 
 .price-edit-input:focus {
