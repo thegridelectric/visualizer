@@ -95,8 +95,8 @@
 
         async function sendPrices(event) {
             event.preventDefault();
-            document.getElementById('prices-save-button').style.display = 'none';
-            document.getElementById('prices-reset-button').style.display = 'none';
+            document.getElementById('prices-save-button').style.display = 'block';
+            document.getElementById('prices-reset-button').style.display = 'block';
             try {
                 const response = await fetch('https://price-forecasts.electricity.works/update_prices', {
                     method: 'POST',
@@ -134,8 +134,8 @@
             }
             const allCurrent = areArraysEqual(lmpList, currentLmpList) && areArraysEqual(tariffList, currentTariffList);
             if (allCurrent) {
-                document.getElementById('prices-save-button').style.display = 'none';
-                document.getElementById('prices-reset-button').style.display = 'none';
+                document.getElementById('prices-save-button').style.display = 'block';
+                document.getElementById('prices-reset-button').style.display = 'block';
             } else {
                 document.getElementById('prices-save-button').style.display = 'block';
                 document.getElementById('prices-reset-button').style.display = 'block';
