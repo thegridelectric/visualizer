@@ -196,16 +196,52 @@
                 lmpInput.addEventListener('keydown', function(event) {
                     handleArrowKey(event, row, currentLmpList[i], lmpInput, 'lmp');
                 });
+                lmpInput.addEventListener('blur', function(event) {
+                    handleBlurEvent(event, row, currentLmpList[i], lmpInput, 'lmp');
+                });
                 // Tariff input event listener
                 const tariffInput = row.querySelectorAll('input')[1];
                 tariffInput.addEventListener('keydown', function(event) {
                     handleArrowKey(event, row, currentTariffList[i], tariffInput, 'tariff');
+                });
+                tariffInput.addEventListener('blur', function(event) {
+                    handleBlurEvent(event, row, currentTariffList[i], tariffInput, 'tariff');
                 });
                 tableBody.appendChild(row);
             }
             if (!isRefresh) {
                 setupHourlyRefresh();
             }
+        }
+
+        function handleBlurEvent(event, row, currentValue, input, type) {
+            const columnIndex = type === 'lmp' ? 0 : 1;
+            const currentCell = row.querySelectorAll('.current-value')[columnIndex];
+            let inputValue = input.value;
+
+            // If the input is empty or invalid, revert to the current value
+            if (isNaN(inputValue) || inputValue === '') {
+                inputValue = currentValue;
+            }
+
+            // Update the cell with the new value
+            currentCell.textContent = inputValue;
+
+            // Update the corresponding list based on the type (lmp or tariff)
+            if (type === 'lmp') {
+                lmpList[parseInt(row.rowIndex) - 1] = parseFloat(inputValue);
+            } else if (type === 'tariff') {
+                tariffList[parseInt(row.rowIndex) - 1] = parseFloat(inputValue);
+            }
+
+            // Update the cell style
+            updateCellStyle(currentCell, inputValue, currentValue);
+
+            // Clear the input value
+            input.value = '';
+
+            // Check if prices have changed
+            checkIfPricesChanged();
         }
     
         function handleArrowKey(event, row, currentValue, input, type) {
