@@ -27,6 +27,7 @@
         let lmpList = JSON.parse(JSON.stringify(currentLmpList));
         let tariffList = JSON.parse(JSON.stringify(currentTariffList));
         let unix_s = [];
+        let isKeyPressed = false;
 
         async function updateTable() {
             const tableRows = document.querySelectorAll('#price-editor-table tbody tr');
@@ -215,13 +216,17 @@
         }
 
         function handleBlurEvent(event, row, currentValue, input, type) {
+            if (isKeyPressed) {
+                isKeyPressed = false; // Reset the flag after handling arrow keys
+                return;
+            }
             const columnIndex = type === 'lmp' ? 0 : 1;
             const currentCell = row.querySelectorAll('.current-value')[columnIndex];
             let inputValue = input.value;
 
             // If the input is empty or invalid, revert to the current value
             if (isNaN(inputValue) || inputValue === '') {
-                inputValue = currentValue;
+                return
             }
 
             // Update the cell with the new value
@@ -251,6 +256,7 @@
     
             // Handle Enter key
             if (event.key === 'Enter') {
+                isKeyPressed = true;
                 if ((isNaN(inputValue) || inputValue === '')) {
                     inputValue = currentValue;
                 }
