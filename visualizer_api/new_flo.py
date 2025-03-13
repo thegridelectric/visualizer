@@ -374,9 +374,56 @@ class DGraph():
         return next_node
         
     def charge(self, n: DNode, store_heat_in: float) -> DNode:
-        # node_next_true = n
-        # node_next = self.find_closest_node(node_next_true)
-        return n
+        next_node_energy = n.energy + store_heat_in
+        heated_bottom = n.bottom_temp + self.params.delta_T(n.bottom_temp)
+
+        # Find the new top temperature after mixing (or not)
+        if heated_bottom < n.top_temp:
+            top_and_middle_mixed = (n.top_temp*n.thermocline1 + n.middle_temp*(n.thermocline2-n.thermocline1))/n.thermocline2
+            top_and_middle_and_heated_bottom_mixed = (
+                (top_and_middle_mixed*n.thermocline2 + heated_bottom*(self.params.num_layers-n.thermocline2))/self.params.num_layers
+                )
+            next_node_top_temp = round(top_and_middle_and_heated_bottom_mixed)
+        else:
+            next_node_top_temp = heated_bottom        
+
+        # Starting with that top and current bottom, find the thermocline position that matches the next node energy
+        next_node_bottom_temp = n.bottom_temp
+        next_node_thermocline = self.find_thermocline(next_node_top_temp, next_node_bottom_temp, next_node_energy)
+        while next_node_thermocline > self.params.num_layers:
+            next_node_bottom_temp = next_node_top_temp
+            next_node_top_temp = round(next_node_top_temp + self.params.delta_T(next_node_top_temp))
+            next_node_thermocline = self.find_thermocline(next_node_top_temp, next_node_bottom_temp, next_node_energy)
+
+        if next_node_bottom_temp not in self.bottom_temps:
+            node_next_true = DNode(
+                parameters = self.params,
+                time_slice = n.time_slice+1,
+                top_temp = next_node_top_temp,
+                middle_temp = next_node_bottom_temp,
+                bottom_temp = n.bottom_temp,
+                thermocline1 = next_node_thermocline,
+                thermocline2 = self.params.num_layers
+            )
+        else:
+            node_next_true = DNode(
+                parameters = self.params,
+                time_slice = n.time_slice+1,
+                top_temp = next_node_top_temp,
+                middle_temp = None,
+                bottom_temp = next_node_bottom_temp,
+                thermocline1 = next_node_thermocline,
+                thermocline2 = None
+            )
+
+        node_next = self.find_closest_node(node_next_true)
+        return node_next
+        
+    def find_thermocline(self, top_temp, bottom_temp, energy):
+        top, bottom = to_kelvin(top_temp), to_kelvin(bottom_temp)
+        m_layer_kg = self.params.storage_volume*3.785 / self.params.num_layers    
+        if top==bottom: top+=1  
+        return int(1/(top-bottom)*(energy/(m_layer_kg*4.187/3600)-(-0.5*top+(self.params.num_layers+0.5)*bottom)))
     
     def discharge(self, n: DNode, store_heat_in: float) -> DNode:
         next_node_energy = n.energy + store_heat_in
@@ -420,14 +467,27 @@ class DGraph():
         return closest_node
         
     def find_closest_node(self, true_n: DNode) -> DNode:
+        # print(f"Looking for closest of {true_n}")
         closest_top_temp = min(self.top_temps, key=lambda x: abs(float(x)-true_n.top_temp))
         closest_middle_temp = min(self.middle_temps, key=lambda x: abs(float(x)-true_n.middle_temp))
         closest_bottom_temp = min(self.bottom_temps, key=lambda x: abs(float(x)-true_n.bottom_temp))
-        nodes_with_similar_temps = [
-            n for n in self.nodes[true_n.time_slice] if 
-            n.top_temp==closest_top_temp and 
-            n.middle_temp==closest_middle_temp and 
-            n.bottom_temp==closest_bottom_temp
+        if closest_top_temp == closest_middle_temp or closest_top_temp-5 == closest_middle_temp:
+            closest_middle_temp = closest_top_temp-MIN_DIFFERENCE_F if closest_top_temp>100+2*MIN_DIFFERENCE_F else 100
+        if closest_top_temp == 120 and closest_middle_temp==100:
+            closest_middle_temp = 110
+        # print(f"{closest_top_temp},{closest_middle_temp},{closest_bottom_temp}")
+        if true_n.thermocline1==true_n.thermocline2:
+            nodes_with_similar_temps = [
+                n for n in self.nodes[true_n.time_slice] if 
+                n.top_temp==closest_top_temp and 
+                n.bottom_temp==closest_bottom_temp
+            ]
+        else:
+            nodes_with_similar_temps = [
+                n for n in self.nodes[true_n.time_slice] if 
+                n.top_temp==closest_top_temp and 
+                n.middle_temp==closest_middle_temp and 
+                n.bottom_temp==closest_bottom_temp
             ]
         closest_node = min(nodes_with_similar_temps, key = lambda x: abs(x.energy-true_n.energy))  
         return closest_node
@@ -578,8 +638,12 @@ if __name__ == '__main__':
             payload=data["Payload"],
             message_created_ms=data.get("MessageCreatedMs")
         )
-        flo_params = FloParamsHouse0(**message.payload)
-        flo_params.NumLayers = 6
-        g = DGraph(flo_params)
-        g.solve_dijkstra()
-        g.plot()
+    flo_params = FloParamsHouse0(**message.payload)
+    flo_params.NumLayers = 6
+    import time
+    st = time.time()
+    g = DGraph(flo_params)
+    g.solve_dijkstra()
+    print(f"{time.time()-st}")
+    g.plot()
+    st = time.time()
