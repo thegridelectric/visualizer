@@ -170,12 +170,6 @@ async function LogInAggregator(event) {
     username = document.getElementById("username").value;
     password = document.getElementById("password").value;
     document.getElementById("login-button").style.display = "none";
-    const screenHeight = window.innerHeight;
-    if (screenHeight < 650) {
-        document.getElementById('footer').style.position = 'relative';
-    } else {
-        document.getElementById('footer').style.position = 'fixed';
-    }
     try {
         const response = await fetch(`${api_host}/login`, {
             method: 'POST',
