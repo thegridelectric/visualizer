@@ -527,12 +527,6 @@ input[type="checkbox"]:checked {
     padding-bottom: 40px;
 }
 
-@media (max-width: 600px) {
-    #footer {
-      position: relative;
-    }
-  }
-
 /* Widgets */
 
 .agg-widget {
