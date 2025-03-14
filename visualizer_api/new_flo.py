@@ -12,6 +12,7 @@ from openpyxl.styles import PatternFill, Alignment, Font
 from openpyxl.drawing.image import Image
 from named_types import PriceQuantityUnitless, FloParamsHouse0
 from typing import Optional
+import time
 
 MIN_DIFFERENCE_F = 10
 
@@ -116,9 +117,7 @@ class DParams():
         return (-b + (b**2-4*a*c2)**0.5)/(2*a)
 
     def delta_T(self, swt):
-        d = self.dd_delta_t/self.dd_power * self.delivered_heating_power(swt)
-        d = 0 if swt<self.no_power_rswt else d
-        return d if d>0 else 0
+        return 20
     
     def delta_T_inverse(self, rwt: float) -> float:
         a, b, c = self.quadratic_coefficients
@@ -339,7 +338,7 @@ class DGraph():
                 store_heat_in_for_full = self.top_node_energy - node_now.energy
                 hp_heat_out_for_full = store_heat_in_for_full + load + losses
                 if hp_heat_out_for_full < max_hp_heat_out:
-                    if hp_heat_out_for_full < 10: # TODO make this a min_hp_heat out parameter
+                    if hp_heat_out_for_full > 10: # TODO make this a min_hp_heat out parameter
                         allowed_hp_heat_out = [0, hp_heat_out_for_full]
                     else:
                         allowed_hp_heat_out = [0]
@@ -349,18 +348,17 @@ class DGraph():
                 for hp_heat_out in allowed_hp_heat_out:
                     store_heat_in = hp_heat_out - load - losses
                     node_next = self.model_accurately(node_now, store_heat_in)
-                    cost = self.params.elec_price_forecast[h]*hp_heat_out/cop
+                    cost = self.params.elec_price_forecast[h]/100*hp_heat_out/cop
                     if store_heat_in < 0 and load > 0:
                         if node_now.top_temp<rswt or node_next.top_temp<rswt:
-                        # and not [x for x in self.edges[node_now] if x.head==node_next]: TODO
                             cost += 1e5
                     self.edges[node_now].append(DEdge(node_now, node_next, cost, hp_heat_out))
 
-    def model_accurately(self, node_now:DNode, store_heat_in:float):
+    def model_accurately(self, node_now:DNode, store_heat_in:float, print_detail:bool=False):
         if store_heat_in > 0:
-            next_node = self.charge(node_now, store_heat_in)
+            next_node = self.charge(node_now, store_heat_in, print_detail)
         elif store_heat_in < 0:
-            next_node = self.discharge(node_now, -store_heat_in)
+            next_node = self.discharge(node_now, -store_heat_in, print_detail)
         elif store_heat_in == 0:
             next_node = DNode(
                 parameters=node_now.params,
@@ -373,16 +371,19 @@ class DGraph():
             )
         return next_node
         
-    def charge(self, n: DNode, store_heat_in: float) -> DNode:
+    def charge(self, n: DNode, store_heat_in: float, print_detail:bool=False) -> DNode:
         next_node_energy = n.energy + store_heat_in
         heated_bottom = n.bottom_temp + self.params.delta_T(n.bottom_temp)
+        if print_detail: print(f"heated_bottom = {heated_bottom}")
 
         # Find the new top temperature after mixing (or not)
         if heated_bottom < n.top_temp:
             top_and_middle_mixed = (n.top_temp*n.thermocline1 + n.middle_temp*(n.thermocline2-n.thermocline1))/n.thermocline2
+            if print_detail: print(f"top_and_middle_mixed = {top_and_middle_mixed}")
             top_and_middle_and_heated_bottom_mixed = (
                 (top_and_middle_mixed*n.thermocline2 + heated_bottom*(self.params.num_layers-n.thermocline2))/self.params.num_layers
                 )
+            if print_detail: print(f"top_and_middle_and_heated_bottom_mixed = {round(top_and_middle_and_heated_bottom_mixed,1)}")
             next_node_top_temp = round(top_and_middle_and_heated_bottom_mixed)
         else:
             next_node_top_temp = heated_bottom        
@@ -390,20 +391,22 @@ class DGraph():
         # Starting with that top and current bottom, find the thermocline position that matches the next node energy
         next_node_bottom_temp = n.bottom_temp
         next_node_thermocline = self.find_thermocline(next_node_top_temp, next_node_bottom_temp, next_node_energy)
+        if print_detail: print(f"Next node ({next_node_top_temp}, {next_node_bottom_temp}) thermocline: {next_node_thermocline}")
         while next_node_thermocline > self.params.num_layers:
             next_node_bottom_temp = next_node_top_temp
             next_node_top_temp = round(next_node_top_temp + self.params.delta_T(next_node_top_temp))
             next_node_thermocline = self.find_thermocline(next_node_top_temp, next_node_bottom_temp, next_node_energy)
+            if print_detail: print(f"Next node ({next_node_top_temp}, {next_node_bottom_temp}) thermocline: {next_node_thermocline}")
 
         if next_node_bottom_temp not in self.bottom_temps:
             node_next_true = DNode(
                 parameters = self.params,
                 time_slice = n.time_slice+1,
-                top_temp = next_node_top_temp,
-                middle_temp = next_node_bottom_temp,
+                top_temp = next_node_top_temp if next_node_thermocline>0 else next_node_bottom_temp,
+                middle_temp = next_node_bottom_temp if next_node_thermocline>0 else None,
                 bottom_temp = n.bottom_temp,
-                thermocline1 = next_node_thermocline,
-                thermocline2 = self.params.num_layers
+                thermocline1 = next_node_thermocline if next_node_thermocline>0 else self.params.num_layers,
+                thermocline2 = self.params.num_layers if next_node_thermocline>0 else None,
             )
         else:
             node_next_true = DNode(
@@ -416,7 +419,8 @@ class DGraph():
                 thermocline2 = None
             )
 
-        node_next = self.find_closest_node(node_next_true)
+        node_next = self.find_closest_node(node_next_true, print_detail)
+        if print_detail: print(f"True: {node_next_true}, associated to {node_next}")
         return node_next
         
     def find_thermocline(self, top_temp, bottom_temp, energy):
@@ -425,7 +429,7 @@ class DGraph():
         if top==bottom: top+=1  
         return int(1/(top-bottom)*(energy/(m_layer_kg*4.187/3600)-(-0.5*top+(self.params.num_layers+0.5)*bottom)))
     
-    def discharge(self, n: DNode, store_heat_in: float) -> DNode:
+    def discharge(self, n: DNode, store_heat_in: float, print_detail: bool=False) -> DNode:
         next_node_energy = n.energy + store_heat_in
         candidate_nodes: List[DNode] = []
         # Starting from current node
@@ -466,8 +470,8 @@ class DGraph():
         closest_node = min([x for x in candidate_nodes], key=lambda x: abs(x.energy-next_node_energy))
         return closest_node
         
-    def find_closest_node(self, true_n: DNode) -> DNode:
-        # print(f"Looking for closest of {true_n}")
+    def find_closest_node(self, true_n: DNode, print_detail:bool=False) -> DNode:
+        if print_detail: print(f"Looking for closest of {true_n}")
         closest_top_temp = min(self.top_temps, key=lambda x: abs(float(x)-true_n.top_temp))
         closest_middle_temp = min(self.middle_temps, key=lambda x: abs(float(x)-true_n.middle_temp))
         closest_bottom_temp = min(self.bottom_temps, key=lambda x: abs(float(x)-true_n.bottom_temp))
@@ -475,21 +479,30 @@ class DGraph():
             closest_middle_temp = closest_top_temp-MIN_DIFFERENCE_F if closest_top_temp>100+2*MIN_DIFFERENCE_F else 100
         if closest_top_temp == 120 and closest_middle_temp==100:
             closest_middle_temp = 110
-        # print(f"{closest_top_temp},{closest_middle_temp},{closest_bottom_temp}")
+        if print_detail: print(f"{closest_top_temp},{closest_middle_temp},{closest_bottom_temp}")
         if true_n.thermocline1==true_n.thermocline2:
             nodes_with_similar_temps = [
                 n for n in self.nodes[true_n.time_slice] if 
                 n.top_temp==closest_top_temp and 
-                n.bottom_temp==closest_bottom_temp
+                n.middle_temp==closest_middle_temp and
+                n.bottom_temp==closest_bottom_temp and
+                n.thermocline1==n.thermocline2 and
+                n.thermocline2==true_n.thermocline1
             ]
         else:
             nodes_with_similar_temps = [
                 n for n in self.nodes[true_n.time_slice] if 
                 n.top_temp==closest_top_temp and 
                 n.middle_temp==closest_middle_temp and 
-                n.bottom_temp==closest_bottom_temp
+                n.bottom_temp==closest_bottom_temp and
+                n.thermocline1==true_n.thermocline1 and
+                n.thermocline2==true_n.thermocline2
             ]
-        closest_node = min(nodes_with_similar_temps, key = lambda x: abs(x.energy-true_n.energy))  
+        closest_node = min(nodes_with_similar_temps, key = lambda x: abs(x.energy-true_n.energy))
+        if len(nodes_with_similar_temps)>1:
+            print(true_n)
+            print(nodes_with_similar_temps)
+            raise Exception("IMPOSSIBLE")
         return closest_node
     
     def solve_dijkstra(self):
@@ -516,6 +529,8 @@ class DGraph():
                 sp_hp_heat_out.append(edge_i.hp_heat_out)
             else:
                 edge_i = [e for e in self.edges[node_i] if e.head==node_i.next_node][0]
+                print(f"{edge_i}")
+                _ = self.model_accurately(node_i, edge_i.hp_heat_out-self.params.load_forecast[node_i.time_slice], print_detail=False)
                 sp_hp_heat_out.append(edge_i.hp_heat_out)
             sp_top_temp.append(node_i.top_temp)
             sp_bottom_temp.append(node_i.bottom_temp)
@@ -550,15 +565,15 @@ class DGraph():
         ax2.set_ylim([m,max(self.params.elec_price_forecast)*1.3])
         
         # Bottom plot
-        norm = Normalize(vmin=100, vmax=180)
+        norm = Normalize(vmin=80, vmax=180)
         cmap = matplotlib.colormaps['Reds']
         tank_top_colors = [cmap(norm(x)) for x in sp_top_temp]
         tank_middle_colors = [cmap(norm(x)) for x in sp_middle_temp]
         tank_bottom_colors = [cmap(norm(x)) for x in sp_bottom_temp]
 
         # Reversing thermocline positions
-        sp_thermocline_reversed1 = [self.params.num_layers - x + 1 for x in sp_thermocline]
-        sp_thermocline_reversed2 = [self.params.num_layers - x + 1 for x in sp_thermocline2]
+        sp_thermocline_reversed1 = [self.params.num_layers - x for x in sp_thermocline]
+        sp_thermocline_reversed2 = [self.params.num_layers - x for x in sp_thermocline2]
 
         # Stacking the temperatures and thermoclines
         bars_top = ax[1].bar(sp_time, 
@@ -584,8 +599,6 @@ class DGraph():
             bar_color = 'white'
             if i < len(self.params.rswt_forecast) and self.params.rswt_forecast[i] <= sp_top_temp[i]:
                 bar_color = 'green'
-            elif height<3:
-                bar_color='black'
             ax[1].text(bar.get_x() + bar.get_width() / 2, bar.get_y() + height / 2, 
                     f'{int(sp_top_temp[i])}', ha='center', va='center', color=bar_color, fontsize=5)
         for i, bar in enumerate(bars_middle):
@@ -609,13 +622,13 @@ class DGraph():
         ax3.set_ylim([-1,101])
 
         # Color bar
-        boundaries = sorted(list(range(110,180,5)), reverse=False)
+        boundaries = sorted(list(range(100,175,5)), reverse=False)
         colors = [plt.cm.Reds(i/(len(boundaries)-1)) for i in range(len(boundaries))]
         cmap = ListedColormap(colors)
         norm = BoundaryNorm(boundaries, cmap.N, clip=True)
         sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
         cbar = plt.colorbar(sm, ax=ax, orientation='horizontal', fraction=0.06, pad=0.15, alpha=0.7)
-        cbar.set_ticks(sorted(list(range(110,180,5)), reverse=False))
+        cbar.set_ticks(sorted(list(range(100,175,5)), reverse=False))
         cbar.set_label('Temperature [F]')
         
         plt.savefig('plot.png', dpi=130)
@@ -640,10 +653,17 @@ if __name__ == '__main__':
         )
     flo_params = FloParamsHouse0(**message.payload)
     flo_params.NumLayers = 6
-    import time
+    
     st = time.time()
+    g = DGraph(flo_params)
+    g.solve_dijkstra()
+    print(f"\nBuilt graph and solved Dijkstra in {round(time.time()-st,1)} seconds")
+    g.plot()
+
+    # Compare with original FLO
+    st = time.time()
+    from flo import DGraph
     g = DGraph(flo_params)
     g.solve_dijkstra()
     print(f"{time.time()-st}")
     g.plot()
-    st = time.time()
