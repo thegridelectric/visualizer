@@ -691,8 +691,8 @@ class DGraph():
         tank_bottom_colors = [cmap(norm(x)) for x in sp_bottom_temp]
 
         # Reversing thermocline positions
-        sp_thermocline_reversed1 = [self.params.num_layers - x + 1 for x in sp_thermocline]
-        sp_thermocline_reversed2 = [self.params.num_layers - x + 1 for x in sp_thermocline2]
+        sp_thermocline_reversed1 = [self.params.num_layers - x for x in sp_thermocline]
+        sp_thermocline_reversed2 = [self.params.num_layers - x for x in sp_thermocline2]
 
         # Stacking the temperatures and thermoclines
         bars_top = ax[1].bar(sp_time, sp_thermocline, bottom=sp_thermocline_reversed1, color=tank_top_colors, alpha=0.7, width=0.9, align='edge')

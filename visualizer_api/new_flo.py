@@ -324,6 +324,10 @@ class DGraph():
             if h==0:
                 max_hp_elec_in = max_hp_elec_in * self.params.fraction_of_hour_remaining
                 max_hp_elec_in = (((1-self.params.hp_turn_on_minutes/60) if self.params.hp_is_off else 1) * max_hp_elec_in)
+            else:
+                # Since we can't know if the HP was on or off after hour 0, remove half of the turn on time
+                # Overestimating less when turning on, underestimating a little when already on
+                max_hp_elec_in = ((1-self.params.hp_turn_on_minutes/2/60) * max_hp_elec_in)            
             cop = self.params.COP(oat=self.params.oat_forecast[h])
             max_hp_heat_out = max_hp_elec_in * cop
             
