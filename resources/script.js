@@ -20,10 +20,10 @@ function clearPlots() {
     if (plotContainer) {
         plotContainer.style.display = 'none';
     }
-    const footer = document.getElementById('footer');
-    // if (footer) {
-    //     footer.style.position = 'fixed';
-    // }
+    const aggOverview = document.getElementById('agg-overview-plot');
+    if (!aggOverview) {
+        document.getElementById('footer').style.position = 'fixed';
+    }
     plotsDisplayed = false;
 }
 
