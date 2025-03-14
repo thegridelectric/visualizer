@@ -245,7 +245,12 @@ function toggleOptions() {
         document.getElementById("plot-container").style.display = "block";
         document.getElementById("navbar").style.display = "flex";
         if (!plotsDisplayed) {
-            document.getElementById('footer').style.position = 'fixed';
+            const screenWidth = window.innerWidth;
+            if (screenWidth < 600) {
+                document.getElementById('footer').style.position = 'relative';
+            } else {
+                document.getElementById('footer').style.position = 'fixed';
+            }
         }
     }
 }
