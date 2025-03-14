@@ -9,6 +9,7 @@
     /* --box-bgcolor: #ffffff; */
     --box-bgcolor: #F5F5F5;
     --box-textcolor: rgb(87, 87, 87);
+    --box-border: #ececec;
     --button-bgcolor: #e1e1e1;
     --button-hover: #d6d6d6;
     --button-options: #3f3f3f;
@@ -35,6 +36,7 @@
     --menu-border-bottom: #51515100;
     --box-bgcolor: #313131;
     --box-textcolor: #f0f0f0;
+    --box-border: rgb(77, 77, 77);
     --button-bgcolor: #6d6d6d;
     --button-hover: #838383;
     --button-options: #cbcbcb;
@@ -46,7 +48,7 @@
     --checkbox-textcolor: #dbdbdb;
     --loader-bigpart: #cdcdcd;
     --loader-smallpart: #3a3a3a00;
-    --agg-widget-title-bgcolor: rgb(67, 67, 67); /*rgb(70, 36, 36) */
+    --agg-widget-title-bgcolor: rgb(77, 77, 77); /*rgb(70, 36, 36) */
     --agg-widget-textcolor: #cdcdcd;
     --agg-widget-bgcolor: #313131;
     --price-table-hover: #292929;
@@ -81,7 +83,6 @@ a {
     height: 40px;
     border-radius: 5px;
     border: none;
-    /* background-color: var(--); */
     background-color: var(--inputs-bgcolor);
     color: rgb(53, 53, 53);
     padding-left: 15px;
@@ -360,7 +361,7 @@ a {
     margin-top:30px;
     padding: 30px;
     background-color: var(--box-bgcolor);
-    /* border: solid var(--button-bgcolor) 1px; */
+    border: solid var(--box-border) 1px;
     border-radius: 10px;
     /* box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); */
 }
@@ -401,6 +402,7 @@ a {
 /* Options */
 
 #options-div{
+    border: solid 1px var(--box-border);
     box-sizing: border-box;
     left: 50%;
     height: auto;
@@ -535,13 +537,12 @@ input[type="checkbox"]:checked {
     margin-left: 5%;
     margin-right: 5%;
     margin-top: 0px;
-    /* margin-bottom: 200px; */
-    /* padding: 10px 30px 30px 30px; */
     background-color: var(--agg-widget-bgcolor);
     color: var(--agg-widget-textcolor);
     border-radius: 0px 0px 10px 10px;
     font-size: 14px;
-    border: solid 0.5px var(--agg-widget-title-bgcolor);
+    border: solid 1px var(--agg-widget-title-bgcolor);
+    border-top:none;
     min-height: 200px;
 }
 
