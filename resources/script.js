@@ -121,12 +121,6 @@ async function LogIn(event) {
     if (house_alias === ""){
         return
     }
-    const screenHeight = window.innerHeight;
-    if (screenHeight < 650) {
-        document.getElementById('footer').style.position = 'relative';
-    } else {
-        document.getElementById('footer').style.position = 'fixed';
-    }
     document.getElementById("login-button").style.display = "none";
     try {
         const response = await fetch(`${api_host}/login`, {
@@ -141,6 +135,11 @@ async function LogIn(event) {
             const data = await response.json();
             if (data === true) {
                 document.getElementById("login-div").style.display = "none";
+                if (window.innerHeight < 650) {
+                    document.getElementById('footer').style.position = 'relative';
+                } else {
+                    document.getElementById('footer').style.position = 'fixed';
+                }
                 document.getElementById("data-selector-title").textContent = `${house_alias.charAt(0).toUpperCase()}${house_alias.slice(1)}`;
                 document.getElementById('start-date-picker').value = getDefaultDate(true);
                 document.getElementById('start-time-picker').value = getDefaultTime(true);
@@ -166,7 +165,6 @@ async function LogIn(event) {
 
 async function LogInAggregator(event) {
     event.preventDefault();
-    document.getElementById('footer').style.position = 'relative';
     username = document.getElementById("username").value;
     password = document.getElementById("password").value;
     document.getElementById("login-button").style.display = "none";
@@ -183,6 +181,7 @@ async function LogInAggregator(event) {
             const data = await response.json();
             if (data === true) {
                 document.getElementById("login-div").style.display = "none";
+                document.getElementById('footer').style.position = 'relative';
                 document.getElementById("agg-overview").style.display = "block";
                 document.getElementById("price-editor").style.display = "block";
                 document.getElementById("agg-overview-title").style.display = "flex";
