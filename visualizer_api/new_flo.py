@@ -578,7 +578,7 @@ class DGraph():
                 sp_hp_heat_out.append(edge_i.hp_heat_out)
             else:
                 edge_i = [e for e in self.edges[node_i] if e.head==node_i.next_node][0]
-                print(f"{edge_i}")
+                # print(f"{edge_i}")
                 _ = self.model_accurately(node_i, edge_i.hp_heat_out-self.params.load_forecast[node_i.time_slice], print_detail=False)
                 sp_hp_heat_out.append(edge_i.hp_heat_out)
             sp_top_temp.append(node_i.top_temp)
@@ -628,15 +628,15 @@ class DGraph():
         bars_top = ax[1].bar(sp_time, 
                              sp_thermocline, 
                              bottom=sp_thermocline_reversed1, 
-                             color=tank_top_colors, alpha=0.7, width=0.9, align='edge')
+                             color=tank_top_colors, alpha=0.7, width=0.9) #, align='edge')
         bars_middle = ax[1].bar(sp_time, 
                                 [y-x for x,y in zip(sp_thermocline, sp_thermocline2)], 
                                 bottom=sp_thermocline_reversed2, 
-                                color=tank_middle_colors, alpha=0.7, width=0.9, align='edge')
+                                color=tank_middle_colors, alpha=0.7, width=0.9) #, align='edge')
         bars_bottom = ax[1].bar(sp_time, 
                                 sp_thermocline_reversed2, 
                                 bottom=0, 
-                                color=tank_bottom_colors, alpha=0.7, width=0.9, align='edge')
+                                color=tank_bottom_colors, alpha=0.7, width=0.9) #, align='edge')
         ax[1].set_xlabel('Time [hours]')
         ax[1].set_ylabel('Storage state')
         ax[1].set_ylim([0, self.params.num_layers])
@@ -707,7 +707,7 @@ if __name__ == '__main__':
     st = time.time()
     g = DGraph(flo_params)
     g.solve_dijkstra()
-    print(f"\nBuilt graph and solved Dijkstra in {round(time.time()-st,1)} seconds")
+    print(f"Built graph and solved Dijkstra in {round(time.time()-st,1)} seconds")
     g.plot()
 
     # Compare with original FLO
@@ -715,5 +715,5 @@ if __name__ == '__main__':
     from flo import DGraph
     g = DGraph(flo_params)
     g.solve_dijkstra()
-    print(f"{time.time()-st}")
+    print(f"Built graph and solved Dijkstra in {round(time.time()-st,1)} seconds")
     g.plot()
