@@ -27,13 +27,13 @@ class DParams():
         self.config = config
         self.start_time = config.StartUnixS
         self.horizon = config.HorizonHours
-        self.num_layers = config.NumLayers
+        self.num_layers = min(config.NumLayers,6)
         self.storage_volume = config.StorageVolumeGallons
         self.max_hp_elec_in = config.HpMaxElecKw
         self.min_hp_elec_in = config.HpMinElecKw
         self.initial_top_temp = config.InitialTopTempF
         self.initial_bottom_temp = config.InitialBottomTempF
-        self.initial_thermocline = config.InitialThermocline
+        self.initial_thermocline = min(config.InitialThermocline, self.num_layers)
         self.storage_losses_percent = config.StorageLossesPercent
         self.reg_forecast = [x/10 for x in config.RegPriceForecast[:self.horizon]]
         self.dist_forecast = [x/10 for x in config.DistPriceForecast[:self.horizon]]
@@ -302,11 +302,12 @@ class DGraph():
                 self.nodes[h].append(node)
         
         print(f"=> {len(temperature_combinations)} temperature combinations")
-        print(f"=> Total of {len(thermocline_combinations)*len(temperature_combinations)} states")
+        print(f"=> Created a total of {len(thermocline_combinations)*len(temperature_combinations)} nodes")
         # for n in self.nodes[0][:30]:
         #     n.plot()
 
     def create_edges(self):
+        print("Creating all edges...")
         
         self.bottom_node_energy = DNode(
             time_slice=0,
@@ -365,21 +366,26 @@ class DGraph():
                             cost += 1e5
                     self.edges[node_now].append(DEdge(node_now, node_next, cost, hp_heat_out))
 
+            print(f"Done for hour {h}")
+
     def model_accurately(self, node_now:DNode, store_heat_in:float, print_detail:bool=False):
         if store_heat_in > 0:
+            if print_detail: print(f"Charge by {store_heat_in}")
             next_node = self.charge(node_now, store_heat_in, print_detail)
-        elif store_heat_in < 0:
+        elif store_heat_in < -1:
+            if print_detail: print(f"Discharge by {-store_heat_in}")
             next_node = self.discharge(node_now, -store_heat_in, print_detail)
-        elif store_heat_in == 0:
-            next_node = DNode(
-                parameters=node_now.params,
-                time_slice=node_now.time_slice+1,
-                thermocline1=node_now.thermocline1,
-                thermocline2=node_now.thermocline2,
-                top_temp=node_now.top_temp,
-                middle_temp=node_now.middle_temp,
-                bottom_temp=node_now.bottom_temp,
-            )
+        else:
+            if print_detail: print("IDLE")
+            next_node = [
+                x for x in self.nodes[node_now.time_slice+1]
+                if x.params==node_now.params
+                and x.thermocline1==node_now.thermocline1
+                and x.thermocline2==node_now.thermocline2
+                and x.top_temp==node_now.top_temp
+                and x.bottom_temp==node_now.bottom_temp
+                and x.middle_temp==node_now.middle_temp
+                ][0]
         return next_node
         
     def charge(self, n: DNode, store_heat_in: float, print_detail:bool=False) -> DNode:
@@ -478,6 +484,15 @@ class DGraph():
     
     def discharge(self, n: DNode, store_heat_in: float, print_detail: bool=False) -> DNode:
         next_node_energy = n.energy + store_heat_in
+        # same_node_in_next_hour = [
+        #         x for x in self.nodes[n.time_slice+1]
+        #         if x.top_temp==n.top_temp
+        #         and x.middle_temp==n.middle_temp
+        #         and x.bottom_temp==n.bottom_temp
+        #         and x.thermocline1==n.thermocline1
+        #         and x.thermocline2==n.thermocline2
+        #     ][0]
+        # candidate_nodes: List[DNode] = [same_node_in_next_hour]
         candidate_nodes: List[DNode] = []
         # Starting from current node
         th1 = n.thermocline1-1
@@ -561,6 +576,45 @@ class DGraph():
                 node.pathcost = best_edge.head.pathcost + best_edge.cost
                 node.next_node = best_edge.head
 
+    def generate_bid(self):
+        self.pq_pairs: List[PriceQuantityUnitless] = []
+        forecasted_price_usd_mwh = self.params.elec_price_forecast[0] * 10
+        # For every possible price
+        min_elec_ctskwh, max_elec_ctskwh = -10, 200
+        for elec_price_usd_mwh in sorted(list(range(min_elec_ctskwh*10, max_elec_ctskwh*10))+[forecasted_price_usd_mwh]):
+            # Update the fake cost of initial node edges with the selected price
+            for edge in self.edges[self.initial_node]:
+                if edge.cost >= 1e4: # penalized node
+                    edge.fake_cost = edge.cost
+                else:
+                    cop = self.params.COP(oat=self.params.oat_forecast[0], lwt=edge.head.top_temp)
+                    edge.fake_cost = edge.hp_heat_out / cop * elec_price_usd_mwh/1000
+            # Find the best edge with the given price
+            best_edge: DEdge = min(self.edges[self.initial_node], key=lambda e: e.head.pathcost + e.fake_cost)
+            if best_edge.hp_heat_out < 0: 
+                best_edge_neg = max([e for e in self.edges[self.initial_node] if e.hp_heat_out<0], key=lambda e: e.hp_heat_out)
+                best_edge_pos = min([e for e in self.edges[self.initial_node] if e.hp_heat_out>=0], key=lambda e: e.hp_heat_out)
+                best_edge = best_edge_pos if (-best_edge_neg.hp_heat_out >= best_edge_pos.hp_heat_out) else best_edge_neg
+            # Find the associated quantity
+            cop = self.params.COP(oat=self.params.oat_forecast[0], lwt=best_edge.head.top_temp)
+            best_quantity_kwh = best_edge.hp_heat_out / cop
+            best_quantity_kwh = 0 if best_quantity_kwh<0 else best_quantity_kwh
+            if not self.pq_pairs:
+                self.pq_pairs.append(
+                    PriceQuantityUnitless(
+                        PriceTimes1000 = int(elec_price_usd_mwh * 1000),
+                        QuantityTimes1000 = int(best_quantity_kwh * 1000))
+                )
+            else:
+                # Record a new pair if at least 0.01 kWh of difference in quantity with the previous one
+                if self.pq_pairs[-1].QuantityTimes1000 - int(best_quantity_kwh * 1000) > 10:
+                    self.pq_pairs.append(
+                        PriceQuantityUnitless(
+                            PriceTimes1000 = int(elec_price_usd_mwh * 1000),
+                            QuantityTimes1000 = int(best_quantity_kwh * 1000))
+                    )
+        return self.pq_pairs
+
     def plot(self, show=True):
         # Walk along the shortest path (sp)
         sp_top_temp = []
@@ -578,8 +632,10 @@ class DGraph():
                 sp_hp_heat_out.append(edge_i.hp_heat_out)
             else:
                 edge_i = [e for e in self.edges[node_i] if e.head==node_i.next_node][0]
-                # print(f"{edge_i}")
-                _ = self.model_accurately(node_i, edge_i.hp_heat_out-self.params.load_forecast[node_i.time_slice], print_detail=False)
+                print(f"{edge_i}")
+                losses = self.params.storage_losses_percent/100 * (node_i.energy-self.bottom_node_energy)
+                energy_to_store = edge_i.hp_heat_out-self.params.load_forecast[node_i.time_slice]-losses
+                _ = self.model_accurately(node_i, energy_to_store, print_detail=False)
                 sp_hp_heat_out.append(edge_i.hp_heat_out)
             sp_top_temp.append(node_i.top_temp)
             sp_bottom_temp.append(node_i.bottom_temp)
@@ -685,6 +741,67 @@ class DGraph():
             plt.show()
         plt.close()
 
+    def export_to_excel(self):        
+
+        # Add the parameters to a seperate sheet
+        parameters = self.params.config.to_dict()
+        parameters_df = pd.DataFrame(list(parameters.items()), columns=['Variable', 'Value'])
+
+        # Add the PQ pairs to a seperate sheet and plot the curve
+        pq_pairs = self.generate_bid()
+        prices = [x.PriceTimes1000 for x in pq_pairs]
+        quantities = [x.QuantityTimes1000/1000 for x in pq_pairs]
+        pqpairs_df = pd.DataFrame({'price':[x/1000 for x in prices], 'quantity':quantities})
+        # To plot quantities on x-axis and prices on y-axis
+        ps, qs = [], []
+        index_p = 0
+        expected_price_usd_mwh = self.params.elec_price_forecast[0] * 10
+        for p in sorted(list(range(min(prices), max(prices)+1)) + [expected_price_usd_mwh*1000]):
+            ps.append(p/1000)
+            if index_p+1 < len(prices) and p >= prices[index_p+1]:
+                index_p += 1
+            if p == expected_price_usd_mwh*1000:
+                interesection = (quantities[index_p], expected_price_usd_mwh)
+            qs.append(quantities[index_p])
+        plt.plot(qs, ps, label='demand (bid)')
+        prices = [x.PriceTimes1000/1000 for x in pq_pairs]
+        plt.scatter(quantities, prices)
+        plt.plot([min(quantities)-1, max(quantities)+1],[expected_price_usd_mwh]*2, label="supply (expected market price)")
+        plt.scatter(interesection[0], interesection[1])
+        plt.text(interesection[0]+0.25, interesection[1]+15, f'({round(interesection[0],3)}, {round(interesection[1],1)})', fontsize=10, color='tab:orange')
+        plt.xticks(quantities)
+        if min([abs(x-expected_price_usd_mwh) for x in prices]) < 5:
+            plt.yticks(prices)
+        else:
+            plt.yticks(prices + [expected_price_usd_mwh])
+        plt.ylabel("Price [USD/MWh]")
+        plt.xlabel("Quantity [kWh]")
+        plt.grid(alpha=0.3)
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig('plot_pq.png', dpi=130)
+        plt.close()
+
+        # Write to Excel
+        start = datetime.fromtimestamp(self.params.start_time, tz=pytz.timezone("America/New_York")).strftime('%Y-%m-%d %H:%M')
+        # os.makedirs('results', exist_ok=True)
+        # file_path = os.path.join('results', f'result_{start}.xlsx')
+        file_path = 'result.xlsx'
+        with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
+
+            self.plot(show=True)
+            plot_sheet = writer.book.create_sheet(title='Plot')
+            plot_sheet.add_image(Image('plot.png'), 'A1')
+
+            parameters_df.to_excel(writer, index=False, sheet_name='Parameters')
+
+            plot2_sheet = writer.book.create_sheet(title='PQ pairs')
+            pqpairs_df.to_excel(writer, index=False, sheet_name='PQ pairs')
+            plot2_sheet.add_image(Image('plot_pq.png'), 'C1')
+
+        os.remove('plot.png')        
+        os.remove('plot_pq.png')
+
 
 if __name__ == '__main__':
     import json
@@ -707,13 +824,15 @@ if __name__ == '__main__':
     st = time.time()
     g = DGraph(flo_params)
     g.solve_dijkstra()
+    g.generate_bid()
     print(f"Built graph and solved Dijkstra in {round(time.time()-st,1)} seconds")
     g.plot()
+    g.export_to_excel()
 
     # Compare with original FLO
-    st = time.time()
-    from flo import DGraph
-    g = DGraph(flo_params)
-    g.solve_dijkstra()
-    print(f"Built graph and solved Dijkstra in {round(time.time()-st,1)} seconds")
-    g.plot()
+    # st = time.time()
+    # from flo import DGraph
+    # g = DGraph(flo_params)
+    # g.solve_dijkstra()
+    # print(f"Built graph and solved Dijkstra in {round(time.time()-st,1)} seconds")
+    # g.plot()
