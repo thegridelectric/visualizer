@@ -263,46 +263,37 @@ class DGraph():
                 for b in self.bottom_temps:
                     if b<=m-MIN_DIFFERENCE_F and m<=t-MIN_DIFFERENCE_F:
                         temperature_combinations.append((t,m,b))
-                        for h in range(self.params.horizon+1):
-                            for th in thermocline_combinations:
-                                node = DNode(
-                                    time_slice=h,
-                                    top_temp=t,
-                                    middle_temp=m,
-                                    bottom_temp=b,
-                                    thermocline1=th[0],
-                                    thermocline2=th[1],
-                                    parameters=self.params
-                                    )
-                                if self.storage_full and node.energy>=self.initial_node.energy:
-                                    continue
-                                self.nodes[h].append(node)
-        # Add 110, 100, 100 node
-        for h in range(self.params.horizon+1):
-            for th in thermocline_combinations:
-                node = DNode(
-                    time_slice=h,
-                    top_temp=110,
-                    middle_temp=100,
-                    bottom_temp=100,
-                    thermocline1=th[0],
-                    thermocline2=th[1],
-                    parameters=self.params
-                    )
-                self.nodes[h].append(node)
-                node = DNode(
-                    time_slice=h,
-                    top_temp=115,
-                    middle_temp=100,
-                    bottom_temp=100,
-                    thermocline1=th[0],
-                    thermocline2=th[1],
-                    parameters=self.params
-                    )
-                self.nodes[h].append(node)
-        
         print(f"=> {len(temperature_combinations)} temperature combinations")
+
+        # Add cases where we can't have t >= m+10 >= b+10
+        temperature_combinations += [(115,100,100), (110,100,100)]
+
+        # Add colder temperatures
+        # temperature_combinations += [(100,90,90), (90,80,80), (80,70,70)]
+        
+        tt=0
+        for tmb in temperature_combinations:
+            for h in range(self.params.horizon+1):
+                for th in thermocline_combinations:
+                    # Middle and bottom are at the same temperature: single thermocline
+                    if tmb[1]==tmb[2] and th[0]!=th[1]:
+                        continue
+                    node = DNode(
+                        time_slice=h,
+                        top_temp=tmb[0],
+                        middle_temp=tmb[1],
+                        bottom_temp=tmb[2],
+                        thermocline1=th[0],
+                        thermocline2=th[1],
+                        parameters=self.params
+                        )
+                    if self.storage_full and node.energy>=self.initial_node.energy:
+                        continue
+                    self.nodes[h].append(node)
+                    tt += 1
+                
         print(f"=> Created a total of {len(thermocline_combinations)*len(temperature_combinations)} nodes")
+        print(f"=> Created a total of {tt/49} nodes per layer")
         # for n in self.nodes[0][:30]:
         #     n.plot()
 
@@ -311,9 +302,9 @@ class DGraph():
         
         self.bottom_node_energy = DNode(
             time_slice=0,
-            top_temp=100,
+            top_temp=80,
             thermocline1=1,
-            bottom_temp=100,
+            bottom_temp=70,
             parameters=self.params
         ).energy
 
@@ -368,7 +359,7 @@ class DGraph():
 
             print(f"Done for hour {h}")
 
-    def model_accurately(self, node_now:DNode, store_heat_in:float, print_detail:bool=False):
+    def model_accurately(self, node_now:DNode, store_heat_in:float, print_detail:bool=True):
         if store_heat_in > 0:
             if print_detail: print(f"Charge by {store_heat_in}")
             next_node = self.charge(node_now, store_heat_in, print_detail)
@@ -484,15 +475,6 @@ class DGraph():
     
     def discharge(self, n: DNode, store_heat_in: float, print_detail: bool=False) -> DNode:
         next_node_energy = n.energy + store_heat_in
-        # same_node_in_next_hour = [
-        #         x for x in self.nodes[n.time_slice+1]
-        #         if x.top_temp==n.top_temp
-        #         and x.middle_temp==n.middle_temp
-        #         and x.bottom_temp==n.bottom_temp
-        #         and x.thermocline1==n.thermocline1
-        #         and x.thermocline2==n.thermocline2
-        #     ][0]
-        # candidate_nodes: List[DNode] = [same_node_in_next_hour]
         candidate_nodes: List[DNode] = []
         # Starting from current node
         th1 = n.thermocline1-1
@@ -501,6 +483,7 @@ class DGraph():
             return min(self.nodes[n.time_slice+1], key=lambda x: x.energy)
         # Moving up step by step until the end of the top layer
         while th1>0:
+            if print_detail: print(f"Looking for {n.top_temp}({th1}){n.middle_temp}({th2}){n.bottom_temp}")
             node = [
                 x for x in self.nodes[n.time_slice+1]
                 if x.top_temp==n.top_temp
@@ -518,6 +501,7 @@ class DGraph():
             return min(self.nodes[n.time_slice+1], key=lambda x: x.energy)
         th1 = th2
         while th1>0:
+            if print_detail: print(f"Looking for {top_temp}({th1})-({th2}){n.bottom_temp}")
             node = [
                 x for x in self.nodes[n.time_slice+1]
                 if x.top_temp==top_temp
@@ -536,9 +520,11 @@ class DGraph():
         if print_detail: print(f"Looking for closest of {true_n}")
         if true_n.top_temp > max(self.top_temps):
             return min(self.nodes[true_n.time_slice], key=lambda x: abs(x.energy-self.top_node_energy))
+        # Find closest available top, middle and bottom temps
         closest_top_temp = min(self.top_temps, key=lambda x: abs(float(x)-true_n.top_temp))
         closest_middle_temp = min(self.middle_temps, key=lambda x: abs(float(x)-true_n.middle_temp))
         closest_bottom_temp = min(self.bottom_temps, key=lambda x: abs(float(x)-true_n.bottom_temp))
+        # Need at least MIN_DIFFERENCE_F between top and middle
         if closest_top_temp == closest_middle_temp or closest_top_temp-5 == closest_middle_temp:
             closest_middle_temp = closest_top_temp-MIN_DIFFERENCE_F if closest_top_temp>100+2*MIN_DIFFERENCE_F else 100
         if closest_top_temp == 120 and closest_middle_temp==100:
