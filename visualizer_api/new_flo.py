@@ -232,15 +232,25 @@ class DGraph():
         self.top_temps = sorted(list(range(110,180,5)), reverse=True) # 175, 170, ..., 110
         self.middle_temps = [x-MIN_DIFFERENCE_F for x in self.top_temps[:-2]]
         self.bottom_temps = [100]
-
+        # Initial node temperatures
+        initial_top_temp = min(self.top_temps+[100,80], key=lambda x: abs(x-self.params.initial_top_temp))
+        initial_middle_temp = min(self.middle_temps, key=lambda x: abs(x-self.params.initial_bottom_temp))
+        initial_bottom_temp = min(self.bottom_temps, key=lambda x: abs(x-self.params.initial_bottom_temp))
+        # If initial node is a cold node
+        if initial_top_temp == 110:
+            initial_middle_temp = 100
+        if initial_top_temp in [100,80]:
+            initial_middle_temp = initial_top_temp-20
+            initial_bottom_temp = initial_top_temp-20
+        # Initial node
         self.initial_node = DNode(
             parameters=self.params,
             time_slice=0,
-            top_temp=min(self.top_temps, key=lambda x: abs(x-self.params.initial_top_temp)),
+            top_temp=initial_top_temp,
+            middle_temp=initial_middle_temp,
+            bottom_temp=initial_bottom_temp,
             thermocline1=self.params.initial_thermocline,
-            middle_temp=min(self.middle_temps, key=lambda x: abs(x-self.params.initial_bottom_temp)),
-            thermocline2=6,
-            bottom_temp=self.bottom_temps[0]
+            thermocline2=self.params.num_layers if initial_top_temp not in [110,100,80] else self.params.initial_thermocline,
         )
         self.nodes[0] = [self.initial_node]
         print(f"Initial node: {self.initial_node}")
@@ -251,8 +261,8 @@ class DGraph():
             self.storage_full = True
 
         thermocline_combinations = []
-        for t1 in range(1,7):
-            for t2 in range(1,7):
+        for t1 in range(1,self.params.num_layers+1):
+            for t2 in range(1,self.params.num_layers+1):
                 if t2>=t1:
                     thermocline_combinations.append((t1,t2))
         print(f"=> {len(thermocline_combinations)} thermocline combinations")
@@ -269,31 +279,31 @@ class DGraph():
         temperature_combinations += [(115,100,100), (110,100,100)]
 
         # Add colder temperatures
-        # temperature_combinations += [(100,90,90), (90,80,80), (80,70,70)]
+        temperature_combinations += [(100,80,80), (80,60,60)]
         
-        tt=0
+        total_nodes=0
         for tmb in temperature_combinations:
             for h in range(self.params.horizon+1):
                 for th in thermocline_combinations:
-                    # Middle and bottom are at the same temperature: single thermocline
-                    if tmb[1]==tmb[2] and th[0]!=th[1]:
+                    t, m, b = tmb
+                    th1, th2 = th
+                    if m==b and th1!=th2:
                         continue
                     node = DNode(
                         time_slice=h,
-                        top_temp=tmb[0],
-                        middle_temp=tmb[1],
-                        bottom_temp=tmb[2],
-                        thermocline1=th[0],
-                        thermocline2=th[1],
+                        top_temp=t,
+                        middle_temp=m,
+                        bottom_temp=b,
+                        thermocline1=th1,
+                        thermocline2=th2,
                         parameters=self.params
                         )
                     if self.storage_full and node.energy>=self.initial_node.energy:
                         continue
                     self.nodes[h].append(node)
-                    tt += 1
+                    total_nodes += 1
                 
-        print(f"=> Created a total of {len(thermocline_combinations)*len(temperature_combinations)} nodes")
-        print(f"=> Created a total of {tt/49} nodes per layer")
+        print(f"=> Created a total of {int(total_nodes/49)} nodes per layer")
         # for n in self.nodes[0][:30]:
         #     n.plot()
 
@@ -359,12 +369,12 @@ class DGraph():
 
             print(f"Done for hour {h}")
 
-    def model_accurately(self, node_now:DNode, store_heat_in:float, print_detail:bool=True):
+    def model_accurately(self, node_now:DNode, store_heat_in:float, print_detail:bool=False):
         if store_heat_in > 0:
-            if print_detail: print(f"Charge by {store_heat_in}")
+            if print_detail: print(f"Charge {node_now} by {store_heat_in}")
             next_node = self.charge(node_now, store_heat_in, print_detail)
         elif store_heat_in < -1:
-            if print_detail: print(f"Discharge by {-store_heat_in}")
+            if print_detail: print(f"Discharge {node_now} by {-store_heat_in}")
             next_node = self.discharge(node_now, -store_heat_in, print_detail)
         else:
             if print_detail: print("IDLE")
@@ -379,59 +389,70 @@ class DGraph():
                 ][0]
         return next_node
         
-    def charge(self, n: DNode, store_heat_in: float, print_detail:bool=False) -> DNode:
+    def charge(self, n: DNode, store_heat_in: float, print_detail: bool) -> DNode:
         next_node_energy = n.energy + store_heat_in
 
-        # If there is a bottom layer
-        if n.thermocline2 < self.params.num_layers:
-            heated_bottom = n.bottom_temp + self.params.delta_T(n.bottom_temp)
-            if print_detail: print(f"heated_bottom = {heated_bottom}")
-
-            # Find the new top temperature after mixing (or not)
-            if heated_bottom < n.top_temp:
-                top_and_middle_mixed = (n.top_temp*n.thermocline1 + n.middle_temp*(n.thermocline2-n.thermocline1))/n.thermocline2
-                if print_detail: print(f"top_and_middle_mixed = {top_and_middle_mixed}")
-                top_and_middle_and_heated_bottom_mixed = (
-                    (top_and_middle_mixed*n.thermocline2 + heated_bottom*(self.params.num_layers-n.thermocline2))/self.params.num_layers
-                    )
-                if print_detail: print(f"top_and_middle_and_heated_bottom_mixed = {round(top_and_middle_and_heated_bottom_mixed,1)}")
-                next_node_top_temp = round(top_and_middle_and_heated_bottom_mixed)
-            else:
-                next_node_top_temp = heated_bottom   
-            
-            # Bottom layer stays the same
+        # Charging from cold states
+        if n.top_temp<=100:
+            next_node_top_temp = n.top_temp
             next_node_bottom_temp = n.bottom_temp
+            next_node_thermocline = self.find_thermocline(next_node_top_temp, next_node_bottom_temp, next_node_energy)
+            if next_node_thermocline > self.params.num_layers and n.top_temp == 80:
+                next_node_top_temp = 100
+                next_node_bottom_temp = 80
+                next_node_thermocline = self.find_thermocline(next_node_top_temp, next_node_bottom_temp, next_node_energy)
+            # Need to rise above cold states
+            if next_node_thermocline > self.params.num_layers:
+                # At this point we know we have
+                next_node_top_temp = 110
+                next_node_bottom_temp = 100
 
-        # If there is no bottom layer but there is a middle layer
-        elif n.thermocline1 < self.params.num_layers:     
-            heated_middle = n.middle_temp + self.params.delta_T(n.middle_temp)
-            if print_detail: print(f"heated_middle = {heated_middle}")
-
-            # Find the new top temperature after mixing (or not)
-            if heated_middle < n.top_temp:
-                top_and_heated_middle_mixed = (
-                    (n.top_temp*n.thermocline1 + heated_middle*(self.params.num_layers-n.thermocline1))/self.params.num_layers
-                    )
-                # for k in range(1,n.thermocline1+1):
-                #     top_and_heated_middle_mixed = (n.top_temp*n.thermocline1 + heated_middle*k) / (n.thermocline1+k)
-                #     test_thermocline = self.find_thermocline(top_and_heated_middle_mixed, n.middle_temp, next_node_energy)
-                #     if test_thermocline <= self.params.num_layers:
-                #         break
-                if print_detail: print(f"top_and_heated_middle_mixed = {round(top_and_heated_middle_mixed,1)}")
-                next_node_top_temp = round(top_and_heated_middle_mixed)
-            else:
-                next_node_top_temp = heated_middle   
-
-            # Bottom layer is the middle
-            next_node_bottom_temp = n.middle_temp
-
-        # If there is only a top layer
         else:
-            heated_top = n.top_temp + self.params.delta_T(n.top_temp)
-            if print_detail: print(f"heated_top = {heated_top}")
-            next_node_top_temp = heated_top   
-            # Bottom layer is the top
-            next_node_bottom_temp = n.top_temp
+            # If there is a bottom layer
+            if n.thermocline2 < self.params.num_layers:
+                heated_bottom = n.bottom_temp + self.params.delta_T(n.bottom_temp)
+                if print_detail: print(f"heated_bottom = {heated_bottom}")
+
+                # Find the new top temperature after mixing (or not)
+                if heated_bottom < n.top_temp:
+                    top_and_middle_mixed = (n.top_temp*n.thermocline1 + n.middle_temp*(n.thermocline2-n.thermocline1))/n.thermocline2
+                    if print_detail: print(f"top_and_middle_mixed = {top_and_middle_mixed}")
+                    top_and_middle_and_heated_bottom_mixed = (
+                        (top_and_middle_mixed*n.thermocline2 + heated_bottom*(self.params.num_layers-n.thermocline2))/self.params.num_layers
+                        )
+                    if print_detail: print(f"top_and_middle_and_heated_bottom_mixed = {round(top_and_middle_and_heated_bottom_mixed,1)}")
+                    next_node_top_temp = round(top_and_middle_and_heated_bottom_mixed)
+                else:
+                    next_node_top_temp = heated_bottom   
+                
+                # Bottom layer stays the same
+                next_node_bottom_temp = n.bottom_temp
+
+            # If there is no bottom layer but there is a middle layer
+            elif n.thermocline1 < self.params.num_layers:     
+                heated_middle = n.middle_temp + self.params.delta_T(n.middle_temp)
+                if print_detail: print(f"heated_middle = {heated_middle}")
+
+                # Find the new top temperature after mixing (or not)
+                if heated_middle < n.top_temp:
+                    top_and_heated_middle_mixed = (
+                        (n.top_temp*n.thermocline1 + heated_middle*(self.params.num_layers-n.thermocline1))/self.params.num_layers
+                        )
+                    if print_detail: print(f"top_and_heated_middle_mixed = {round(top_and_heated_middle_mixed,1)}")
+                    next_node_top_temp = round(top_and_heated_middle_mixed)
+                else:
+                    next_node_top_temp = heated_middle   
+
+                # Bottom layer is the middle
+                next_node_bottom_temp = n.middle_temp
+
+            # If there is only a top layer
+            else:
+                heated_top = n.top_temp + self.params.delta_T(n.top_temp)
+                if print_detail: print(f"heated_top = {heated_top}")
+                next_node_top_temp = heated_top   
+                # Bottom layer is the top
+                next_node_bottom_temp = n.top_temp
 
         # Starting with that top and current bottom, find the thermocline position that matches the next node energy
         next_node_thermocline = self.find_thermocline(next_node_top_temp, next_node_bottom_temp, next_node_energy)
@@ -442,26 +463,38 @@ class DGraph():
             next_node_thermocline = self.find_thermocline(next_node_top_temp, next_node_bottom_temp, next_node_energy)
             if print_detail: print(f"Next node ({next_node_top_temp}, {next_node_bottom_temp}) thermocline: {next_node_thermocline}")
 
-        if next_node_bottom_temp not in self.bottom_temps:
-            node_next_true = DNode(
-                parameters = self.params,
-                time_slice = n.time_slice+1,
-                top_temp = next_node_top_temp if next_node_thermocline>0 else next_node_bottom_temp,
-                middle_temp = next_node_bottom_temp if next_node_thermocline>0 else None,
-                bottom_temp = n.bottom_temp,
-                thermocline1 = next_node_thermocline if next_node_thermocline>0 else self.params.num_layers,
-                thermocline2 = self.params.num_layers if next_node_thermocline>0 else None,
-            )
-        else:
+        if next_node_top_temp <= 100:
             node_next_true = DNode(
                 parameters = self.params,
                 time_slice = n.time_slice+1,
                 top_temp = next_node_top_temp,
-                middle_temp = None,
+                middle_temp = next_node_bottom_temp,
                 bottom_temp = next_node_bottom_temp,
                 thermocline1 = next_node_thermocline,
-                thermocline2 = None
+                thermocline2 = next_node_thermocline,
             )
+        
+        else:
+            if next_node_bottom_temp not in self.bottom_temps:
+                node_next_true = DNode(
+                    parameters = self.params,
+                    time_slice = n.time_slice+1,
+                    top_temp = next_node_top_temp if next_node_thermocline>0 else next_node_bottom_temp,
+                    middle_temp = next_node_bottom_temp if next_node_thermocline>0 else None,
+                    bottom_temp = n.bottom_temp,
+                    thermocline1 = next_node_thermocline if next_node_thermocline>0 else self.params.num_layers,
+                    thermocline2 = self.params.num_layers if next_node_thermocline>0 else None,
+                )
+            else:
+                node_next_true = DNode(
+                    parameters = self.params,
+                    time_slice = n.time_slice+1,
+                    top_temp = next_node_top_temp,
+                    middle_temp = None,
+                    bottom_temp = next_node_bottom_temp,
+                    thermocline1 = next_node_thermocline,
+                    thermocline2 = None
+                )
 
         node_next = self.find_closest_node(node_next_true, print_detail)
         if print_detail: print(f"True: {node_next_true}, associated to {node_next}")
@@ -473,14 +506,51 @@ class DGraph():
         if top==bottom: top+=1  
         return int(1/(top-bottom)*(energy/(m_layer_kg*4.187/3600)-(-0.5*top+(self.params.num_layers+0.5)*bottom)))
     
-    def discharge(self, n: DNode, store_heat_in: float, print_detail: bool=False) -> DNode:
+    def discharge(self, n: DNode, store_heat_in: float, print_detail: bool) -> DNode:
         next_node_energy = n.energy + store_heat_in
         candidate_nodes: List[DNode] = []
         # Starting from current node
         th1 = n.thermocline1-1
         th2 = n.thermocline2-1
-        if th1==0 and th2==0:
-            return min(self.nodes[n.time_slice+1], key=lambda x: x.energy)
+
+        # Node to discharge is a cold node
+        if n.top_temp <= 100:
+            if n.top_temp==80 and th1==0:
+                return min(self.nodes[n.time_slice+1], key=lambda x: x.energy)
+            # Go through the top being at 100 or at 80
+            while th1>0:
+                if print_detail: print(f"Looking for {n.top_temp}({th1}){n.middle_temp}({th2}){n.bottom_temp}")
+                node = [
+                    x for x in self.nodes[n.time_slice+1]
+                    if x.top_temp==n.top_temp
+                    and x.middle_temp==n.middle_temp
+                    and x.bottom_temp==n.bottom_temp
+                    and x.thermocline1==th1
+                    and x.thermocline2==th2
+                ][0]
+                th1 += -1
+                th2 += -1
+                candidate_nodes.append(node)
+            # If the top was at 100 try now 80
+            if n.top_temp == 100:
+                th1 = self.params.num_layers
+                th2 = self.params.num_layers
+                while th1>0:
+                    if print_detail: print(f"Looking for {n.top_temp-20}({th1}){n.middle_temp-20}({th2}){n.bottom_temp-20}")
+                    node = [
+                        x for x in self.nodes[n.time_slice+1]
+                        if x.top_temp==n.top_temp-20
+                        and x.middle_temp==n.middle_temp-20
+                        and x.bottom_temp==n.bottom_temp-20
+                        and x.thermocline1==th1
+                        and x.thermocline2==th2
+                    ][0]
+                    th1 += -1
+                    th2 += -1
+                    candidate_nodes.append(node)
+            closest_node = min([x for x in candidate_nodes], key=lambda x: abs(x.energy-next_node_energy))
+            return closest_node
+
         # Moving up step by step until the end of the top layer
         while th1>0:
             if print_detail: print(f"Looking for {n.top_temp}({th1}){n.middle_temp}({th2}){n.bottom_temp}")
@@ -495,10 +565,52 @@ class DGraph():
             th1 += -1
             th2 += -1
             candidate_nodes.append(node)
+
+        # There is no middle layer (cold nodes reached)
+        if n.middle_temp == n.bottom_temp or (n.bottom_temp==100 and th1==th2):
+            # Go through the top being at 100
+            top_temp = 100
+            middle_temp = 80
+            bottom_temp = 80
+            th1 = self.params.num_layers
+            th2 = self.params.num_layers
+            while th1>0:
+                if print_detail: print(f"Looking for {top_temp}({th1}){middle_temp}({th2}){bottom_temp}")
+                node = [
+                    x for x in self.nodes[n.time_slice+1]
+                    if x.top_temp==top_temp
+                    and x.middle_temp==middle_temp
+                    and x.bottom_temp==bottom_temp
+                    and x.thermocline1==th1
+                    and x.thermocline2==th2
+                ][0]
+                th1 += -1
+                th2 += -1
+                candidate_nodes.append(node)
+            # Go through the top being at 80
+            top_temp = 80
+            middle_temp = 60
+            bottom_temp = 60
+            th1 = self.params.num_layers
+            th2 = self.params.num_layers
+            while th1>0:
+                if print_detail: print(f"Looking for {top_temp}({th1}){middle_temp}({th2}){bottom_temp}")
+                node = [
+                    x for x in self.nodes[n.time_slice+1]
+                    if x.top_temp==top_temp
+                    and x.middle_temp==middle_temp
+                    and x.bottom_temp==bottom_temp
+                    and x.thermocline1==th1
+                    and x.thermocline2==th2
+                ][0]
+                th1 += -1
+                th2 += -1
+                candidate_nodes.append(node)
+            closest_node = min([x for x in candidate_nodes], key=lambda x: abs(x.energy-next_node_energy))
+            return closest_node
+
         # Moving up step by step until the end of the middle layer
         top_temp = n.middle_temp
-        if top_temp==100:
-            return min(self.nodes[n.time_slice+1], key=lambda x: x.energy)
         th1 = th2
         while th1>0:
             if print_detail: print(f"Looking for {top_temp}({th1})-({th2}){n.bottom_temp}")
@@ -516,7 +628,7 @@ class DGraph():
         closest_node = min([x for x in candidate_nodes], key=lambda x: abs(x.energy-next_node_energy))
         return closest_node
         
-    def find_closest_node(self, true_n: DNode, print_detail:bool=False) -> DNode:
+    def find_closest_node(self, true_n: DNode, print_detail: bool) -> DNode:
         if print_detail: print(f"Looking for closest of {true_n}")
         if true_n.top_temp > max(self.top_temps):
             return min(self.nodes[true_n.time_slice], key=lambda x: abs(x.energy-self.top_node_energy))
@@ -529,6 +641,10 @@ class DGraph():
             closest_middle_temp = closest_top_temp-MIN_DIFFERENCE_F if closest_top_temp>100+2*MIN_DIFFERENCE_F else 100
         if closest_top_temp == 120 and closest_middle_temp==100:
             closest_middle_temp = 110
+        if true_n.top_temp<=100:
+            closest_top_temp = true_n.top_temp
+            closest_middle_temp = true_n.top_temp-20
+            closest_bottom_temp = true_n.top_temp-20
         if print_detail: print(f"{closest_top_temp},{closest_middle_temp},{closest_bottom_temp}")
         if true_n.thermocline1==true_n.thermocline2:
             nodes_with_similar_temps = [
@@ -656,7 +772,7 @@ class DGraph():
         ax2.set_ylim([m,max(self.params.elec_price_forecast)*1.3])
         
         # Bottom plot
-        norm = Normalize(vmin=80, vmax=180)
+        norm = Normalize(vmin=60, vmax=180)
         cmap = matplotlib.colormaps['Reds']
         tank_top_colors = [cmap(norm(x)) for x in sp_top_temp]
         tank_middle_colors = [cmap(norm(x)) for x in sp_middle_temp]
@@ -690,6 +806,8 @@ class DGraph():
             bar_color = 'white'
             if i < len(self.params.rswt_forecast) and self.params.rswt_forecast[i] <= sp_top_temp[i]:
                 bar_color = 'green'
+            elif sp_top_temp[i]<100:
+                bar_color = 'gray'
             ax[1].text(bar.get_x() + bar.get_width() / 2, bar.get_y() + height / 2, 
                     f'{int(sp_top_temp[i])}', ha='center', va='center', color=bar_color, fontsize=5)
         for i, bar in enumerate(bars_middle):
@@ -697,6 +815,8 @@ class DGraph():
             bar_color = 'white'
             if i < len(self.params.rswt_forecast) and self.params.rswt_forecast[i] <= sp_middle_temp[i]:
                 bar_color = 'green'
+            elif sp_middle_temp[i]<100:
+                bar_color = 'gray'
             if height>1:
                 ax[1].text(bar.get_x() + bar.get_width() / 2, bar.get_y() + height / 2, 
                         f'{int(sp_middle_temp[i])}', ha='center', va='center', color=bar_color, fontsize=5)
@@ -705,6 +825,8 @@ class DGraph():
             bar_color = 'white'
             if i < len(self.params.rswt_forecast) and self.params.rswt_forecast[i] <= sp_bottom_temp[i]:
                 bar_color = 'green'
+            elif sp_bottom_temp[i]<100:
+                bar_color = 'gray'
             ax[1].text(bar.get_x() + bar.get_width() / 2, bar.get_y() + height / 2, 
                     f'{int(sp_bottom_temp[i])}', ha='center', va='center', color=bar_color, fontsize=5)
         ax3 = ax[1].twinx()
@@ -713,13 +835,13 @@ class DGraph():
         ax3.set_ylim([-1,101])
 
         # Color bar
-        boundaries = sorted(list(range(100,175,5)), reverse=False)
+        boundaries = sorted(list(range(60,175,5)), reverse=False)
         colors = [plt.cm.Reds(i/(len(boundaries)-1)) for i in range(len(boundaries))]
         cmap = ListedColormap(colors)
         norm = BoundaryNorm(boundaries, cmap.N, clip=True)
         sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
         cbar = plt.colorbar(sm, ax=ax, orientation='horizontal', fraction=0.06, pad=0.15, alpha=0.7)
-        cbar.set_ticks(sorted(list(range(100,175,5)), reverse=False))
+        cbar.set_ticks(sorted(list(range(60,175,5)), reverse=False))
         cbar.set_label('Temperature [F]')
         
         plt.savefig('plot.png', dpi=130)
@@ -805,7 +927,7 @@ if __name__ == '__main__':
         )
     flo_params = FloParamsHouse0(**message.payload)
     flo_params.NumLayers = 6
-    flo_params.InitialThermocline = 3
+    flo_params.InitialThermocline = int(flo_params.NumLayers/2)
     
     st = time.time()
     g = DGraph(flo_params)
