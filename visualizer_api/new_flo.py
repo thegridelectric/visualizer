@@ -15,7 +15,8 @@ from typing import Optional
 import time
 
 MIN_DIFFERENCE_F = 10
-STEP_F = 5
+STEP_F = 10
+NUM_LAYERS = 12
 
 def to_kelvin(t):
     return (t-32)*5/9 + 273.15
@@ -28,7 +29,7 @@ class DParams():
         self.config = config
         self.start_time = config.StartUnixS
         self.horizon = config.HorizonHours
-        self.num_layers = config.NumLayers
+        self.num_layers = min(config.NumLayers, NUM_LAYERS)
         self.storage_volume = config.StorageVolumeGallons
         self.max_hp_elec_in = config.HpMaxElecKw
         self.min_hp_elec_in = config.HpMinElecKw
@@ -226,8 +227,12 @@ class DGraph():
         self.params = DParams(config)
         self.nodes: Dict[int, List[DNode]] = {h: [] for h in range(self.params.horizon+1)}
         self.edges: Dict[DNode, List[DEdge]] = {}
+        self.time_spent_in_charge = 0
+        self.time_spent_in_discharge = 0
+        st = time.time()
         self.create_nodes()
         self.create_edges()
+        self.time_spent_in_total = time.time()-st
 
     def create_nodes(self):
         if STEP_F == 5:
@@ -325,9 +330,9 @@ class DGraph():
 
         self.top_node_energy = DNode(
             time_slice=0,
-            top_temp=175,
+            top_temp=175 if STEP_F==5 else 170,
             thermocline1=self.params.num_layers,
-            bottom_temp=175,
+            bottom_temp=175 if STEP_F==5 else 170,
             parameters=self.params
         ).energy
 
@@ -377,10 +382,14 @@ class DGraph():
     def model_accurately(self, node_now:DNode, store_heat_in:float, print_detail:bool=False):
         if store_heat_in > 0:
             if print_detail: print(f"Charge {node_now} by {store_heat_in}")
+            st = time.time()
             next_node = self.charge(node_now, store_heat_in, print_detail)
+            self.time_spent_in_charge += (time.time()-st)
         elif store_heat_in < -1:
             if print_detail: print(f"Discharge {node_now} by {-store_heat_in}")
+            st = time.time()
             next_node = self.discharge(node_now, store_heat_in, print_detail)
+            self.time_spent_in_discharge += (time.time()-st)
         else:
             if print_detail: print("IDLE")
             next_node = [
@@ -538,6 +547,8 @@ class DGraph():
                 th1 += -1
                 th2 += -1
                 candidate_nodes.append(node)
+                if next_node_energy >= node.energy:
+                    break
             # If the top was at 100 try now 80
             if n.top_temp == 100:
                 th1 = self.params.num_layers
@@ -556,40 +567,21 @@ class DGraph():
                     th1 += -1
                     th2 += -1
                     candidate_nodes.append(node)
+                    if next_node_energy >= node.energy:
+                        break
             closest_node = min([x for x in candidate_nodes], key=lambda x: abs(x.energy-next_node_energy))
             return closest_node
 
-        # Moving up step by step until the end of the top layer
-        while th1>0:
-            if print_detail: print(f"Looking for {n.top_temp}({th1}){n.middle_temp}({th2}){n.bottom_temp}")
-            node = [
-                x for x in self.nodes[n.time_slice+1]
-                if x.top_temp==n.top_temp
-                and x.middle_temp==n.middle_temp
-                and x.bottom_temp==n.bottom_temp
-                and x.thermocline1==th1
-                and x.thermocline2==th2
-            ][0]
-            if print_detail: print(f"Energy: {round(node.energy,2)}")
-            th1 += -1
-            th2 += -1
-            candidate_nodes.append(node)
-
-        # There is no middle layer (cold nodes reached)
-        if n.middle_temp == n.bottom_temp or (n.bottom_temp==100 and th1==th2):
-            # Go through the top being at 100
-            top_temp = 100
-            middle_temp = 80
-            bottom_temp = 80
-            th1 = self.params.num_layers
-            th2 = self.params.num_layers
+        need_to_break = False
+        while True:
+            # Moving up step by step until the end of the top layer
             while th1>0:
-                if print_detail: print(f"Looking for {top_temp}({th1}){middle_temp}({th2}){bottom_temp}")
+                if print_detail: print(f"Looking for {n.top_temp}({th1}){n.middle_temp}({th2}){n.bottom_temp}")
                 node = [
                     x for x in self.nodes[n.time_slice+1]
-                    if x.top_temp==top_temp
-                    and x.middle_temp==middle_temp
-                    and x.bottom_temp==bottom_temp
+                    if x.top_temp==n.top_temp
+                    and x.middle_temp==n.middle_temp
+                    and x.bottom_temp==n.bottom_temp
                     and x.thermocline1==th1
                     and x.thermocline2==th2
                 ][0]
@@ -597,19 +589,69 @@ class DGraph():
                 th1 += -1
                 th2 += -1
                 candidate_nodes.append(node)
-            # Go through the top being at 80
-            top_temp = 80
-            middle_temp = 60
-            bottom_temp = 60
-            th1 = self.params.num_layers
-            th2 = self.params.num_layers
+                need_to_break = True
+                if next_node_energy >= node.energy:
+                    break
+            if need_to_break: break
+
+            # There is no middle layer (cold nodes reached)
+            if n.middle_temp == n.bottom_temp or (n.bottom_temp==100 and th1==th2):
+                # Go through the top being at 100
+                top_temp = 100
+                middle_temp = 80
+                bottom_temp = 80
+                th1 = self.params.num_layers
+                th2 = self.params.num_layers
+                while th1>0:
+                    if print_detail: print(f"Looking for {top_temp}({th1}){middle_temp}({th2}){bottom_temp}")
+                    node = [
+                        x for x in self.nodes[n.time_slice+1]
+                        if x.top_temp==top_temp
+                        and x.middle_temp==middle_temp
+                        and x.bottom_temp==bottom_temp
+                        and x.thermocline1==th1
+                        and x.thermocline2==th2
+                    ][0]
+                    if print_detail: print(f"Energy: {round(node.energy,2)}")
+                    th1 += -1
+                    th2 += -1
+                    candidate_nodes.append(node)
+                    if next_node_energy >= node.energy:
+                        break
+                # Go through the top being at 80
+                top_temp = 80
+                middle_temp = 60
+                bottom_temp = 60
+                th1 = self.params.num_layers
+                th2 = self.params.num_layers
+                while th1>0:
+                    if print_detail: print(f"Looking for {top_temp}({th1}){middle_temp}({th2}){bottom_temp}")
+                    node = [
+                        x for x in self.nodes[n.time_slice+1]
+                        if x.top_temp==top_temp
+                        and x.middle_temp==middle_temp
+                        and x.bottom_temp==bottom_temp
+                        and x.thermocline1==th1
+                        and x.thermocline2==th2
+                    ][0]
+                    if print_detail: print(f"Energy: {round(node.energy,2)}")
+                    th1 += -1
+                    th2 += -1
+                    candidate_nodes.append(node)
+                    if next_node_energy >= node.energy:
+                        break
+                closest_node = min([x for x in candidate_nodes], key=lambda x: abs(x.energy-next_node_energy))
+                return closest_node
+
+            # Moving up step by step until the end of the middle layer
+            top_temp = n.middle_temp
+            th1 = th2
             while th1>0:
-                if print_detail: print(f"Looking for {top_temp}({th1}){middle_temp}({th2}){bottom_temp}")
+                if print_detail: print(f"Looking for {top_temp}({th1})-({th2}){n.bottom_temp}")
                 node = [
                     x for x in self.nodes[n.time_slice+1]
                     if x.top_temp==top_temp
-                    and x.middle_temp==middle_temp
-                    and x.bottom_temp==bottom_temp
+                    and x.bottom_temp==n.bottom_temp
                     and x.thermocline1==th1
                     and x.thermocline2==th2
                 ][0]
@@ -617,37 +659,64 @@ class DGraph():
                 th1 += -1
                 th2 += -1
                 candidate_nodes.append(node)
-            closest_node = min([x for x in candidate_nodes], key=lambda x: abs(x.energy-next_node_energy))
-            return closest_node
+                if next_node_energy >= node.energy:
+                    break
+            break
 
-        # Moving up step by step until the end of the middle layer
-        top_temp = n.middle_temp
-        th1 = th2
-        while th1>0:
-            if print_detail: print(f"Looking for {top_temp}({th1})-({th2}){n.bottom_temp}")
-            node = [
-                x for x in self.nodes[n.time_slice+1]
-                if x.top_temp==top_temp
-                and x.bottom_temp==n.bottom_temp
-                and x.thermocline1==th1
-                and x.thermocline2==th2
-            ][0]
-            if print_detail: print(f"Energy: {round(node.energy,2)}")
-            th1 += -1
-            th2 += -1
-            candidate_nodes.append(node)
         # Find the candidate node which has closest energy to the target
         closest_node = min([x for x in candidate_nodes], key=lambda x: abs(x.energy-next_node_energy))
         return closest_node
         
     def find_closest_node(self, true_n: DNode, print_detail: bool) -> DNode:
         if print_detail: print(f"Looking for closest of {true_n}")
-        if true_n.top_temp > max(self.top_temps):
-            return min(self.nodes[true_n.time_slice], key=lambda x: abs(x.energy-self.top_node_energy))
+
         # Find closest available top, middle and bottom temps
         closest_top_temp = min(self.top_temps, key=lambda x: abs(float(x)-true_n.top_temp))
         closest_middle_temp = min(self.middle_temps, key=lambda x: abs(float(x)-true_n.middle_temp))
         closest_bottom_temp = min(self.bottom_temps, key=lambda x: abs(float(x)-true_n.bottom_temp))
+
+        # Top temperature is impossible to reach
+        if true_n.top_temp > max(self.top_temps):
+            nodes_with_similar_temps = [
+                n for n in self.nodes[true_n.time_slice] if 
+                n.top_temp == max(self.top_temps) and
+                n.middle_temp==closest_middle_temp and
+                n.bottom_temp==closest_bottom_temp and
+                n.thermocline2==true_n.thermocline2
+            ]
+            closest_node = min(nodes_with_similar_temps, key = lambda x: abs(x.energy-true_n.energy))
+            return closest_node
+
+        # Both top and middle were rounded above
+        if closest_top_temp > true_n.top_temp and closest_middle_temp > true_n.middle_temp and true_n.bottom_temp==100:
+            nodes_with_similar_temps = [
+                n for n in self.nodes[true_n.time_slice] if 
+                n.top_temp<=closest_top_temp and
+                n.top_temp>=closest_top_temp-STEP_F and
+                n.middle_temp<=closest_middle_temp and
+                n.middle_temp>=closest_middle_temp-STEP_F and
+                n.bottom_temp==closest_bottom_temp and
+                n.thermocline2==true_n.thermocline2
+            ]
+            closest_node = min(nodes_with_similar_temps, key = lambda x: abs(x.energy-true_n.energy))
+            return closest_node
+        
+        # Both top and middle were rounded below
+        if (closest_top_temp < true_n.top_temp and closest_bottom_temp < true_n.middle_temp 
+            and true_n.bottom_temp==100):
+            nodes_with_similar_temps = [
+                n for n in self.nodes[true_n.time_slice] if 
+                n.top_temp<=closest_top_temp+STEP_F and
+                n.top_temp>=closest_top_temp and
+                n.middle_temp<=closest_middle_temp+STEP_F and
+                n.middle_temp>=closest_middle_temp and
+                n.bottom_temp==closest_bottom_temp and
+                n.thermocline2==true_n.thermocline2
+            ]
+            if print_detail: print(nodes_with_similar_temps)
+            closest_node = min(nodes_with_similar_temps, key = lambda x: abs(x.energy-true_n.energy))
+            return closest_node
+
         # Need at least MIN_DIFFERENCE_F between top and middle
         if closest_top_temp == closest_middle_temp or closest_top_temp-5 == closest_middle_temp:
             closest_middle_temp = closest_top_temp-MIN_DIFFERENCE_F if closest_top_temp>100+2*MIN_DIFFERENCE_F else 100
@@ -730,6 +799,10 @@ class DGraph():
         return self.pq_pairs
 
     def plot(self, show=True):
+        print(f"Time in charge: {round(self.time_spent_in_charge,1)}")
+        print(f"Time in discharge: {round(self.time_spent_in_discharge,1)}")
+        print(f"Time doing other stuff: {round(self.time_spent_in_total-self.time_spent_in_charge-self.time_spent_in_discharge,1)}")
+        print(f"Time in TOTAL: {round(self.time_spent_in_total,1)}")
         # Walk along the shortest path (sp)
         sp_top_temp = []
         sp_middle_temp = []
@@ -748,9 +821,15 @@ class DGraph():
                 edge_i = [e for e in self.edges[node_i] if e.head==node_i.next_node][0]
                 losses = self.params.storage_losses_percent/100 * (node_i.energy-self.bottom_node_energy)
                 energy_to_store = edge_i.hp_heat_out-self.params.load_forecast[node_i.time_slice]-losses
-                _ = self.model_accurately(node_i, energy_to_store, print_detail=False)
-                print(f"{edge_i} + to_store: {round(energy_to_store,2)} + energydiff: {round(edge_i.head.energy-edge_i.tail.energy,2)}")
+                model_energy_to_store = edge_i.head.energy-edge_i.tail.energy
+                if model_energy_to_store>energy_to_store:
+                    print(f"\n{edge_i}, model thinks {abs(round(model_energy_to_store-energy_to_store,1))} kWh more in store than reality")
+                elif model_energy_to_store<energy_to_store:
+                    print(f"\n{edge_i}, model thinks {abs(round(model_energy_to_store-energy_to_store,1))} kWh less in store than reality")
+                else:
+                    print(f"\n{edge_i}, model could not be more accurate!")
                 sp_hp_heat_out.append(edge_i.hp_heat_out)
+                _ = self.model_accurately(node_i, energy_to_store, print_detail=True)
             sp_top_temp.append(node_i.top_temp)
             sp_bottom_temp.append(node_i.bottom_temp)
             sp_thermocline.append(node_i.thermocline1)
@@ -938,8 +1017,8 @@ if __name__ == '__main__':
             message_created_ms=data.get("MessageCreatedMs")
         )
     flo_params = FloParamsHouse0(**message.payload)
-    flo_params.NumLayers = 6
-    flo_params.InitialThermocline = int(flo_params.NumLayers/2)
+    flo_params.NumLayers = NUM_LAYERS
+    flo_params.InitialThermocline = int(NUM_LAYERS/2)
     
     st = time.time()
     g = DGraph(flo_params)
