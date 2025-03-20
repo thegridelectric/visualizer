@@ -15,6 +15,7 @@ from typing import Optional
 import time
 
 MIN_DIFFERENCE_F = 10
+STEP_F = 5
 
 def to_kelvin(t):
     return (t-32)*5/9 + 273.15
@@ -27,7 +28,7 @@ class DParams():
         self.config = config
         self.start_time = config.StartUnixS
         self.horizon = config.HorizonHours
-        self.num_layers = min(config.NumLayers,6)
+        self.num_layers = config.NumLayers
         self.storage_volume = config.StorageVolumeGallons
         self.max_hp_elec_in = config.HpMaxElecKw
         self.min_hp_elec_in = config.HpMinElecKw
@@ -217,7 +218,7 @@ class DEdge():
         self.fake_cost: Optional[float] = None
 
     def __repr__(self):
-        return f"Edge[{self.tail} --cost:{round(self.cost,3)}, heat:{round(self.hp_heat_out,2)}--> {self.head}]"
+        return f"Edge[{self.tail} --cost:{round(self.cost,3)}, hp:{round(self.hp_heat_out,2)}--> {self.head}]"
     
 
 class DGraph():
@@ -229,8 +230,11 @@ class DGraph():
         self.create_edges()
 
     def create_nodes(self):
-        self.top_temps = sorted(list(range(110,180,5)), reverse=True) # 175, 170, ..., 110
-        self.middle_temps = [x-MIN_DIFFERENCE_F for x in self.top_temps[:-2]]
+        if STEP_F == 5:
+            self.top_temps = sorted(list(range(110,170+2*STEP_F,STEP_F)), reverse=True) # 175, 170, ..., 110
+        else:
+            self.top_temps = sorted(list(range(110,170+STEP_F,STEP_F)), reverse=True) # 175, 170, ..., 110
+        self.middle_temps = [x-MIN_DIFFERENCE_F for x in (self.top_temps[:-1] if STEP_F==10 else self.top_temps[:-2])] 
         self.bottom_temps = [100]
         # Initial node temperatures
         initial_top_temp = min(self.top_temps+[100,80], key=lambda x: abs(x-self.params.initial_top_temp))
@@ -256,7 +260,7 @@ class DGraph():
         print(f"Initial node: {self.initial_node}")
 
         self.storage_full = False
-        if self.params.initial_top_temp > max(self.top_temps)-5:
+        if STEP_F == 5 and self.params.initial_top_temp > max(self.top_temps)-STEP_F:
             print("Storage is currently full, don't allow any node with more energy than this")
             self.storage_full = True
 
@@ -276,7 +280,8 @@ class DGraph():
         print(f"=> {len(temperature_combinations)} temperature combinations")
 
         # Add cases where we can't have t >= m+10 >= b+10
-        temperature_combinations += [(115,100,100), (110,100,100)]
+        if STEP_F==5: temperature_combinations += [(115,100,100)]
+        temperature_combinations += [(110,100,100)]
 
         # Add colder temperatures
         temperature_combinations += [(100,80,80), (80,60,60)]
@@ -375,7 +380,7 @@ class DGraph():
             next_node = self.charge(node_now, store_heat_in, print_detail)
         elif store_heat_in < -1:
             if print_detail: print(f"Discharge {node_now} by {-store_heat_in}")
-            next_node = self.discharge(node_now, -store_heat_in, print_detail)
+            next_node = self.discharge(node_now, store_heat_in, print_detail)
         else:
             if print_detail: print("IDLE")
             next_node = [
@@ -509,6 +514,7 @@ class DGraph():
     def discharge(self, n: DNode, store_heat_in: float, print_detail: bool) -> DNode:
         next_node_energy = n.energy + store_heat_in
         candidate_nodes: List[DNode] = []
+        if print_detail: print(f"Current energy {round(n.energy,2)}, looking for {round(next_node_energy,2)}")
         # Starting from current node
         th1 = n.thermocline1-1
         th2 = n.thermocline2-1
@@ -528,6 +534,7 @@ class DGraph():
                     and x.thermocline1==th1
                     and x.thermocline2==th2
                 ][0]
+                if print_detail: print(f"Energy: {round(node.energy,2)}")
                 th1 += -1
                 th2 += -1
                 candidate_nodes.append(node)
@@ -545,6 +552,7 @@ class DGraph():
                         and x.thermocline1==th1
                         and x.thermocline2==th2
                     ][0]
+                    if print_detail: print(f"Energy: {round(node.energy,2)}")
                     th1 += -1
                     th2 += -1
                     candidate_nodes.append(node)
@@ -562,6 +570,7 @@ class DGraph():
                 and x.thermocline1==th1
                 and x.thermocline2==th2
             ][0]
+            if print_detail: print(f"Energy: {round(node.energy,2)}")
             th1 += -1
             th2 += -1
             candidate_nodes.append(node)
@@ -584,6 +593,7 @@ class DGraph():
                     and x.thermocline1==th1
                     and x.thermocline2==th2
                 ][0]
+                if print_detail: print(f"Energy: {round(node.energy,2)}")
                 th1 += -1
                 th2 += -1
                 candidate_nodes.append(node)
@@ -603,6 +613,7 @@ class DGraph():
                     and x.thermocline1==th1
                     and x.thermocline2==th2
                 ][0]
+                if print_detail: print(f"Energy: {round(node.energy,2)}")
                 th1 += -1
                 th2 += -1
                 candidate_nodes.append(node)
@@ -621,6 +632,7 @@ class DGraph():
                 and x.thermocline1==th1
                 and x.thermocline2==th2
             ][0]
+            if print_detail: print(f"Energy: {round(node.energy,2)}")
             th1 += -1
             th2 += -1
             candidate_nodes.append(node)
@@ -734,10 +746,10 @@ class DGraph():
                 sp_hp_heat_out.append(edge_i.hp_heat_out)
             else:
                 edge_i = [e for e in self.edges[node_i] if e.head==node_i.next_node][0]
-                print(f"{edge_i}")
                 losses = self.params.storage_losses_percent/100 * (node_i.energy-self.bottom_node_energy)
                 energy_to_store = edge_i.hp_heat_out-self.params.load_forecast[node_i.time_slice]-losses
                 _ = self.model_accurately(node_i, energy_to_store, print_detail=False)
+                print(f"{edge_i} + to_store: {round(energy_to_store,2)} + energydiff: {round(edge_i.head.energy-edge_i.tail.energy,2)}")
                 sp_hp_heat_out.append(edge_i.hp_heat_out)
             sp_top_temp.append(node_i.top_temp)
             sp_bottom_temp.append(node_i.bottom_temp)
@@ -772,7 +784,7 @@ class DGraph():
         ax2.set_ylim([m,max(self.params.elec_price_forecast)*1.3])
         
         # Bottom plot
-        norm = Normalize(vmin=60, vmax=180)
+        norm = Normalize(vmin=60, vmax=175+STEP_F)
         cmap = matplotlib.colormaps['Reds']
         tank_top_colors = [cmap(norm(x)) for x in sp_top_temp]
         tank_middle_colors = [cmap(norm(x)) for x in sp_middle_temp]
@@ -935,7 +947,7 @@ if __name__ == '__main__':
     g.generate_bid()
     print(f"Built graph and solved Dijkstra in {round(time.time()-st,1)} seconds")
     g.plot()
-    g.export_to_excel()
+    # g.export_to_excel()
 
     # Compare with original FLO
     # st = time.time()
