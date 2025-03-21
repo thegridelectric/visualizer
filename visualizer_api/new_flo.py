@@ -16,7 +16,7 @@ import time
 
 MIN_DIFFERENCE_F = 10
 STEP_F = 10
-NUM_LAYERS = 24
+NUM_LAYERS = 12
 
 def to_kelvin(t):
     return (t-32)*5/9 + 273.15
@@ -165,6 +165,9 @@ class DNode():
         self.energy = self.get_energy()
         self.index = None
 
+    def to_string(self):
+        return f"{self.top_temp}({self.thermocline1}){self.middle_temp}({self.thermocline2}){self.bottom_temp}"
+
     def __repr__(self):
         return f"[{self.time_slice}]{self.top_temp}({self.thermocline1}){self.middle_temp}({self.thermocline2}){self.bottom_temp}"
         
@@ -231,6 +234,7 @@ class DGraph():
         self.time_spent_in_discharge = 0
         st = time.time()
         self.create_nodes()
+        self.precompute_next_nodes()
         self.create_edges()
         self.time_spent_in_total = time.time()-st
 
@@ -370,7 +374,7 @@ class DGraph():
 
                 for hp_heat_out in allowed_hp_heat_out:
                     store_heat_in = hp_heat_out - load - losses
-                    node_next = self.model_accurately(node_now, store_heat_in)
+                    node_next = self.find_next_node(node_now, store_heat_in)
                     cost = self.params.elec_price_forecast[h]/100*hp_heat_out/cop
                     if store_heat_in < 0 and load > 0:
                         if node_now.top_temp<rswt or node_next.top_temp<rswt:
@@ -379,7 +383,37 @@ class DGraph():
 
             print(f"Done for hour {h}")
 
-    def model_accurately(self, node_now:DNode, store_heat_in:float, print_detail:bool=False):
+    def precompute_next_nodes(self):
+        max_hp_out = int(self.params.max_hp_elec_in * self.params.COP(50)) * 10
+        self.available_store_heat_in = [x/10 for x in range(-max_hp_out, max_hp_out, 10)]
+        self.pre_computed_next_node = {}
+        print("Pre-computing next-nodes...")
+        for shi in self.available_store_heat_in:
+            print(f"Store heat in: {shi}...")
+            self.pre_computed_next_node[str(shi)] = {}
+            for n in self.nodes[0]:
+                self.pre_computed_next_node[str(shi)][n.to_string()] = self.model_accurately(n, shi).to_string()
+        print("Done!")
+
+    def find_next_node(self, node_now: DNode, store_heat_in: float):
+        closest_store_heat_in = min(self.available_store_heat_in, key = lambda x: abs(x-store_heat_in))
+        s: str = self.pre_computed_next_node[str(closest_store_heat_in)][node_now.to_string()]
+        t = int(s.split('(')[0])
+        m = int(s.split(')')[1].split('(')[0])
+        b = int(s.split(')')[2].split('(')[0])
+        th1 = int(s.split('(')[1].split(')')[0])
+        th2 = int(s.split('(')[-1].split(')')[0])
+        next_node = [
+            n for n in self.nodes[node_now.time_slice+1] if 
+            n.top_temp == t and
+            n.middle_temp == m and 
+            n.bottom_temp == b and 
+            n.thermocline1 == th1 and
+            n.thermocline2 == th2
+        ][0]
+        return next_node
+
+    def model_accurately(self, node_now:DNode, store_heat_in:float, print_detail:bool=False) -> DNode:
         if store_heat_in > 0:
             if print_detail: print(f"Charge {node_now} by {store_heat_in}")
             st = time.time()
