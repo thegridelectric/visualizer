@@ -589,8 +589,8 @@ class DGraph():
                 th1 += -1
                 th2 += -1
                 candidate_nodes.append(node)
-                need_to_break = True
                 if next_node_energy >= node.energy:
+                    need_to_break = True
                     break
             if need_to_break: break
 
@@ -713,7 +713,6 @@ class DGraph():
                 n.bottom_temp==closest_bottom_temp and
                 n.thermocline2==true_n.thermocline2
             ]
-            if print_detail: print(nodes_with_similar_temps)
             closest_node = min(nodes_with_similar_temps, key = lambda x: abs(x.energy-true_n.energy))
             return closest_node
 
