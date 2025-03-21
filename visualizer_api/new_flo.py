@@ -13,10 +13,11 @@ from openpyxl.drawing.image import Image
 from named_types import PriceQuantityUnitless, FloParamsHouse0
 from typing import Optional
 import time
+import json
 
 MIN_DIFFERENCE_F = 10
 STEP_F = 10
-NUM_LAYERS = 12
+NUM_LAYERS = 24
 
 def to_kelvin(t):
     return (t-32)*5/9 + 273.15
@@ -384,19 +385,32 @@ class DGraph():
             print(f"Done for hour {h}")
 
     def precompute_next_nodes(self):
-        max_hp_out = int(self.params.max_hp_elec_in * self.params.COP(50)) * 10
-        self.available_store_heat_in = [x/10 for x in range(-max_hp_out, max_hp_out, 10)]
-        self.pre_computed_next_node = {}
+        json_file_path = "pre_computed_next_node.json"
+        if os.path.exists(json_file_path):
+            print(f"Found existing pre-computed data at {json_file_path}, loading...")
+            with open(json_file_path, 'r') as f:
+                self.pre_computed_next_node = json.load(f)
+            print("Done loading pre-computed data!")
+            return
+        
         print("Pre-computing next-nodes...")
-        for shi in self.available_store_heat_in:
+        max_hp_out = int(self.params.max_hp_elec_in * self.params.COP(50)) * 10
+        available_store_heat_in = [x/10 for x in range(-max_hp_out, max_hp_out, 10)]
+        self.pre_computed_next_node = {}
+        for shi in available_store_heat_in:
             print(f"Store heat in: {shi}...")
             self.pre_computed_next_node[str(shi)] = {}
             for n in self.nodes[0]:
                 self.pre_computed_next_node[str(shi)][n.to_string()] = self.model_accurately(n, shi).to_string()
+        
+        print(f"Saving pre-computed data to {json_file_path}...")
+        with open(json_file_path, 'w') as f:
+            json.dump(self.pre_computed_next_node, f)
         print("Done!")
 
     def find_next_node(self, node_now: DNode, store_heat_in: float):
-        closest_store_heat_in = min(self.available_store_heat_in, key = lambda x: abs(x-store_heat_in))
+        available_store_heat_in = [float(x) for x in list(self.pre_computed_next_node.keys())]
+        closest_store_heat_in = min(available_store_heat_in, key = lambda x: abs(x-store_heat_in))
         s: str = self.pre_computed_next_node[str(closest_store_heat_in)][node_now.to_string()]
         t = int(s.split('(')[0])
         m = int(s.split(')')[1].split('(')[0])
@@ -884,7 +898,7 @@ class DGraph():
                 else:
                     print(f"\n{edge_i}, model could not be more accurate!")
                 sp_hp_heat_out.append(edge_i.hp_heat_out)
-                _ = self.model_accurately(node_i, energy_to_store, print_detail=True)
+                _ = self.model_accurately(node_i, energy_to_store, print_detail=False)
             sp_top_temp.append(node_i.top_temp)
             sp_bottom_temp.append(node_i.bottom_temp)
             sp_thermocline.append(node_i.thermocline1)
