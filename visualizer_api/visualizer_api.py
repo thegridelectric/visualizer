@@ -31,9 +31,10 @@ from datetime import datetime
 from pathlib import Path
 from config import Settings
 from models import MessageSql
-from flo import DGraph
 from hinge import FloHinge
 from named_types import FloParamsHouse0
+
+houses_on_new_flo = ['oak']
 
 class Prices(BaseModel):
     unix_s: List[float]
@@ -733,6 +734,10 @@ class VisualizerApi():
                     h = FloHinge(flo_params, hinge_hours=5, num_nodes=[10,3,3,3,3])
                     h.export_to_excel()
                 else:
+                    if request.house_alias in houses_on_new_flo:
+                        from new_flo import DGraph
+                    else:
+                        from flo import DGraph
                     g = DGraph(flo_params)
                     g.solve_dijkstra()
                     g.export_to_excel()
@@ -780,6 +785,10 @@ class VisualizerApi():
                 zip_buffer = io.BytesIO()
                 with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
                     for i in range(len(flo_params_messages)):
+                        if request.house_alias in houses_on_new_flo:
+                            from new_flo import DGraph
+                        else:
+                            from flo import DGraph
                         g = DGraph(flo_params_messages[i])
                         g.solve_dijkstra()
                         pq_pairs = g.generate_bid()
