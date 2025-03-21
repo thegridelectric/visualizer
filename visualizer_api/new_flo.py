@@ -16,7 +16,7 @@ import time
 
 MIN_DIFFERENCE_F = 10
 STEP_F = 10
-NUM_LAYERS = 12
+NUM_LAYERS = 24
 
 def to_kelvin(t):
     return (t-32)*5/9 + 273.15
@@ -670,10 +670,33 @@ class DGraph():
     def find_closest_node(self, true_n: DNode, print_detail: bool) -> DNode:
         if print_detail: print(f"Looking for closest of {true_n}")
 
+        # Cold nodes
+        if true_n.top_temp <= 100:
+            nodes_with_similar_temps = [
+                n for n in self.nodes[true_n.time_slice] if 
+                n.top_temp==true_n.top_temp and 
+                n.middle_temp==true_n.top_temp-20 and 
+                n.bottom_temp==true_n.top_temp-20 and
+                n.thermocline1==true_n.thermocline1 and
+                n.thermocline2==true_n.thermocline2
+            ]
+            closest_node = min(nodes_with_similar_temps, key = lambda x: abs(x.energy-true_n.energy))
+            return closest_node
+
         # Find closest available top, middle and bottom temps
         closest_top_temp = min(self.top_temps, key=lambda x: abs(float(x)-true_n.top_temp))
         closest_middle_temp = min(self.middle_temps, key=lambda x: abs(float(x)-true_n.middle_temp))
         closest_bottom_temp = min(self.bottom_temps, key=lambda x: abs(float(x)-true_n.bottom_temp))
+
+        # Need at least 10F between top and middle
+        if closest_top_temp - closest_middle_temp < MIN_DIFFERENCE_F:
+            closest_middle_temp = closest_top_temp-MIN_DIFFERENCE_F if closest_top_temp>115 else 100
+
+        # Correct for the 120,100,100 case
+        if closest_top_temp == 120 and closest_middle_temp==100:
+            closest_middle_temp = 110
+
+        if print_detail: print(f"{closest_top_temp},{closest_middle_temp},{closest_bottom_temp}")
 
         # Top temperature is impossible to reach
         if true_n.top_temp > max(self.top_temps):
@@ -688,7 +711,7 @@ class DGraph():
             return closest_node
 
         # Both top and middle were rounded above
-        if closest_top_temp > true_n.top_temp and closest_middle_temp > true_n.middle_temp and true_n.bottom_temp==100:
+        if closest_top_temp > true_n.top_temp and closest_middle_temp > true_n.middle_temp:
             nodes_with_similar_temps = [
                 n for n in self.nodes[true_n.time_slice] if 
                 n.top_temp<=closest_top_temp and
@@ -702,8 +725,7 @@ class DGraph():
             return closest_node
         
         # Both top and middle were rounded below
-        if (closest_top_temp < true_n.top_temp and closest_bottom_temp < true_n.middle_temp 
-            and true_n.bottom_temp==100):
+        if closest_top_temp < true_n.top_temp and closest_bottom_temp < true_n.middle_temp:
             nodes_with_similar_temps = [
                 n for n in self.nodes[true_n.time_slice] if 
                 n.top_temp<=closest_top_temp+STEP_F and
@@ -716,39 +738,39 @@ class DGraph():
             closest_node = min(nodes_with_similar_temps, key = lambda x: abs(x.energy-true_n.energy))
             return closest_node
 
-        # Need at least MIN_DIFFERENCE_F between top and middle
-        if closest_top_temp == closest_middle_temp or closest_top_temp-5 == closest_middle_temp:
-            closest_middle_temp = closest_top_temp-MIN_DIFFERENCE_F if closest_top_temp>100+2*MIN_DIFFERENCE_F else 100
-        if closest_top_temp == 120 and closest_middle_temp==100:
-            closest_middle_temp = 110
-        if true_n.top_temp<=100:
-            closest_top_temp = true_n.top_temp
-            closest_middle_temp = true_n.top_temp-20
-            closest_bottom_temp = true_n.top_temp-20
-        if print_detail: print(f"{closest_top_temp},{closest_middle_temp},{closest_bottom_temp}")
-        if true_n.thermocline1==true_n.thermocline2:
+        # Top was rounded above but not middle: flexible th1
+        if closest_top_temp > true_n.top_temp:
             nodes_with_similar_temps = [
                 n for n in self.nodes[true_n.time_slice] if 
-                n.top_temp==closest_top_temp and 
+                n.top_temp==closest_top_temp and
                 n.middle_temp==closest_middle_temp and
                 n.bottom_temp==closest_bottom_temp and
-                n.thermocline1==n.thermocline2 and
-                n.thermocline2==true_n.thermocline1
-            ]
-        else:
-            nodes_with_similar_temps = [
-                n for n in self.nodes[true_n.time_slice] if 
-                n.top_temp==closest_top_temp and 
-                n.middle_temp==closest_middle_temp and 
-                n.bottom_temp==closest_bottom_temp and
-                n.thermocline1==true_n.thermocline1 and
                 n.thermocline2==true_n.thermocline2
             ]
+            closest_node = min(nodes_with_similar_temps, key = lambda x: abs(x.energy-true_n.energy))
+            return closest_node
+
+        # Middle was rounded above but not top: flexible th2
+        if closest_top_temp > true_n.top_temp:
+            nodes_with_similar_temps = [
+                n for n in self.nodes[true_n.time_slice] if 
+                n.top_temp==closest_top_temp and
+                n.middle_temp==closest_middle_temp and
+                n.bottom_temp==closest_bottom_temp and
+                n.thermocline1==true_n.thermocline1
+            ]
+            closest_node = min(nodes_with_similar_temps, key = lambda x: abs(x.energy-true_n.energy))
+            return closest_node
+
+        nodes_with_similar_temps = [
+            n for n in self.nodes[true_n.time_slice] if 
+            n.top_temp==closest_top_temp and 
+            n.middle_temp==closest_middle_temp and 
+            n.bottom_temp==closest_bottom_temp and
+            n.thermocline1==true_n.thermocline1 and
+            n.thermocline2==true_n.thermocline2
+        ]
         closest_node = min(nodes_with_similar_temps, key = lambda x: abs(x.energy-true_n.energy))
-        if len(nodes_with_similar_temps)>1:
-            print(true_n)
-            print(nodes_with_similar_temps)
-            raise Exception("IMPOSSIBLE")
         return closest_node
     
     def solve_dijkstra(self):
