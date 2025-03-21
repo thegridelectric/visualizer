@@ -19,6 +19,7 @@ MIN_DIFFERENCE_F = 10
 STEP_F = 10
 NUM_LAYERS = 24
 PRE_COMPUTE = True
+PRINT_DETAILS = False
 
 def to_kelvin(t):
     return (t-32)*5/9 + 273.15
@@ -31,13 +32,13 @@ class DParams():
         self.config = config
         self.start_time = config.StartUnixS
         self.horizon = config.HorizonHours
-        self.num_layers = min(config.NumLayers, NUM_LAYERS)
+        self.num_layers = config.NumLayers
         self.storage_volume = config.StorageVolumeGallons
         self.max_hp_elec_in = config.HpMaxElecKw
         self.min_hp_elec_in = config.HpMinElecKw
         self.initial_top_temp = config.InitialTopTempF
         self.initial_bottom_temp = config.InitialBottomTempF
-        self.initial_thermocline = min(config.InitialThermocline, self.num_layers)
+        self.initial_thermocline = config.InitialThermocline
         self.storage_losses_percent = config.StorageLossesPercent
         self.reg_forecast = [x/10 for x in config.RegPriceForecast[:self.horizon]]
         self.dist_forecast = [x/10 for x in config.DistPriceForecast[:self.horizon]]
@@ -251,14 +252,23 @@ class DGraph():
         self.bottom_temps = [100]
         # Initial node temperatures
         initial_top_temp = min(self.top_temps+[100,80], key=lambda x: abs(x-self.params.initial_top_temp))
-        initial_middle_temp = min(self.middle_temps, key=lambda x: abs(x-self.params.initial_bottom_temp))
-        initial_bottom_temp = min(self.bottom_temps, key=lambda x: abs(x-self.params.initial_bottom_temp))
-        # If initial node is a cold node
+        initial_middle_temp = min(self.middle_temps+[100,80,60], key=lambda x: abs(x-self.params.initial_bottom_temp))
+        initial_bottom_temp = 100
+        initial_th2 = self.params.num_layers
         if initial_top_temp == 110:
             initial_middle_temp = 100
-        if initial_top_temp in [100,80]:
-            initial_middle_temp = initial_top_temp-20
-            initial_bottom_temp = initial_top_temp-20
+            initial_th2 = self.params.initial_thermocline 
+        elif initial_middle_temp <= 100:
+            if initial_top_temp > 110:
+                initial_middle_temp = initial_top_temp-MIN_DIFFERENCE_F
+                initial_bottom_temp = 100
+                initial_th2 = self.params.initial_thermocline 
+            else:
+                initial_top_temp = initial_middle_temp + 20
+        elif initial_top_temp in [100,80]:
+            initial_middle_temp = initial_top_temp - 20
+            initial_bottom_temp = initial_top_temp - 20
+            initial_th2 = self.params.initial_thermocline 
         # Initial node
         self.initial_node = DNode(
             parameters=self.params,
@@ -267,7 +277,7 @@ class DGraph():
             middle_temp=initial_middle_temp,
             bottom_temp=initial_bottom_temp,
             thermocline1=self.params.initial_thermocline,
-            thermocline2=self.params.num_layers if initial_top_temp not in [110,100,80] else self.params.initial_thermocline,
+            thermocline2=initial_th2
         )
         self.nodes[0] = [self.initial_node]
         print(f"Initial node: {self.initial_node}")
@@ -405,7 +415,7 @@ class DGraph():
         else:
             print("Pre-computing next-nodes...")
             max_hp_out = int(self.params.max_hp_elec_in * self.params.COP(50)) * 10
-            available_store_heat_in = [x/10 for x in range(-max_hp_out, max_hp_out, 10)]
+            available_store_heat_in = [x/10 for x in range(-max_hp_out, max_hp_out, 1)]
             self.pre_computed_next_node = {}
             for shi in available_store_heat_in:
                 print(f"Store heat in: {shi}...")
@@ -449,15 +459,9 @@ class DGraph():
             next_node = self.discharge(node_now, store_heat_in, print_detail)
         else:
             if print_detail: print("IDLE")
-            next_node = [
-                x for x in self.nodes[node_now.time_slice+1]
-                if x.params==node_now.params
-                and x.thermocline1==node_now.thermocline1
-                and x.thermocline2==node_now.thermocline2
-                and x.top_temp==node_now.top_temp
-                and x.bottom_temp==node_now.bottom_temp
-                and x.middle_temp==node_now.middle_temp
-                ][0]
+            tmb = (node_now.top_temp, node_now.middle_temp, node_now.bottom_temp)
+            th = (node_now.thermocline1, node_now.thermocline2)
+            next_node = self.nodes_by[node_now.time_slice+1][tmb][th]
         return next_node
         
     def charge(self, n: DNode, store_heat_in: float, print_detail: bool) -> DNode:
@@ -592,14 +596,9 @@ class DGraph():
             # Go through the top being at 100 or at 80
             while th1>0:
                 if print_detail: print(f"Looking for {n.top_temp}({th1}){n.middle_temp}({th2}){n.bottom_temp}")
-                node = [
-                    x for x in self.nodes[n.time_slice+1]
-                    if x.top_temp==n.top_temp
-                    and x.middle_temp==n.middle_temp
-                    and x.bottom_temp==n.bottom_temp
-                    and x.thermocline1==th1
-                    and x.thermocline2==th2
-                ][0]
+                tmb = (n.top_temp, n.middle_temp, n.bottom_temp)
+                th = (th1, th2)
+                node = self.nodes_by[n.time_slice+1][tmb][th]
                 if print_detail: print(f"Energy: {round(node.energy,2)}")
                 th1 += -1
                 th2 += -1
@@ -612,14 +611,9 @@ class DGraph():
                 th2 = self.params.num_layers
                 while th1>0:
                     if print_detail: print(f"Looking for {n.top_temp-20}({th1}){n.middle_temp-20}({th2}){n.bottom_temp-20}")
-                    node = [
-                        x for x in self.nodes[n.time_slice+1]
-                        if x.top_temp==n.top_temp-20
-                        and x.middle_temp==n.middle_temp-20
-                        and x.bottom_temp==n.bottom_temp-20
-                        and x.thermocline1==th1
-                        and x.thermocline2==th2
-                    ][0]
+                    tmb = (80, 60, 60)
+                    th = (th1, th2)
+                    node = self.nodes_by[n.time_slice+1][tmb][th]
                     if print_detail: print(f"Energy: {round(node.energy,2)}")
                     th1 += -1
                     th2 += -1
@@ -634,14 +628,9 @@ class DGraph():
             # Moving up step by step until the end of the top layer
             while th1>0:
                 if print_detail: print(f"Looking for {n.top_temp}({th1}){n.middle_temp}({th2}){n.bottom_temp}")
-                node = [
-                    x for x in self.nodes[n.time_slice+1]
-                    if x.top_temp==n.top_temp
-                    and x.middle_temp==n.middle_temp
-                    and x.bottom_temp==n.bottom_temp
-                    and x.thermocline1==th1
-                    and x.thermocline2==th2
-                ][0]
+                tmb = (n.top_temp, n.middle_temp, n.bottom_temp)
+                th = (th1, th2)
+                node = self.nodes_by[n.time_slice+1][tmb][th]
                 if print_detail: print(f"Energy: {round(node.energy,2)}")
                 th1 += -1
                 th2 += -1
@@ -661,14 +650,9 @@ class DGraph():
                 th2 = self.params.num_layers
                 while th1>0:
                     if print_detail: print(f"Looking for {top_temp}({th1}){middle_temp}({th2}){bottom_temp}")
-                    node = [
-                        x for x in self.nodes[n.time_slice+1]
-                        if x.top_temp==top_temp
-                        and x.middle_temp==middle_temp
-                        and x.bottom_temp==bottom_temp
-                        and x.thermocline1==th1
-                        and x.thermocline2==th2
-                    ][0]
+                    tmb = (top_temp, middle_temp, bottom_temp)
+                    th = (th1, th2)
+                    node = self.nodes_by[n.time_slice+1][tmb][th]
                     if print_detail: print(f"Energy: {round(node.energy,2)}")
                     th1 += -1
                     th2 += -1
@@ -683,14 +667,9 @@ class DGraph():
                 th2 = self.params.num_layers
                 while th1>0:
                     if print_detail: print(f"Looking for {top_temp}({th1}){middle_temp}({th2}){bottom_temp}")
-                    node = [
-                        x for x in self.nodes[n.time_slice+1]
-                        if x.top_temp==top_temp
-                        and x.middle_temp==middle_temp
-                        and x.bottom_temp==bottom_temp
-                        and x.thermocline1==th1
-                        and x.thermocline2==th2
-                    ][0]
+                    tmb = (top_temp, middle_temp, bottom_temp)
+                    th = (th1, th2)
+                    node = self.nodes_by[n.time_slice+1][tmb][th]
                     if print_detail: print(f"Energy: {round(node.energy,2)}")
                     th1 += -1
                     th2 += -1
@@ -900,14 +879,15 @@ class DGraph():
                 losses = self.params.storage_losses_percent/100 * (node_i.energy-self.bottom_node_energy)
                 energy_to_store = edge_i.hp_heat_out-self.params.load_forecast[node_i.time_slice]-losses
                 model_energy_to_store = edge_i.head.energy-edge_i.tail.energy
-                if model_energy_to_store>energy_to_store:
-                    print(f"\n{edge_i}, model thinks {abs(round(model_energy_to_store-energy_to_store,1))} kWh more in store than reality")
-                elif model_energy_to_store<energy_to_store:
-                    print(f"\n{edge_i}, model thinks {abs(round(model_energy_to_store-energy_to_store,1))} kWh less in store than reality")
-                else:
-                    print(f"\n{edge_i}, model could not be more accurate!")
+                if PRINT_DETAILS:
+                    if model_energy_to_store>energy_to_store:
+                        print(f"\n{edge_i}, model thinks {abs(round(model_energy_to_store-energy_to_store,1))} kWh more in store than reality")
+                    elif model_energy_to_store<energy_to_store:
+                        print(f"\n{edge_i}, model thinks {abs(round(model_energy_to_store-energy_to_store,1))} kWh less in store than reality")
+                    else:
+                        print(f"\n{edge_i}, model could not be more accurate!")
+                _ = self.model_accurately(node_i, energy_to_store, print_detail=PRINT_DETAILS)
                 sp_hp_heat_out.append(edge_i.hp_heat_out)
-                _ = self.model_accurately(node_i, energy_to_store, print_detail=False)
             sp_top_temp.append(node_i.top_temp)
             sp_bottom_temp.append(node_i.bottom_temp)
             sp_thermocline.append(node_i.thermocline1)
@@ -920,21 +900,21 @@ class DGraph():
         sp_time = list(range(self.params.horizon+1))
         
         # Plot the shortest path
-        fig, ax = plt.subplots(2,1, sharex=True, figsize=(10,6))
+        fig, ax = plt.subplots(2,1, sharex=False, figsize=(12,5.5))
         start = datetime.fromtimestamp(self.params.start_time, tz=pytz.timezone("America/New_York")).strftime('%Y-%m-%d %H:%M')
         end = (datetime.fromtimestamp(self.params.start_time, tz=pytz.timezone("America/New_York")) 
                + timedelta(hours=self.params.horizon)).strftime('%Y-%m-%d %H:%M')
         fig.suptitle(f'From {start} to {end}\nCost: {round(self.initial_node.pathcost,2)} $', fontsize=10)
-        
+
         # Top plot
         ax[0].step(sp_time, sp_hp_heat_out, where='post', color='tab:blue', alpha=0.6, label='HP')
         ax[0].step(sp_time[:-1], self.params.load_forecast, where='post', color='tab:red', alpha=0.6, label='Load')
         ax[0].legend(loc='upper left')
-        ax[0].set_ylabel('Heat [kWh]')
+        ax[0].set_ylabel('Heating power [kW]')
         if max(sp_hp_heat_out)>0:
             ax[0].set_ylim([-0.5, 1.5*max(sp_hp_heat_out)])
         ax2 = ax[0].twinx()
-        ax2.step(sp_time[:-1], self.params.elec_price_forecast, where='post', color='gray', alpha=0.6, label='Elec price')
+        ax2.step(sp_time[:-1], self.params.elec_price_forecast, where='post', color='gray', alpha=0.6, label='Electricity price')
         ax2.legend(loc='upper right')
         ax2.set_ylabel('Electricity price [cts/kWh]')
         m = 0 if min(self.params.elec_price_forecast)>0 else min(self.params.elec_price_forecast)-5
@@ -969,7 +949,12 @@ class DGraph():
         ax[1].set_ylim([0, self.params.num_layers])
         ax[1].set_yticks([])
         if len(sp_time)>10 and len(sp_time)<50:
+            start_time = datetime.fromtimestamp(self.params.start_time, tz=pytz.timezone("America/New_York"))
+            sp_time_hours = [f"{(start_time+timedelta(hours=x)).hour}:00" for x in range(0,len(sp_time)+1,2)]
+            ax[0].set_xticks(list(range(0,len(sp_time)+1,2)))
+            ax[0].set_xticklabels(sp_time_hours, fontsize=8)
             ax[1].set_xticks(list(range(0,len(sp_time)+1,2)))
+            ax[1].set_xticklabels(sp_time_hours, fontsize=8)
         for i, bar in enumerate(bars_top):
             height = bar.get_height()
             bar_color = 'white'
@@ -978,7 +963,7 @@ class DGraph():
             elif sp_top_temp[i]<100:
                 bar_color = 'gray'
             ax[1].text(bar.get_x() + bar.get_width() / 2, bar.get_y() + height / 2, 
-                    f'{int(sp_top_temp[i])}', ha='center', va='center', color=bar_color, fontsize=5)
+                    f'{int(sp_top_temp[i])}', ha='center', va='center', color=bar_color, fontsize=6)
         for i, bar in enumerate(bars_middle):
             height = bar.get_height()
             bar_color = 'white'
@@ -988,7 +973,7 @@ class DGraph():
                 bar_color = 'gray'
             if height>1:
                 ax[1].text(bar.get_x() + bar.get_width() / 2, bar.get_y() + height / 2, 
-                        f'{int(sp_middle_temp[i])}', ha='center', va='center', color=bar_color, fontsize=5)
+                        f'{int(sp_middle_temp[i])}', ha='center', va='center', color=bar_color, fontsize=6)
         for i, bar in enumerate(bars_bottom):
             height = bar.get_height()
             bar_color = 'white'
@@ -996,23 +981,26 @@ class DGraph():
                 bar_color = 'green'
             elif sp_bottom_temp[i]<100:
                 bar_color = 'gray'
+            if sp_thermocline2[i]==self.params.num_layers:
+                continue
             ax[1].text(bar.get_x() + bar.get_width() / 2, bar.get_y() + height / 2, 
-                    f'{int(sp_bottom_temp[i])}', ha='center', va='center', color=bar_color, fontsize=5)
+                    f'{int(sp_bottom_temp[i])}', ha='center', va='center', color=bar_color, fontsize=6)
         ax3 = ax[1].twinx()
         ax3.plot(sp_time, sp_soc, color='black', alpha=0.4, label='SoC')
         ax3.set_ylabel('State of charge [%]')
         ax3.set_ylim([-1,101])
 
         # Color bar
-        boundaries = sorted(list(range(60,175,5)), reverse=False)
-        colors = [plt.cm.Reds(i/(len(boundaries)-1)) for i in range(len(boundaries))]
-        cmap = ListedColormap(colors)
-        norm = BoundaryNorm(boundaries, cmap.N, clip=True)
-        sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
-        cbar = plt.colorbar(sm, ax=ax, orientation='horizontal', fraction=0.06, pad=0.15, alpha=0.7)
-        cbar.set_ticks(sorted(list(range(60,175,5)), reverse=False))
-        cbar.set_label('Temperature [F]')
+        # boundaries = sorted(list(range(60,175,5)), reverse=False)
+        # colors = [plt.cm.Reds(i/(len(boundaries)-1)) for i in range(len(boundaries))]
+        # cmap = ListedColormap(colors)
+        # norm = BoundaryNorm(boundaries, cmap.N, clip=True)
+        # sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+        # cbar = plt.colorbar(sm, ax=ax, orientation='horizontal', fraction=0.06, pad=0.15, alpha=0.7)
+        # cbar.set_ticks(sorted(list(range(60,175,5)), reverse=False))
+        # cbar.set_label('Temperature [F]')
         
+        plt.tight_layout()
         plt.savefig('plot.png', dpi=130)
         if show:
             plt.show()
