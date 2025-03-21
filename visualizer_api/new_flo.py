@@ -18,6 +18,7 @@ import json
 MIN_DIFFERENCE_F = 10
 STEP_F = 10
 NUM_LAYERS = 24
+PRE_COMPUTE = True
 
 def to_kelvin(t):
     return (t-32)*5/9 + 273.15
@@ -230,9 +231,11 @@ class DGraph():
     def __init__(self, config: FloParamsHouse0):
         self.params = DParams(config)
         self.nodes: Dict[int, List[DNode]] = {h: [] for h in range(self.params.horizon+1)}
+        self.nodes_by: Dict[int, Dict[Tuple, Dict[Tuple, DNode]]] = {h: {} for h in range(self.params.horizon+1)}
         self.edges: Dict[DNode, List[DEdge]] = {}
-        self.time_spent_in_charge = 0
-        self.time_spent_in_discharge = 0
+        self.time_spent_in_step1 = 0
+        self.time_spent_in_step2 = 0
+        self.time_spent_in_step3 = 0
         st = time.time()
         self.create_nodes()
         self.precompute_next_nodes()
@@ -296,6 +299,9 @@ class DGraph():
         # Add colder temperatures
         temperature_combinations += [(100,80,80), (80,60,60)]
         
+        for h in self.nodes_by:
+            self.nodes_by[h] = {tmb: {th: None for th in thermocline_combinations} for tmb in temperature_combinations}
+        
         total_nodes=0
         for tmb in temperature_combinations:
             for h in range(self.params.horizon+1):
@@ -316,6 +322,7 @@ class DGraph():
                     if self.storage_full and node.energy>=self.initial_node.energy:
                         continue
                     self.nodes[h].append(node)
+                    self.nodes_by[h][tmb][th] = node
                     total_nodes += 1
                 
         print(f"=> Created a total of {int(total_nodes/49)} nodes per layer")
@@ -385,59 +392,61 @@ class DGraph():
             print(f"Done for hour {h}")
 
     def precompute_next_nodes(self):
+        if not PRE_COMPUTE:
+            return
+
         json_file_path = "pre_computed_next_node.json"
         if os.path.exists(json_file_path):
             print(f"Found existing pre-computed data at {json_file_path}, loading...")
             with open(json_file_path, 'r') as f:
                 self.pre_computed_next_node = json.load(f)
             print("Done loading pre-computed data!")
-            return
+            
+        else:
+            print("Pre-computing next-nodes...")
+            max_hp_out = int(self.params.max_hp_elec_in * self.params.COP(50)) * 10
+            available_store_heat_in = [x/10 for x in range(-max_hp_out, max_hp_out, 10)]
+            self.pre_computed_next_node = {}
+            for shi in available_store_heat_in:
+                print(f"Store heat in: {shi}...")
+                self.pre_computed_next_node[str(shi)] = {}
+                for n in self.nodes[0]:
+                    self.pre_computed_next_node[str(shi)][n.to_string()] = self.model_accurately(n, shi).to_string()
+            
+            print(f"Saving pre-computed data to {json_file_path}...")
+            with open(json_file_path, 'w') as f:
+                json.dump(self.pre_computed_next_node, f)
         
-        print("Pre-computing next-nodes...")
-        max_hp_out = int(self.params.max_hp_elec_in * self.params.COP(50)) * 10
-        available_store_heat_in = [x/10 for x in range(-max_hp_out, max_hp_out, 10)]
-        self.pre_computed_next_node = {}
-        for shi in available_store_heat_in:
-            print(f"Store heat in: {shi}...")
-            self.pre_computed_next_node[str(shi)] = {}
-            for n in self.nodes[0]:
-                self.pre_computed_next_node[str(shi)][n.to_string()] = self.model_accurately(n, shi).to_string()
-        
-        print(f"Saving pre-computed data to {json_file_path}...")
-        with open(json_file_path, 'w') as f:
-            json.dump(self.pre_computed_next_node, f)
+        self.available_store_heat_in = [float(x) for x in list(self.pre_computed_next_node.keys())]
+        self.available_store_heat_in_array = np.array(self.available_store_heat_in)
         print("Done!")
 
     def find_next_node(self, node_now: DNode, store_heat_in: float):
-        available_store_heat_in = [float(x) for x in list(self.pre_computed_next_node.keys())]
-        closest_store_heat_in = min(available_store_heat_in, key = lambda x: abs(x-store_heat_in))
+        if not PRE_COMPUTE:
+            return self.model_accurately(node_now, store_heat_in)
+        # Step 1
+        st = time.time()
+        closest_store_heat_in = self.available_store_heat_in[abs(self.available_store_heat_in_array-store_heat_in).argmin()]
+        self.time_spent_in_step1 += time.time() - st
+        # Step 2
+        st = time.time()
         s: str = self.pre_computed_next_node[str(closest_store_heat_in)][node_now.to_string()]
-        t = int(s.split('(')[0])
-        m = int(s.split(')')[1].split('(')[0])
-        b = int(s.split(')')[2].split('(')[0])
-        th1 = int(s.split('(')[1].split(')')[0])
-        th2 = int(s.split('(')[-1].split(')')[0])
-        next_node = [
-            n for n in self.nodes[node_now.time_slice+1] if 
-            n.top_temp == t and
-            n.middle_temp == m and 
-            n.bottom_temp == b and 
-            n.thermocline1 == th1 and
-            n.thermocline2 == th2
-        ][0]
+        parts = s.replace(')', '(').split('(')
+        t, th1, m, th2, b = int(parts[0]), int(parts[1]), int(parts[2]), int(parts[3]), int(parts[4])
+        self.time_spent_in_step2 += time.time() - st
+        # Step 3
+        st = time.time()
+        next_node = self.nodes_by[node_now.time_slice+1][(t,m,b)][(th1,th2)]
+        self.time_spent_in_step3 += time.time() - st
         return next_node
 
     def model_accurately(self, node_now:DNode, store_heat_in:float, print_detail:bool=False) -> DNode:
         if store_heat_in > 0:
             if print_detail: print(f"Charge {node_now} by {store_heat_in}")
-            st = time.time()
             next_node = self.charge(node_now, store_heat_in, print_detail)
-            self.time_spent_in_charge += (time.time()-st)
         elif store_heat_in < -1:
             if print_detail: print(f"Discharge {node_now} by {-store_heat_in}")
-            st = time.time()
             next_node = self.discharge(node_now, store_heat_in, print_detail)
-            self.time_spent_in_discharge += (time.time()-st)
         else:
             if print_detail: print("IDLE")
             next_node = [
@@ -868,9 +877,9 @@ class DGraph():
         return self.pq_pairs
 
     def plot(self, show=True):
-        print(f"Time in charge: {round(self.time_spent_in_charge,1)}")
-        print(f"Time in discharge: {round(self.time_spent_in_discharge,1)}")
-        print(f"Time doing other stuff: {round(self.time_spent_in_total-self.time_spent_in_charge-self.time_spent_in_discharge,1)}")
+        print(f"Time in step1: {round(self.time_spent_in_step1,1)}")
+        print(f"Time in step2: {round(self.time_spent_in_step2,1)}")
+        print(f"Time in step3: {round(self.time_spent_in_step3,1)}")
         print(f"Time in TOTAL: {round(self.time_spent_in_total,1)}")
         # Walk along the shortest path (sp)
         sp_top_temp = []
