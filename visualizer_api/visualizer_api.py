@@ -34,7 +34,7 @@ from models import MessageSql
 from hinge import FloHinge
 from named_types import FloParamsHouse0
 
-houses_on_new_flo = ['oak']
+houses_on_new_flo = ['oak', 'beech', 'fir', 'maple']
 
 class Prices(BaseModel):
     unix_s: List[float]
