@@ -734,10 +734,14 @@ class VisualizerApi():
                     h = FloHinge(flo_params, hinge_hours=5, num_nodes=[10,3,3,3,3])
                     h.export_to_excel()
                 else:
-                    if request.house_alias in houses_on_new_flo:
+                    if "NodeMatching" in flo_params.FloType:
                         from new_flo import DGraph
-                    else:
+                    elif "StackedTemperatures" in flo_params.FloType:
                         from flo import DGraph
+                    else:
+                        print(f"{flo_params.FloType} is an unknown FLO type!")
+                        print("Using the latest FLO (NodeMatching) by default")
+                        from new_flo import DGraph
                     g = DGraph(flo_params)
                     g.solve_dijkstra()
                     g.export_to_excel()
@@ -1058,7 +1062,7 @@ class VisualizerApi():
                 )
             )
         html_buffer = io.StringIO()
-        fig.write_html(html_buffer)
+        fig.write_html(html_buffer, config={'displayModeBar': False})
         html_buffer.seek(0)
         print(f"Aggregation plot done in {round(time.time()-plot_start,1)} seconds")
         return html_buffer
@@ -1215,7 +1219,7 @@ class VisualizerApi():
                 )
             )
         html_buffer = io.StringIO()
-        fig.write_html(html_buffer)
+        fig.write_html(html_buffer, config={'displayModeBar': False})
         html_buffer.seek(0)
         print(f"Heat pump plot done in {round(time.time()-plot_start,1)} seconds")
         return html_buffer
@@ -1333,7 +1337,7 @@ class VisualizerApi():
                 )
             )
         html_buffer = io.StringIO()
-        fig.write_html(html_buffer)
+        fig.write_html(html_buffer, config={'displayModeBar': False})
         html_buffer.seek(0) 
         print(f"Distribution plot done in {round(time.time()-plot_start,1)} seconds")
         return html_buffer
@@ -1462,7 +1466,7 @@ class VisualizerApi():
             )
         )
         html_buffer = io.StringIO()
-        fig.write_html(html_buffer)
+        fig.write_html(html_buffer, config={'displayModeBar': False})
         html_buffer.seek(0)
         print(f"Heat calls plot done in {round(time.time()-plot_start,1)} seconds")
         return html_buffer
@@ -1570,7 +1574,7 @@ class VisualizerApi():
                 )
             )
         html_buffer = io.StringIO()
-        fig.write_html(html_buffer)
+        fig.write_html(html_buffer, config={'displayModeBar': False})
         html_buffer.seek(0)
         print(f"Zones plot done in {round(time.time()-plot_start,1)} seconds")
         return html_buffer
@@ -1669,7 +1673,7 @@ class VisualizerApi():
             )
 
         html_buffer = io.StringIO()
-        fig.write_html(html_buffer)
+        fig.write_html(html_buffer, config={'displayModeBar': False})
         html_buffer.seek(0)
         print(f"Buffer plot done in {round(time.time()-plot_start,1)} seconds")
         return html_buffer
@@ -1856,7 +1860,7 @@ class VisualizerApi():
         )
 
         html_buffer = io.StringIO()
-        fig.write_html(html_buffer)
+        fig.write_html(html_buffer, config={'displayModeBar': False})
         html_buffer.seek(0)
         print(f"Storage plot done in {round(time.time()-plot_start,1)} seconds")
         return html_buffer
@@ -1934,7 +1938,7 @@ class VisualizerApi():
         )
         
         html_buffer = io.StringIO()
-        fig.write_html(html_buffer)
+        fig.write_html(html_buffer, config={'displayModeBar': False})
         html_buffer.seek(0)
         print(f"Top state plot done in {round(time.time()-plot_start,1)} seconds")
         return html_buffer
@@ -2016,7 +2020,7 @@ class VisualizerApi():
         )
 
         html_buffer = io.StringIO()
-        fig.write_html(html_buffer)
+        fig.write_html(html_buffer, config={'displayModeBar': False})
         html_buffer.seek(0)
         print(f"HA state plot done in {round(time.time()-plot_start,1)} seconds")
         return html_buffer
@@ -2098,7 +2102,7 @@ class VisualizerApi():
         )
 
         html_buffer = io.StringIO()
-        fig.write_html(html_buffer)
+        fig.write_html(html_buffer, config={'displayModeBar': False})
         html_buffer.seek(0)
         print(f"AA state plot done in {round(time.time()-plot_start,1)} seconds")
         return html_buffer 
@@ -2166,7 +2170,7 @@ class VisualizerApi():
         )
 
         html_buffer = io.StringIO()
-        fig.write_html(html_buffer)
+        fig.write_html(html_buffer, config={'displayModeBar': False})
         html_buffer.seek(0)
         print(f"Weather plot done in {round(time.time()-plot_start,1)} seconds")
         return html_buffer
@@ -2317,7 +2321,7 @@ class VisualizerApi():
         )
 
         html_buffer = io.StringIO()
-        fig.write_html(html_buffer)
+        fig.write_html(html_buffer, config={'displayModeBar': False})
         html_buffer.seek(0)
         print(f"Prices plot done in {round(time.time()-plot_start,1)} seconds")   
         return html_buffer             
