@@ -249,14 +249,12 @@ function toggleOptions() {
         document.getElementById("data-selector").style.display = "block";
         document.getElementById("plot-container").style.display = "block";
         document.getElementById("navbar").style.display = "flex";
-        // if (!plotsDisplayed) {
         const screenHeight = window.innerHeight;
-        if (screenHeight < 650) {
+        if (screenHeight < 650 || plotsDisplayed) {
             document.getElementById('footer').style.position = 'relative';
         } else {
             document.getElementById('footer').style.position = 'fixed';
         }
-        // }
     }
 }
 
