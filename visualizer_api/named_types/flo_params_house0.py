@@ -50,7 +50,8 @@ class FloParamsHouse0(BaseModel):
     MaxEwtF: StrictInt
     PriceUnit: str
     ParamsGeneratedS: int
-    FloType: str = "NodeMatching.1df8360"
+    FloAlias: str = "Winter.Oak"
+    FloGitCommit: str = "6828dea"
     TypeName: Literal["flo.params.house0"] = "flo.params.house0"
     Version: Literal["000", "001", "002"] = "002"
 

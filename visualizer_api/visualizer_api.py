@@ -31,10 +31,8 @@ from datetime import datetime
 from pathlib import Path
 from config import Settings
 from models import MessageSql
-from hinge import FloHinge
 from named_types import FloParamsHouse0
-
-houses_on_new_flo = ['oak', 'beech', 'fir', 'maple']
+from flo import DGraph
 
 class Prices(BaseModel):
     unix_s: List[float]
@@ -728,23 +726,10 @@ class VisualizerApi():
                     return
 
                 print("Running Dijkstra and saving analysis to excel...")
-                houses_in_hinge = []
                 flo_params = FloParamsHouse0(**flo_params_msg.payload)
-                if request.house_alias in houses_in_hinge:
-                    h = FloHinge(flo_params, hinge_hours=5, num_nodes=[10,3,3,3,3])
-                    h.export_to_excel()
-                else:
-                    if "NodeMatching" in flo_params.FloType:
-                        from new_flo import DGraph
-                    elif "StackedTemperatures" in flo_params.FloType:
-                        from flo import DGraph
-                    else:
-                        print(f"{flo_params.FloType} is an unknown FLO type!")
-                        print("Using the latest FLO (NodeMatching) by default")
-                        from new_flo import DGraph
-                    g = DGraph(flo_params)
-                    g.solve_dijkstra()
-                    g.export_to_excel()
+                g = DGraph(flo_params)
+                g.solve_dijkstra()
+                g.export_to_excel()
                 print("Done.")
                 
                 if os.path.exists('result.xlsx'):
@@ -789,10 +774,6 @@ class VisualizerApi():
                 zip_buffer = io.BytesIO()
                 with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
                     for i in range(len(flo_params_messages)):
-                        if request.house_alias in houses_on_new_flo:
-                            from new_flo import DGraph
-                        else:
-                            from flo import DGraph
                         g = DGraph(flo_params_messages[i])
                         g.solve_dijkstra()
                         pq_pairs = g.generate_bid()
