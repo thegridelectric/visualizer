@@ -13,6 +13,8 @@ from openpyxl.drawing.image import Image
 from named_types import PriceQuantityUnitless, FloParamsHouse0
 from typing import Optional
 
+HOUSES_WITH_ONLY_2_EDGES = ['oak']
+
 def to_kelvin(t):
     return (t-32)*5/9 + 273.15
 
@@ -130,7 +132,10 @@ class DParams():
         cc = -self.dd_delta_t/self.dd_power * c - rwt
         if bb**2-4*aa*cc < 0 or (-bb + (bb**2-4*aa*cc)**0.5)/(2*aa) - rwt > 30:
             return 30
-        return (-bb + (bb**2-4*aa*cc)**0.5)/(2*aa) - rwt
+        dt = (-bb + (bb**2-4*aa*cc)**0.5)/(2*aa) - rwt
+        if dt<=1:
+            return 1
+        return dt
     
     def get_quadratic_coeffs(self):
         x_rswt = np.array([self.no_power_rswt, self.intermediate_rswt, self.dd_rswt])
@@ -139,10 +144,19 @@ class DParams():
         return [float(x) for x in np.linalg.solve(A, y_hpower)] 
     
     def get_available_top_temps(self) -> Tuple[Dict, Dict]:
-        MIN_BOTTOM_TEMP, MAX_TOP_TEMP = 100, 175
+        MIN_BOTTOM_TEMP, MAX_TOP_TEMP = 80, 175
+
+        if self.initial_top_temp < MIN_BOTTOM_TEMP:
+            self.initial_top_temp = MIN_BOTTOM_TEMP
 
         if self.initial_bottom_temp < self.initial_top_temp - self.delta_T(self.initial_top_temp):
             self.initial_bottom_temp = round(self.initial_top_temp - self.delta_T(self.initial_top_temp))
+
+        if self.initial_bottom_temp < MIN_BOTTOM_TEMP:
+            self.initial_bottom_temp = MIN_BOTTOM_TEMP
+
+        if self.initial_bottom_temp == self.initial_top_temp:
+            self.initial_bottom_temp += -5
 
         self.max_thermocline = self.num_layers
         if self.initial_top_temp > MAX_TOP_TEMP-5:
@@ -162,6 +176,8 @@ class DParams():
             else:
                 available_temps.append((b, height_bottom))
                 available_temps.append((t, height_top))
+                if t==round(t + self.delta_T_inverse(t)) or b==round(b + self.delta_T_inverse(b)):
+                    break
                 t = round(t + self.delta_T_inverse(t))
                 b = round(b + self.delta_T_inverse(b))
 
@@ -175,6 +191,8 @@ class DParams():
             else:
                 available_temps = [(t, height_top)] + available_temps
                 available_temps = [(b, height_bottom)] + available_temps
+                if t==round(t - self.delta_T(t)) or b==round(b - self.delta_T(b)):
+                    break
                 t = round(t - self.delta_T(t))
                 b = round(b - self.delta_T(b))
 
@@ -183,18 +201,22 @@ class DParams():
             for i in range(1, len(available_temps)):
                 available_temps[i] = (max(available_temps[i][0], available_temps[i-1][0]), available_temps[i][1])
 
-        available_temps_no_duplicates = []
-        skip_next_i = False
-        for i in range(len(available_temps)):
-            if i<len(available_temps)-1 and available_temps[i][0] == available_temps[i+1][0]:
-                available_temps_no_duplicates.append((available_temps[i][0], available_temps[i][1]+available_temps[i+1][1]))
-                skip_next_i = True
-            elif not skip_next_i:
-                available_temps_no_duplicates.append(available_temps[i])
-            else:
-                skip_next_i = False
-        available_temps = available_temps_no_duplicates.copy()
-            
+        for _ in range(10):
+            if sorted(list(set([x[0] for x in available_temps]))) == sorted([x[0] for x in available_temps]):
+                break
+            available_temps_no_duplicates = []
+            skip_next_i = False
+            for i in range(len(available_temps)):
+                if i<len(available_temps)-1 and available_temps[i][0] == available_temps[i+1][0]:
+                    available_temps_no_duplicates.append((available_temps[i][0], min(
+                        available_temps[i][1]+available_temps[i+1][1], self.num_layers)))
+                    skip_next_i = True
+                elif not skip_next_i:
+                    available_temps_no_duplicates.append(available_temps[i])
+                else:
+                    skip_next_i = False
+            available_temps = available_temps_no_duplicates.copy()
+
         if max([x[0] for x in available_temps]) < MAX_TOP_TEMP-5:
             available_temps.append((MAX_TOP_TEMP-5, self.num_layers))
 
@@ -299,7 +321,7 @@ class DEdge():
         self.fake_cost: Optional[float] = None
 
     def __repr__(self):
-        return f"Edge: {self.tail} --cost:{round(self.cost,3)}--> {self.head}"
+        return f"Edge: {self.tail} --cost:{round(self.cost,3)}, heat:{round(self.hp_heat_out,2)}--> {self.head}"
 
 
 class DGraph():
@@ -348,6 +370,12 @@ class DGraph():
                               self.params.temperature_stack[self.params.available_top_temps.index(self.params.available_top_temps[-1])][1], 
                               self.params)
         
+        only_2_edges = False
+        for house_alias in HOUSES_WITH_ONLY_2_EDGES:
+            if house_alias in self.params.config.GNodeAlias:
+                only_2_edges = True
+                print(f"Only two edges for {house_alias}")
+        
         for h in range(self.params.horizon):
             
             for node_now in self.nodes[h]:
@@ -360,10 +388,11 @@ class DGraph():
 
                 # If the current top temperature is the first one available above RSWT
                 # If it exists, add an edge from the current node that drains the storage further than RSWT
-                RSWT_plus = self.params.rswt_plus[self.params.rswt_forecast[h]]
-                if node_now.top_temp == RSWT_plus and h < self.params.horizon-1:
-                    self.add_rswt_minus_edge(node_now, h, losses)
-                
+                if not only_2_edges:
+                    RSWT_plus = self.params.rswt_plus[self.params.rswt_forecast[h]]
+                    if node_now.top_temp == RSWT_plus and h < self.params.horizon-1:
+                        self.add_rswt_minus_edge(node_now, h, losses)
+
                 for node_next in self.nodes[h+1]:
 
                     store_heat_in = node_next.energy - node_now.energy
@@ -401,7 +430,16 @@ class DGraph():
                                         continue
                             
                             self.edges[node_now].append(DEdge(node_now, node_next, cost, hp_heat_out))
-                    
+                
+                if self.edges[node_now] and only_2_edges:
+                    min_hp_out_edge = min(self.edges[node_now], key=lambda e: e.hp_heat_out)
+                    max_hp_out_edge = max(self.edges[node_now], key=lambda e: e.hp_heat_out)
+                    self.edges[node_now] = [min_hp_out_edge]
+                    if max_hp_out_edge.hp_heat_out > 10:
+                        self.edges[node_now].append(max_hp_out_edge)
+                    else:
+                        self.edges[node_now][0].hp_heat_out = 0
+
                 if not self.edges[node_now]:
                     print(f"No edge from node {node_now}, adding edge with penalty")
                     cop = self.params.COP(oat=self.params.oat_forecast[h], lwt=node_next.top_temp)
@@ -669,8 +707,8 @@ class DGraph():
         tank_bottom_colors = [cmap(norm(x)) for x in sp_bottom_temp]
 
         # Reversing thermocline positions
-        sp_thermocline_reversed1 = [self.params.num_layers - x + 1 for x in sp_thermocline]
-        sp_thermocline_reversed2 = [self.params.num_layers - x + 1 for x in sp_thermocline2]
+        sp_thermocline_reversed1 = [self.params.num_layers - x for x in sp_thermocline]
+        sp_thermocline_reversed2 = [self.params.num_layers - x for x in sp_thermocline2]
 
         # Stacking the temperatures and thermoclines
         bars_top = ax[1].bar(sp_time, sp_thermocline, bottom=sp_thermocline_reversed1, color=tank_top_colors, alpha=0.7, width=0.9, align='edge')
@@ -802,8 +840,6 @@ class DGraph():
 
         # Add the PQ pairs to a seperate sheet and plot the curve
         pq_pairs = self.generate_bid()
-        print(pq_pairs)
-        print(len(pq_pairs))
         prices = [x.PriceTimes1000 for x in pq_pairs]
         quantities = [x.QuantityTimes1000/1000 for x in pq_pairs]
         pqpairs_df = pd.DataFrame({'price':[x/1000 for x in prices], 'quantity':quantities})
@@ -838,8 +874,8 @@ class DGraph():
         plt.close()
 
         # Write to Excel
-        os.makedirs('results', exist_ok=True)
         start = datetime.fromtimestamp(self.params.start_time, tz=pytz.timezone("America/New_York")).strftime('%Y-%m-%d %H:%M')
+        # os.makedirs('results', exist_ok=True)
         # file_path = os.path.join('results', f'result_{start}.xlsx')
         file_path = 'result.xlsx'
         with pd.ExcelWriter(file_path, engine='openpyxl') as writer:

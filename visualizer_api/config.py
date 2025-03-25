@@ -8,10 +8,10 @@ class Settings(BaseSettings):
     db_url: SecretStr = SecretStr(
         "postgresql://persister:PASSWD@journaldb.electricity.works/journaldb"
     )
-    db_pass: SecretStr = SecretStr("Passwd")
     ops_genie_api_key: SecretStr = SecretStr("OpsGenieAPIKey")
     visualizer_api_password: SecretStr = SecretStr("ThermostatAPIKey")
-    oak_owner_password: SecretStr = SecretStr("ThermostatAPIKey")
+    oak_owner_password: SecretStr = SecretStr("OakOwnerPassword")
+    running_locally: bool = False
 
     model_config = ConfigDict(
         env_prefix="gjk_",

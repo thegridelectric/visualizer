@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8">
+    <title>GridWorks - Aggregators</title>
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
+    <!-- Stylesheets -->
+    <link rel="stylesheet" type="text/css" href="resources/styles.css">
+    <!-- Libraries and Javascript -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/luxon@3.0.1/build/global/luxon.min.js"></script>
+    <script src="resources/script.js" defer></script>
+    <!-- Favicon -->
+    <link rel="icon" type="image/x-icon" href="resources/images/favicon_light/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="resources/images/favicon_light/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="resources/images/favicon_light/favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="resources/images/favicon_light/apple-touch-icon.png">
+    <link rel="android-chrome" sizes="192x192" href="resources/images/favicon_light/android-chrome-192x192.png">
+    <link rel="android-chrome" sizes="512x512" href="resources/images/favicon_light/android-chrome-512x512.png">
+
+    <script>
+        let currentLmpList = new Array(48).fill(0.0);
+        let currentTariffList = new Array(48).fill(0.0);
+        let lmpList = JSON.parse(JSON.stringify(currentLmpList));
+        let tariffList = JSON.parse(JSON.stringify(currentTariffList));
+        let unix_s = [];
+        let isKeyPressed = false;
+
+        async function updateTable() {
+            const tableRows = document.querySelectorAll('#price-editor-table tbody tr');
+                tableRows.forEach((row, index) => {
+                    const lmpCell = row.querySelectorAll('.current-value')[0];
+                    const tariffCell = row.querySelectorAll('.current-value')[1];
+                    const lmpInput = row.querySelectorAll('input')[0];
+                    const tariffInput = row.querySelectorAll('input')[1];
+                    lmpCell.textContent = lmpList[index];
+                    tariffCell.textContent = tariffList[index];
+                    updateCellStyle(lmpCell, lmpList[index], currentLmpList[index]);
+                    updateCellStyle(tariffCell, tariffList[index], currentTariffList[index]);
+                    lmpInput.placeholder = currentLmpList[index];
+                    tariffInput.placeholder = currentTariffList[index];
+                });
+                checkIfPricesChanged();
+        }
+    
+        async function getPrices() {
+            try {
+                const response = await fetch('https://price-forecasts.electricity.works/get_prices', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                });
+                if (!response.ok) {
+                    throw new Error('Failed to fetch prices');
+                }
+                const data = await response.json();
+                currentLmpList = data.lmp.map(parseFloat);
+                currentTariffList = data.dist.map(parseFloat);
+                lmpList = data.lmp.map(parseFloat);
+                tariffList = data.dist.map(parseFloat);
+                updateTable();
+                // TOOD: call this function at the top of the hour?
+            } catch (error) {
+                console.error('Error fetching prices:', error);
+            }
+        }
+
+        async function getDefaultPrices() {
+            try {
+                const response = await fetch('https://price-forecasts.electricity.works/get_default_prices', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                });
+                if (!response.ok) {
+                    throw new Error('Failed to fetch prices');
+                }
+                const data = await response.json();
+                lmpList = data.lmp;
+                tariffList = data.dist;
+                updateTable();
+            } catch (error) {
+                console.error('Error fetching default prices:', error);
+            }
+        }
+    
+        function resetPrices() {
+            lmpList = JSON.parse(JSON.stringify(currentLmpList));
+            tariffList = JSON.parse(JSON.stringify(currentTariffList));
+            updateTable();
+        }
+
+        async function sendPrices(event) {
+            event.preventDefault();
+            document.getElementById('prices-save-button').style.display = 'block';
+            document.getElementById('prices-reset-button').style.display = 'block';
+            try {
+                const response = await fetch('https://price-forecasts.electricity.works/update_prices', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        unix_s: unix_s,
+                        lmp: lmpList,
+                        dist: tariffList
+                    })
+                });
+                if (!response.ok) {
+                    throw new Error('Failed to update prices');
+                }
+                const data = await response.json();
+                currentLmpList = data.lmp.map(parseFloat);
+                currentTariffList = data.dist.map(parseFloat);
+                lmpList = data.lmp.map(parseFloat);
+                tariffList = data.dist.map(parseFloat);
+                updateTable();
+                getAggOverviewPlot(event, just_prices=true);
+            } catch (error) {
+                console.error('Error sending prices:', error);
+            }
+        }
+    
+        function checkIfPricesChanged() {
+            function areArraysEqual(arr1, arr2) {
+                if (arr1.length !== arr2.length) return false;
+                for (let i = 0; i < arr1.length; i++) {
+                    if (arr1[i] !== arr2[i]) return false;
+                }
+                return true;
+            }
+            const allCurrent = areArraysEqual(lmpList, currentLmpList) && areArraysEqual(tariffList, currentTariffList);
+            if (allCurrent) {
+                document.getElementById('prices-save-button').style.display = 'block';
+                document.getElementById('prices-reset-button').style.display = 'block';
+            } else {
+                document.getElementById('prices-save-button').style.display = 'block';
+                document.getElementById('prices-reset-button').style.display = 'block';
+            }
+        }
+
+        function setupHourlyRefresh() {
+            function scheduleNextRefresh() {
+                const now = DateTime.now().setZone('America/New_York');
+                const nextHour = now.plus({ hours: 1 }).startOf('hour');
+                const millisToNextHour = nextHour.toMillis() - now.toMillis();
+                
+                console.log(`Next price refresh scheduled for ${nextHour.toFormat('yyyy-MM-dd HH:mm:ss')}`);
+                
+                setTimeout(() => {
+                    console.log('Refreshing prices at the top of the hour');
+                    
+                    const tableBody = document.querySelector('#price-editor-table tbody');
+                    tableBody.innerHTML = '';
+                    
+                    initializeTable(true).then(() => {
+                        scheduleNextRefresh();
+                    }).catch(error => {
+                        console.error('Error refreshing prices:', error);
+                        scheduleNextRefresh();
+                    });
+                }, millisToNextHour);
+            }
+            
+            scheduleNextRefresh();
+        }
+
+        const { DateTime } = luxon;
+
+        async function initializeTable(isRefresh = false) {
+            await getPrices();
+            const tableBody = document.querySelector('#price-editor-table tbody');
+            tableBody.innerHTML = '';            
+            const currentDate = DateTime.now().setZone('America/New_York').startOf('hour');
+            unix_s = [];
+            
+            for (let i = 0; i < 24; i++) {
+                // Adjust the current time by adding 1 + i hours
+                let date = currentDate.plus({ hours: i + 1 });                
+                unix_s.push(date.toUnixInteger());
+                
+                // Add row to the table
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${date.toFormat('cccc, LLL dd, yyyy')}</td>
+                    <td>${date.toFormat('HH:00')}</td>
+                    <td class="current-value">${currentLmpList[i]}</td>
+                    <td><input class='price-edit-input' type="text" style="width:50px" placeholder=${currentLmpList[i]}></td>
+                    <td class="current-value">${currentTariffList[i]}</td>
+                    <td><input class='price-edit-input' type="text" style="width:50px" placeholder=${currentTariffList[i]}></td>
+                `;
+                // LMP input event listener
+                const lmpInput = row.querySelectorAll('input')[0];
+                lmpInput.addEventListener('keydown', function(event) {
+                    handleArrowKey(event, row, currentLmpList[i], lmpInput, 'lmp');
+                });
+                lmpInput.addEventListener('blur', function(event) {
+                    handleBlurEvent(event, row, currentLmpList[i], lmpInput, 'lmp');
+                });
+                // Tariff input event listener
+                const tariffInput = row.querySelectorAll('input')[1];
+                tariffInput.addEventListener('keydown', function(event) {
+                    handleArrowKey(event, row, currentTariffList[i], tariffInput, 'tariff');
+                });
+                tariffInput.addEventListener('blur', function(event) {
+                    handleBlurEvent(event, row, currentTariffList[i], tariffInput, 'tariff');
+                });
+                tableBody.appendChild(row);
+            }
+            if (!isRefresh) {
+                setupHourlyRefresh();
+            }
+        }
+
+        function handleBlurEvent(event, row, currentValue, input, type) {
+            if (isKeyPressed) {
+                isKeyPressed = false; // Reset the flag after handling arrow keys
+                return;
+            }
+            const columnIndex = type === 'lmp' ? 0 : 1;
+            const currentCell = row.querySelectorAll('.current-value')[columnIndex];
+            let inputValue = input.value;
+
+            // If the input is empty or invalid, revert to the current value
+            if (isNaN(inputValue) || inputValue === '') {
+                input.value = ''
+                return
+            }
+
+            // Update the cell with the new value
+            currentCell.textContent = inputValue;
+
+            // Update the corresponding list based on the type (lmp or tariff)
+            if (type === 'lmp') {
+                lmpList[parseInt(row.rowIndex) - 1] = parseFloat(inputValue);
+            } else if (type === 'tariff') {
+                tariffList[parseInt(row.rowIndex) - 1] = parseFloat(inputValue);
+            }
+
+            // Update the cell style
+            updateCellStyle(currentCell, inputValue, currentValue);
+
+            // Clear the input value
+            input.value = '';
+
+            // Check if prices have changed
+            checkIfPricesChanged();
+        }
+    
+        function handleArrowKey(event, row, currentValue, input, type) {
+            const columnIndex = type === 'lmp' ? 0 : 1;
+            const currentCell = row.querySelectorAll('.current-value')[columnIndex];
+            let inputValue = input.value;
+    
+            // Handle Enter key
+            if (event.key === 'Enter') {
+                isKeyPressed = true;
+                if ((isNaN(inputValue) || inputValue === '')) {
+                    inputValue = currentValue;
+                }
+                currentCell.textContent = inputValue;
+                if (type === 'lmp') {
+                    lmpList[parseInt(row.rowIndex) - 1] = parseFloat(inputValue);
+                } else if (type === 'tariff') {
+                    tariffList[parseInt(row.rowIndex) - 1] = parseFloat(inputValue);
+                }
+    
+                updateCellStyle(currentCell, inputValue, currentValue);
+                input.value = '';
+                checkIfPricesChanged();
+    
+                const nextRow = row.nextElementSibling;
+                if (nextRow) {
+                    const nextInput = nextRow.querySelectorAll('input')[columnIndex]; // Focus on the same column in the next row
+                    if (nextInput) {
+                        nextInput.focus();
+                    }
+                }
+            }
+            // Handle ArrowDown key
+            if (event.key === 'ArrowDown') {
+                const nextRow = row.nextElementSibling;
+                if (nextRow) {
+                    const nextInput = nextRow.querySelectorAll('input')[columnIndex];
+                    if (nextInput) {
+                        nextInput.focus();
+                    }
+                }
+            }
+            // Handle ArrowUp key
+            if (event.key === 'ArrowUp') {
+                const prevRow = row.previousElementSibling;
+                if (prevRow) {
+                    const prevInput = prevRow.querySelectorAll('input')[columnIndex];
+                    if (prevInput) {
+                        prevInput.focus();
+                    }
+                }
+            }
+        }
+    
+        function updateCellStyle(cell, inputValue, currentValue) {
+            if (parseFloat(inputValue) !== currentValue) {
+                cell.style.color = '#466ac4';
+                cell.style.fontWeight = 'bold';
+            } else {
+                cell.style.removeProperty('color');
+                cell.style.removeProperty('font-weight');
+            }
+        }
+    
+    </script>
+        
+    
+</head>
+
+<body> <!-- onload="LogInAggregator(event)"> -->
+    <!-- Navigation bar -->
+    <div id="navbar" style="height: 75px;">
+        <div id="dropdown-menu-button" onclick="dropDownMenu()">
+            <div style="width: 30%; height:2px; background-color: var(--navbar-textcolor); margin-bottom: 6px;"></div>
+            <div style="width: 30%; height:2px; background-color: var(--navbar-textcolor);"></div>
+        </div>
+        <!-- <div id="darkmode-button" onclick="toggleDarkMode()">
+            <div class="darkmode-icon"></div>
+        </div> -->
+        <a href=""><div id="gridworks-logo">
+            <span style="font-family: 'Montserrat'; font-weight: normal">
+                <span>GRIDWORKS</span><br>CONSULTING
+            </span>
+        </div></a>
+        <a href="aggregators.html"><div class='menu-item'>
+            <span style="font-size: 14px; font-weight: bold;">Aggregators</span>
+        </div></a>
+        <a href="index.html"><div class='menu-item'>
+            <span style="font-size: 14px;">Homeowners</span>
+        </div></a>
+    </div> 
+
+    <!-- Login -->
+    <div id="login-div" style="display: block">               
+        <h2 id="login-title">Log in</h2>
+        <form onsubmit="LogInAggregator(event)">
+            <input class="text-input" type="text" id="username" placeholder="Username"><br>
+            <input class="text-input" type="password" id="password" placeholder="Password"><br>
+            <input class='enabled' id='login-button' type="submit" style='position: absolute' value="Log in">
+        </form>
+    </div>
+
+    <!-- Aggregation overview -->
+    <div class="agg-widget-title" id="agg-overview-title">
+        <h2>Aggregation overview</h2>
+        <div>
+            <button class='enabled' id="agg-refresh-button" onclick="getAggOverviewPlot(event)">Plot</button>
+        </div>
+    </div>
+    <div class="agg-widget" id="agg-overview" style="display: none;">
+        <div style="width: 100%; height: 100%; display: flex; justify-content: center;">
+            <div class="wrapper" id="agg-dates-wrapper">
+                <div style="margin-right: 20px;">
+                    <label style="color: var(--agg-widget-textcolor)" for="start-date-picker">Start<br></label>
+                    <input class="agg-date-input" type="date" id="start-date-picker" name="start-date-picker">
+                    <input class="agg-date-input" type="time" id="start-time-picker" name="start-time-picker"><br><br>
+                </div>
+                <div>
+                    <label style="color: var(--agg-widget-textcolor)" for="end-date-picker">End<br></label>
+                    <input class="agg-date-input" type="date" id="end-date-picker" name="end-date-picker">
+                    <input class="agg-date-input" type="time" id="end-time-picker" name="end-time-picker">
+                    <button type="button" id="agg-now-button" onclick="setNowAgg()">Now</button><br><br>
+                </div>
+            </div>
+        </div>
+        <div style="width: 100%; height: 100%; display: flex; justify-content: center;">
+            <div id="loader" style="display: none; margin-top:25px; margin-bottom: 60px;"></div>
+        </div>
+        <div style="width: 100%; display: flex; justify-content: center; margin: -20px 0px 0px 0px" id="agg-overview-plot"></div>
+        <div style="width: 100%; display: flex; justify-content: center; margin: -20px 0px 40px 0px" id="agg-overview-plot2"></div>
+    </div>
+
+    <!-- Price editor -->
+    <div class="agg-widget-title" id="price-editor-title">
+        <h2>Price editor</h2>
+        <div class="button-container">
+            <button class='enabled' id="prices-save-button" onclick="sendPrices(event)">Save</button>
+            <button class='enabled' id="prices-reset-button" onclick="resetPrices()">Reset</button>
+            <button class='enabled' id="prices-default-button" onclick="getDefaultPrices()">Default</button>
+        </div>
+    </div>    
+    <div class="agg-widget" id="price-editor" style="display: none;">
+        <div style="width: 100%; height: 100%; display: flex; justify-content: center;">
+        <table id="price-editor-table">
+            <thead>
+                <tr>
+                    <th style="width: 15%;">Day</th>
+                    <th>Hour start</th>
+                    <th>LMP<br><span style="font-weight: normal; color: gray">$/MWh</span></th>
+                    <th style="width: 10%;">Edit LMP<br><span style="font-weight: normal; color: gray">$/MWh</span></th>
+                    <th>Tariff<br><span style="font-weight: normal; color: gray">$/MWh</span></th>
+                    <th style="width: 10%;">Edit Tariff<br><span style="font-weight: normal; color: gray">$/MWh</span></th>
+                </tr>
+            </thead>
+            <tbody>
+            </tbody>
+        </table>
+        </div>
+    </div>
+    
+    <!-- Footer -->
+    <div id="footer">
+        GridWorks © 2025 • <a href="mailto:gbaker@gridworks-consulting.com">Email</a> • <a href="tel:+16173207950">Call</a>
+         <!-- • <span style="cursor:pointer" onclick="toggleDarkMode()">Dark mode</span> -->
+    </div>
+    
+</body>
+</html>

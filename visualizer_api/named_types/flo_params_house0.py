@@ -46,12 +46,13 @@ class FloParamsHouse0(BaseModel):
     DdPowerKw: float
     DdRswtF: StrictInt
     DdDeltaTF: StrictInt
-    DischargingDdDeltaTF: StrictInt = 45
     MaxEwtF: StrictInt
     PriceUnit: str
     ParamsGeneratedS: int
+    FloAlias: str = "Winter.Oak"
+    FloGitCommit: str = "6828dea"
     TypeName: Literal["flo.params.house0"] = "flo.params.house0"
-    Version: Literal["000", "001"] = "001"
+    Version: Literal["000", "001", "002"] = "002"
 
     def to_dict(self):
         return vars(self)

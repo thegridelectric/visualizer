@@ -1,5 +1,5 @@
-from fake_models import MessageSql
-from fake_config import Settings
+from models import MessageSql
+from config import Settings
 from sqlalchemy import create_engine, asc, or_
 from sqlalchemy.orm import sessionmaker
 import dotenv
