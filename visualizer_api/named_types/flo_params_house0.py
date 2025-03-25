@@ -46,7 +46,6 @@ class FloParamsHouse0(BaseModel):
     DdPowerKw: float
     DdRswtF: StrictInt
     DdDeltaTF: StrictInt
-    DischargingDdDeltaTF: StrictInt = 45
     MaxEwtF: StrictInt
     PriceUnit: str
     ParamsGeneratedS: int
