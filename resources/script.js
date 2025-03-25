@@ -525,11 +525,11 @@ async function fetchPlots(house_alias, password, start_ms, end_ms, channels, con
                     iframe.src = htmlUrl;
                     if (window.innerWidth < 650) {
                         iframe.style.width = '100%';
-                        iframe.style.height = '375px';
                     } else {
                         iframe.style.width = '90%';
-                        iframe.style.height = '375px';
+                        
                     }
+                    iframe.style.height = '375px';
                     iframe.style.maxWidth = '1500px';
                     iframe.style.border = 'none';
                     const plotDivs = [
@@ -700,7 +700,11 @@ async function getAggOverviewPlot(event, just_prices=false) {
                     const htmlUrl = URL.createObjectURL(blob);
                     const iframe = document.createElement('iframe');
                     iframe.src = htmlUrl;
-                    iframe.style.width = '90%';
+                    if (window.innerWidth < 650) {
+                        iframe.style.width = '100%';
+                    } else {
+                        iframe.style.width = '90%';
+                    }
                     iframe.style.maxWidth = '1500px';
                     iframe.style.height = '375px';
                     iframe.style.border = 'none';
