@@ -395,8 +395,6 @@ class VisualizerApi():
                 return {"success": False, "message": warning_message, "reload": False}
             
             for house_alias in set([message.from_alias for message in all_raw_messages]):
-                if 'maple' in house_alias:
-                    continue
                 self.data[request][house_alias] = {}
 
                 # Process reports
