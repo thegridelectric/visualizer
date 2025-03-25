@@ -1813,7 +1813,7 @@ class VisualizerApi():
             max_power = max([x/1000 for x in self.data[request]['channels']['required-energy']['values']])*4
             
         if plotting_temperatures and plotting_power:
-            fig.update_layout(yaxis=dict(title='Temperature [F]', range=[min_store_temp-80, max_store_temp+60]))
+            fig.update_layout(yaxis=dict(title='Temperature [F]', range=[min_store_temp-80, max_store_temp+80]))
             fig.update_layout(yaxis2=dict(title='GPM, kW, or kWh', range=[-1, max_power]))
         elif plotting_temperatures and not plotting_power:
             min_store_temp = 20 if min_store_temp<0 else min_store_temp
