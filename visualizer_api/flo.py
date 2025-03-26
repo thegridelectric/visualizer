@@ -2,7 +2,7 @@ import time
 import json
 import numpy as np
 from typing import Dict, List, Tuple
-from dijkstra_types import DParams, DNode, DEdge
+from .dijkstra_types import DParams, DNode, DEdge
 from named_types import FloParamsHouse0, PriceQuantityUnitless
 
 
@@ -129,6 +129,7 @@ class DGraph():
             n for n in self.nodes[0]
             if n.top_temp == initial_top_temp
             and n.middle_temp == initial_middle_temp
+            and n.thermocline1 == self.params.initial_thermocline
         ]
 
         self.initial_node = min(
