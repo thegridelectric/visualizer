@@ -2,7 +2,7 @@ from typing import Dict, List, Tuple
 import json
 import time
 from named_types import FloParamsHouse0
-from dtypes import DParams, DNode, to_kelvin
+from dijkstra_types import DParams, DNode, to_kelvin
 
 
 class SuperGraphGenerator():

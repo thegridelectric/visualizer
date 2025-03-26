@@ -7,7 +7,7 @@ from matplotlib.colors import Normalize
 from openpyxl.drawing.image import Image
 from datetime import datetime, timedelta
 from flo import DGraph
-from dtypes import DNode
+from dijkstra_types import DNode
 
 
 class DGraphVisualizer():
