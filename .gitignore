@@ -1,6 +1,7 @@
 results/
 messages.json
 result.xlsx
+super_graph.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
