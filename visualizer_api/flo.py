@@ -113,10 +113,10 @@ class DGraph():
                 node.pathcost = best_edge.head.pathcost + best_edge.cost
                 node.next_node = best_edge.head
 
-    def read_node_str(self, node_str:str):
+    def read_node_str(self, node_str: str):
         parts = node_str.replace(')', '(').split('(')
-        t, th1, m, th2, b = int(parts[0]), int(parts[1]), int(parts[2]), int(parts[3]), int(parts[4])
-        return t, th1, m, th2, b
+        top, thermocline1, middle, thermocline2, bottom = int(parts[0]), int(parts[1]), int(parts[2]), int(parts[3]), int(parts[4])
+        return top, thermocline1, middle, thermocline2, bottom
 
     def find_initial_node(self):
         top_temps = set([n.top_temp for n in self.nodes[0]])
