@@ -11,7 +11,6 @@ import pendulum
 import traceback
 import numpy as np
 import pandas as pd
-from datetime import timedelta
 from pydantic import BaseModel, Field
 from typing import List, Optional, Union
 import asyncio
@@ -20,7 +19,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.responses import FileResponse
-from sqlalchemy import create_engine, asc, or_, and_, desc
+from sqlalchemy import asc, or_, and_, desc
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.future import select
@@ -33,6 +32,8 @@ from config import Settings
 from models import MessageSql
 from named_types import FloParamsHouse0
 from flo import DGraph
+from dgraph_visualizer import DGraphVisualizer
+
 
 class Prices(BaseModel):
     unix_s: List[float]
@@ -63,6 +64,7 @@ class MessagesRequest(DataRequest):
 
 class DijkstraRequest(BaseRequest):
     time_ms: int
+
 
 class VisualizerApi():
     def __init__(self):
@@ -727,7 +729,8 @@ class VisualizerApi():
                 flo_params = FloParamsHouse0(**flo_params_msg.payload)
                 g = DGraph(flo_params)
                 g.solve_dijkstra()
-                g.export_to_excel()
+                v = DGraphVisualizer(g)
+                v.export_to_excel()
                 print("Done.")
                 
                 if os.path.exists('result.xlsx'):
@@ -774,9 +777,9 @@ class VisualizerApi():
                     for i in range(len(flo_params_messages)):
                         g = DGraph(flo_params_messages[i])
                         g.solve_dijkstra()
-                        pq_pairs = g.generate_bid()
-                        prices = [x.PriceTimes1000 for x in pq_pairs]
-                        quantities = [x.QuantityTimes1000/1000 for x in pq_pairs]
+                        g.generate_bid()
+                        prices = [x.PriceTimes1000 for x in g.pq_pairs]
+                        quantities = [x.QuantityTimes1000/1000 for x in g.pq_pairs]
                         # To plot quantities on x-axis and prices on y-axis
                         ps, qs = [], []
                         index_p = 0
@@ -790,7 +793,7 @@ class VisualizerApi():
                             qs.append(quantities[index_p])
                         # Plot
                         plt.plot(qs, ps, label='demand (bid)')
-                        prices = [x.PriceTimes1000/1000 for x in pq_pairs]
+                        prices = [x.PriceTimes1000/1000 for x in g.pq_pairs]
                         plt.scatter(quantities, prices)
                         plt.plot(
                             [min(quantities)-1, max(quantities)+1],[expected_price_usd_mwh]*2, 
