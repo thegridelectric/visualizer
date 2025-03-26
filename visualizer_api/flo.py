@@ -38,8 +38,7 @@ class DGraph():
         super_graph_nodes: List[str] = self.super_graph['0.0']
 
         for node_no_time_slice in super_graph_nodes:
-            parts = node_no_time_slice.replace(')', '(').split('(')
-            t, th1, m, th2, b = int(parts[0]), int(parts[1]), int(parts[2]), int(parts[3]), int(parts[4])
+            t, th1, m, th2, b = self.read_node_str(node_no_time_slice)
 
             for h in range(self.params.horizon+1):
                 node = DNode(
@@ -96,8 +95,7 @@ class DGraph():
                     closest_store_heat_in = self.discretized_store_heat_in[abs(self.discretized_store_heat_in_array-store_heat_in).argmin()]
                     
                     node_next_str: str = self.super_graph[str(closest_store_heat_in)][node_now.to_string()]
-                    parts = node_next_str.replace(')', '(').split('(')
-                    t, th1, m, th2, b = int(parts[0]), int(parts[1]), int(parts[2]), int(parts[3]), int(parts[4])
+                    t, th1, m, th2, b = self.read_node_str(node_next_str)
                     node_next = self.nodes_by[node_now.time_slice+1][(t,m,b)][(th1,th2)]
 
                     cost = self.params.elec_price_forecast[h]/100 * hp_heat_out/cop
@@ -114,6 +112,11 @@ class DGraph():
                 best_edge = min(self.edges[node], key=lambda e: e.head.pathcost + e.cost)
                 node.pathcost = best_edge.head.pathcost + best_edge.cost
                 node.next_node = best_edge.head
+
+    def read_node_str(self, node_str:str):
+        parts = node_str.replace(')', '(').split('(')
+        t, th1, m, th2, b = int(parts[0]), int(parts[1]), int(parts[2]), int(parts[3]), int(parts[4])
+        return t, th1, m, th2, b
 
     def find_initial_node(self):
         top_temps = set([n.top_temp for n in self.nodes[0]])
