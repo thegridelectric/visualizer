@@ -1,5 +1,5 @@
 from flo import DGraph
-from hinge import FloHinge
+from visualizer_api.WIP.hinge import FloHinge
 from named_types import FloParamsHouse0
 import dotenv
 import pendulum
