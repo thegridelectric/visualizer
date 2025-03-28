@@ -1,3 +1,5 @@
+import os
+import time
 import dotenv
 import pendulum
 from sqlalchemy import create_engine, asc
@@ -6,11 +8,14 @@ from config import Settings
 from models import MessageSql
 from typing import List
 import pandas as pd
-import os
-import time
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.linear_model import Ridge
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.metrics import mean_squared_error, r2_score
 
 
-class StorageDatasetCreator():
+class StorageDataset():
     def __init__(self, house_alias, start_ms, timezone):
         settings = Settings(_env_file=dotenv.find_dotenv())
         engine = create_engine(settings.db_url.get_secret_value())
@@ -57,7 +62,7 @@ class StorageDatasetCreator():
             existing_dataset_dates = list(df['time'])
         day_start_ms = int(pendulum.from_timestamp(self.start_ms/1000, tz=self.timezone_str).replace(hour=0, minute=0).timestamp()*1000)
         day_end_ms = day_start_ms + (24*60+7)*60*1000
-        for day in range(30):
+        for day in range(200):
             if day_start_ms/1000 > time.time():
                 print("Will not look for data in the future.")
                 return
@@ -146,9 +151,6 @@ class StorageDatasetCreator():
         )
         print(f"Added {len(formatted_data)} new lines to the dataset")
 
-    def unix_ms_to_date(self, time_ms):
-        return str(pendulum.from_timestamp(time_ms/1000, tz=self.timezone_str).format('YYYY-MM-DD'))
-    
     def from_dict_msg(self, data):
         message = MessageSql(
             message_id=data["MessageId"],
@@ -159,11 +161,56 @@ class StorageDatasetCreator():
         )
         return message
 
+    def model_fit(self, plot=False):
+        if not os.path.exists(self.dataset_file):
+            print(f"Could not find {self.dataset_file}")
+            return
+        df = pd.read_csv(self.dataset_file)
+        self.X = df[[c for c in df.columns if 'initial' in c or 'store_heat_in' in c]]
+        self.y = df[[c for c in df.columns if 'final' in c]]
+        self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(self.X, self.y, test_size=0.1, random_state=42)
+        self.ridge_model = Ridge(alpha=1.0)
+        self.ridge_model.fit(self.X_train, self.y_train)
+        print(f"Done fitting regression model with data from {self.dataset_file}")
+        if plot:
+            plt.hist(df['store_heat_in'], bins=50, label="All data", alpha=0.6)
+            plt.hist(self.X_train['store_heat_in'], bins=50, label="Training data", alpha=0.6)
+            plt.hist(self.X_test['store_heat_in'], bins=50, label="Testing data", alpha=0.6)
+            plt.xlabel("Store heat in [kWh]")
+            plt.ylabel("Occurences")
+            plt.legend()
+            plt.show()
+
+    def test_model_performance(self, plot=False):
+        y_pred_ridge = self.ridge_model.predict(self.X_test)
+        mse_ridge = mean_squared_error(self.y_test, y_pred_ridge)
+        r2_ridge = r2_score(self.y_test, y_pred_ridge)
+        ridge_cv_score = cross_val_score(self.ridge_model, self.X, self.y, cv=5, scoring='neg_mean_squared_error')
+        print(f"RMSE: {round(np.sqrt(abs(mse_ridge)),1)}")
+        print(f"R2: {round(r2_ridge,1)}")
+        print(f"Cross-validation RMSE: {round(np.sqrt(abs(ridge_cv_score.mean())),1)}")
+        if plot:
+            plt.scatter(self.y_test, y_pred_ridge, alpha=0.3)
+            plt.plot(self.y_test, self.y_test, color='red')
+            plt.xlabel('True final temperature [F]')
+            plt.ylabel('Predicted final temperature [F]')
+            plt.xlim([80,180])
+            plt.ylim([80,180])
+            plt.title(f"{self.dataset_file}\nRMSE: {round(np.sqrt(abs(mse_ridge)),1)}")
+            plt.show()
+
+    def unix_ms_to_date(self, time_ms):
+        return str(pendulum.from_timestamp(time_ms/1000, tz=self.timezone_str).format('YYYY-MM-DD'))
+    
     def to_fahrenheit(self, t):
         return round(t*9/5+32,1)
     
 
 if __name__ == '__main__':
-    start_ms = pendulum.datetime(2025,3,6, tz='America/New_York').timestamp()*1000
-    s = StorageDatasetCreator('maple', start_ms, 'America/New_York')
-    s.generate_dataset()
+    house_alias = 'maple'
+    timezone = 'America/New_York'
+    start_ms = pendulum.datetime(2025,1,1, tz=timezone).timestamp()*1000
+    
+    s = StorageDataset(house_alias, start_ms, timezone)
+    # s.generate_dataset()
+    s.model_fit()
