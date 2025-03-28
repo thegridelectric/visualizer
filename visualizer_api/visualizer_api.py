@@ -371,13 +371,13 @@ class VisualizerApi():
                 print(error)
                 return error
             
-            # if os.path.exists('wip.json'):
-            #     import json
-            #     with open('wip.json', 'r') as file:
-            #         loaded_data = json.load(file)
-            #     loaded_data['timestamp'] = [pd.to_datetime(ts) for ts in loaded_data['timestamp']]
-            #     self.data[request] = loaded_data
-            #     return
+            if os.path.exists('wip.json'):
+                import json
+                with open('wip.json', 'r') as file:
+                    loaded_data = json.load(file)
+                loaded_data['timestamp'] = [pd.to_datetime(ts) for ts in loaded_data['timestamp']]
+                self.data[request] = loaded_data
+                return
             
             self.data[request] = {}
             self.timestamp_min_max[request] = {}
@@ -988,7 +988,7 @@ class VisualizerApi():
         
         df = pd.DataFrame(self.data[request])
         df['timestamp'] = df['timestamp'] - pd.Timedelta(minutes=5)
-        df_resampled = df.resample('5T', on='timestamp').agg({'energy': 'mean', 'hp': 'mean'}).reset_index()
+        df_resampled = df.resample('5min', on='timestamp').agg({'energy': 'mean', 'hp': 'mean'}).reset_index()
         fig = go.Figure()
 
         fig.add_trace(
@@ -1013,7 +1013,7 @@ class VisualizerApi():
         #         hovertemplate="%{x|%H:%M:%S} | %{y:.1f} kW<extra></extra>",
         #         )
         #     )
-        
+
         fig.add_trace(
             go.Scatter(
                 x=self.data[request]['timestamp'], 
@@ -1060,6 +1060,7 @@ class VisualizerApi():
                 showgrid=False
                 ),
             yaxis=dict(
+                range = [0, max(self.data[request]['hp'])*1.3],
                 mirror=True,
                 ticks='outside',
                 showline=False,
@@ -1070,6 +1071,7 @@ class VisualizerApi():
                 gridcolor='#424242' if request.darkmode else 'LightGray'
                 ),
             yaxis2=dict(
+                range = [0, max(df_resampled['energy'])*1.2],
                 mirror=True,
                 ticks='outside',
                 zeroline=False,
