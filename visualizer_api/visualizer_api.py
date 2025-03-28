@@ -371,6 +371,14 @@ class VisualizerApi():
                 print(error)
                 return error
             
+            # if os.path.exists('wip.json'):
+            #     import json
+            #     with open('wip.json', 'r') as file:
+            #         loaded_data = json.load(file)
+            #     loaded_data['timestamp'] = [pd.to_datetime(ts) for ts in loaded_data['timestamp']]
+            #     self.data[request] = loaded_data
+            #     return
+            
             self.data[request] = {}
             self.timestamp_min_max[request] = {}
             async with self.AsyncSessionLocal() as session:
@@ -385,7 +393,7 @@ class VisualizerApi():
                         MessageSql.message_type_name == "snapshot.spaceheat",
                     ),
                     MessageSql.message_persisted_ms >= request.start_ms,
-                    MessageSql.message_persisted_ms <= request.end_ms,
+                    MessageSql.message_persisted_ms <= request.end_ms + 10*60*1000,
                 ).order_by(asc(MessageSql.message_persisted_ms))
 
                 result = await session.execute(stmt)  # Use async execute
@@ -462,7 +470,7 @@ class VisualizerApi():
             # Re-sample to equal timesteps
             print("Re-sampling...")
             start_ms = request.start_ms
-            end_ms = request.end_ms
+            end_ms = request.end_ms + (10*60*1000 if query_start-request.end_ms/1000>10*60 else 0)
             timestep_s = 30
             num_points = int((end_ms - start_ms) / (timestep_s * 1000) + 1)
             sampling_times = np.linspace(start_ms, end_ms, num_points)
@@ -502,11 +510,11 @@ class VisualizerApi():
                 hp_list.append(sum([(agg_data[ha]['hp-idu-pwr'][i]+agg_data[ha]['hp-odu-pwr'][i])/1000 for ha in agg_data]))
             # Remove the last minutes of the energy plot to avoid wierd behaviour
             energy_list = [
-                energy if t<datetime.fromtimestamp(query_start-8*60,pytz.timezone(self.timezone_str)).replace(tzinfo=None) else np.nan
+                energy if t<datetime.fromtimestamp(end_ms/1000-10*60,pytz.timezone(self.timezone_str)).replace(tzinfo=None) else np.nan
                 for t, energy in zip(sampling_times, energy_list)
                 ]
             hp_list = [
-                power if t<=datetime.fromtimestamp(query_start,pytz.timezone(self.timezone_str)).replace(tzinfo=None) else np.nan
+                power if t<=datetime.fromtimestamp(end_ms/1000-10*60,pytz.timezone(self.timezone_str)).replace(tzinfo=None) else np.nan
                 for t, power in zip(sampling_times, hp_list)
                 ]
             self.data[request] = {'timestamp': sampling_times, 'hp':hp_list, 'energy': energy_list}
@@ -976,32 +984,65 @@ class VisualizerApi():
 
     async def plot_aggregate(self, request: BaseRequest):
         plot_start = time.time()
+        self.data[request]['energy'] = [x-min(self.data[request]['energy']) for x in self.data[request]['energy']]
+        
+        df = pd.DataFrame(self.data[request])
+        df['timestamp'] = df['timestamp'] - pd.Timedelta(minutes=5)
+        df_resampled = df.resample('5T', on='timestamp').agg({'energy': 'mean', 'hp': 'mean'}).reset_index()
         fig = go.Figure()
+
         fig.add_trace(
-            go.Scatter(
-                x=self.data[request]['timestamp'], 
-                y=self.data[request]['hp'], 
-                mode='lines',
-                opacity=0.6,
-                line=dict(color='#d62728', dash='solid'),
-                name='Aggregated load',
-                hovertemplate="%{x|%H:%M:%S} | %{y:.1f} kW<extra></extra>"
-                )
+            go.Bar(
+                x=df_resampled['timestamp'],
+                y=df_resampled['energy'],
+                name='Aggregated storage',
+                yaxis='y2',
+                opacity=0.6 if request.darkmode else 0.2,
+                marker=dict(color='#2a4ca2', line=dict(width=0)),
+                hovertemplate="%{x|%H:%M:%S} | %{y:.1f} kWh<extra></extra>",
             )
+        )
+        # fig.add_trace(
+        #     go.Bar(
+        #         x=df_resampled['timestamp'], 
+        #         y=[x if x>0.9 else 0 for x in list(df_resampled['hp'])], 
+        #         opacity=0.7,
+        #         yaxis='y2',
+        #         marker=dict(color='#d62728', line=dict(width=0)),
+        #         name='Aggregated load',
+        #         hovertemplate="%{x|%H:%M:%S} | %{y:.1f} kW<extra></extra>",
+        #         )
+        #     )
+        
         fig.add_trace(
             go.Scatter(
                 x=self.data[request]['timestamp'], 
                 y=self.data[request]['energy'], 
                 mode='lines',
-                opacity=0.9,
+                opacity=0,
                 line=dict(color='#2a4ca2', dash='solid'),
                 name='Aggregated storage',
                 yaxis='y2',
-                hovertemplate="%{x|%H:%M:%S} | %{y:.1f} kWh<extra></extra>"
+                hovertemplate="%{x|%H:%M:%S} | %{y:.1f} kWh<extra></extra>",
+                showlegend=False
+                )
+            )
+        
+        fig.add_trace(
+            go.Scatter(
+                x=self.data[request]['timestamp'], 
+                y=self.data[request]['hp'], 
+                mode='lines',
+                opacity=0.9,
+                line=dict(color='#d62728', dash='solid'),
+                name='Aggregated load',
+                hovertemplate="%{x|%H:%M:%S} | %{y:.1f} kW<extra></extra>",
+                showlegend=True,
+                zorder=10
                 )
             )
         fig.update_layout(yaxis=dict(title='Power [kWe]'))
-        fig.update_layout(yaxis2=dict(title='Thermal energy [kWht]'))
+        fig.update_layout(yaxis2=dict(title='Relative thermal energy [kWht]'))
         fig.update_layout(
             # title=dict(text='', x=0.5, xanchor='center'),
             margin=dict(t=30, b=30),
@@ -1010,20 +1051,21 @@ class VisualizerApi():
             font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
             title_font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
             xaxis=dict(
-                range=[self.to_datetime(request.start_ms), self.to_datetime(request.end_ms+5*60*60*1000)],
+                range=[self.to_datetime(request.start_ms), self.to_datetime(request.end_ms+(
+                    5*3600*1000 if time.time()-request.end_ms/1000<5*3600 else 0))],
                 mirror=True,
                 ticks='outside',
-                showline=True,
+                showline=False,
                 linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
                 showgrid=False
                 ),
             yaxis=dict(
                 mirror=True,
                 ticks='outside',
-                showline=True,
+                showline=False,
                 linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
                 zeroline=False,
-                showgrid=True, 
+                showgrid=False, 
                 gridwidth=1, 
                 gridcolor='#424242' if request.darkmode else 'LightGray'
                 ),
@@ -1031,7 +1073,7 @@ class VisualizerApi():
                 mirror=True,
                 ticks='outside',
                 zeroline=False,
-                showline=True,
+                showline=False,
                 linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
                 showgrid=False,
                 overlaying='y', 
@@ -2220,7 +2262,7 @@ class VisualizerApi():
                 x=price_times,
                 y=total_price_values,
                 mode='lines',
-                line=dict(color='#f0f0f0' if request.darkmode else '#5e5e5e'),
+                line=dict(color='#269638' if aggregate else ('#f0f0f0' if request.darkmode else '#5e5e5e')), #42f560
                 opacity=0.8,
                 showlegend=True,
                 line_shape='hv',
@@ -2234,7 +2276,7 @@ class VisualizerApi():
                 x=price_times,
                 y=lmp_values,
                 mode='lines',
-                line=dict(color='#f0f0f0' if request.darkmode else '#5e5e5e', dash='dash'),
+                line=dict(color='#269638' if aggregate else ('#f0f0f0' if request.darkmode else '#5e5e5e'), dash='dot'),
                 opacity=0.4,
                 showlegend=True,
                 line_shape='hv',
@@ -2245,7 +2287,8 @@ class VisualizerApi():
         )
 
         if aggregate:
-            min_timestep, max_timestep = self.to_datetime(request.start_ms), self.to_datetime(request.end_ms+5*60*60*1000)
+            min_timestep, max_timestep = self.to_datetime(request.start_ms), self.to_datetime(request.end_ms+(
+                    5*3600*1000 if time.time()-request.end_ms/1000<5*3600 else 0))
             plot_bgcolor='#313131' if request.darkmode else '#F5F5F7'
             paper_bgcolor='#313131' if request.darkmode else '#F5F5F7'
             font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)'
@@ -2272,17 +2315,17 @@ class VisualizerApi():
                 range=[min_timestep, max_timestep],
                 mirror=True,
                 ticks='outside',
-                showline=True,
+                showline=False if aggregate else True,
                 linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
                 showgrid=False
                 ),
             yaxis=dict(
                 mirror=True,
                 ticks='outside',
-                showline=True,
+                showline=False if aggregate else True,
                 linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
                 zeroline=False,
-                showgrid=True, 
+                showgrid=False if aggregate else True, 
                 gridwidth=1, 
                 gridcolor='#424242' if request.darkmode else 'LightGray', 
                 ),
@@ -2290,7 +2333,7 @@ class VisualizerApi():
                 mirror=True,
                 ticks='outside',
                 zeroline=False,
-                showline=True,
+                showline=False if aggregate else True,
                 linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
                 showgrid=False,
                 overlaying='y', 
