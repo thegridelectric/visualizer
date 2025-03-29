@@ -1,7 +1,7 @@
 let house_alias, username, password;
 let darkmode_tf = false;
 let plotsDisplayed = false;
-let isRunningLocally = false;
+let isRunningLocally = true;
 let api_host = isRunningLocally ? 'http://localhost:8000' : 'https://visualizer.electricity.works';
 
 function clearPlots() {
