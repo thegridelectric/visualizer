@@ -5,7 +5,6 @@ from named_types import FloParamsHouse0
 
 class DParams():
     def __init__(self, flo_params: FloParamsHouse0) -> None:
-        print(flo_params)
         self.flo_params = flo_params
         self.start_time = flo_params.StartUnixS
         self.horizon = flo_params.HorizonHours
@@ -17,8 +16,7 @@ class DParams():
             self.initial_top_temp = flo_params.InitialTopTempF
             self.initial_middle_temp = flo_params.InitialBottomTempF
             self.initial_bottom_temp = flo_params.InitialBottomTempF
-            self.initial_thermocline1 = flo_params.InitialThermocline
-            self.initial_thermocline2 = flo_params.InitialThermocline
+            self.initial_thermocline = flo_params.InitialThermocline
         else:
             self.initial_top_temp = flo_params.InitialTopTempF
             self.initial_middle_temp = flo_params.InitialMiddleTempF

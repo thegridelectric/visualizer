@@ -372,14 +372,6 @@ class VisualizerApi():
                 print(error)
                 return error
             
-            if os.path.exists('wip.json'):
-                import json
-                with open('wip.json', 'r') as file:
-                    loaded_data = json.load(file)
-                loaded_data['timestamp'] = [pd.to_datetime(ts) for ts in loaded_data['timestamp']]
-                self.data[request] = loaded_data
-                return
-            
             self.data[request] = {}
             self.timestamp_min_max[request] = {}
             async with self.AsyncSessionLocal() as session:

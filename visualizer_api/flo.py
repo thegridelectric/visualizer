@@ -78,14 +78,24 @@ class DGraph():
         self.edges: Dict[DNode, List[DEdge]] = {}
         self.bid_edges: Dict[DNode, List[DEdge]] = {}
 
-        current_state = DNode(
-            top_temp=self.params.initial_top_temp,
-            middle_temp=self.params.initial_middle_temp,
-            bottom_temp=self.params.initial_bottom_temp,
-            thermocline1=self.params.initial_thermocline1,
-            thermocline2=self.params.initial_thermocline2,
-            parameters=self.params
-        )
+        if self.params.flo_params.Version in ['000','001','002']:
+            current_state = DNode(
+                top_temp=self.params.initial_top_temp,
+                middle_temp=self.params.initial_bottom_temp,
+                bottom_temp=self.params.initial_bottom_temp,
+                thermocline1=self.params.initial_thermocline,
+                thermocline2=self.params.initial_thermocline,
+                parameters=self.params
+            )
+        else:
+            current_state = DNode(
+                top_temp=self.params.initial_top_temp,
+                middle_temp=self.params.initial_middle_temp,
+                bottom_temp=self.params.initial_bottom_temp,
+                thermocline1=self.params.initial_thermocline1,
+                thermocline2=self.params.initial_thermocline2,
+                parameters=self.params
+            )
 
         for h in range(self.params.horizon):
 
