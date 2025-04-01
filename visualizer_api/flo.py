@@ -97,15 +97,6 @@ class DGraph():
                 parameters=self.params
             )
 
-        current_state = DNode(
-            top_temp=self.params.initial_top_temp,
-            middle_temp=self.params.initial_bottom_temp,
-            bottom_temp=self.params.initial_bottom_temp,
-            thermocline1=self.params.initial_thermocline,
-            thermocline2=self.params.initial_thermocline,
-            parameters=self.params
-        )
-
         for h in range(self.params.horizon):
 
             load = self.params.load_forecast[h]
