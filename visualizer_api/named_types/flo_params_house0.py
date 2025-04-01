@@ -24,7 +24,7 @@ class FloParamsHouse0(BaseModel):
     HpTurnOnMinutes: int = 10
     # Initial state
     InitialTopTempF: StrictInt
-    InitialMiddleTemp: Optional[StrictInt] = 0
+    InitialMiddleTempF: Optional[StrictInt] = 0
     InitialBottomTempF: StrictInt
     InitialThermocline: Optional[StrictInt] = 12
     InitialThermocline1: Optional[StrictInt] = 12
