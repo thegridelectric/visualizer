@@ -158,51 +158,90 @@ class DGraph():
     def find_initial_node(self, updated_flo_params: FloParamsHouse0=None):
         if updated_flo_params:
             self.params = DParams(updated_flo_params)
-        
-        self.initial_state = DNode(
-            top_temp=self.params.initial_top_temp,
-            middle_temp=self.params.initial_middle_temp,
-            bottom_temp=self.params.initial_bottom_temp,
-            thermocline1=self.params.initial_thermocline1,
-            thermocline2=self.params.initial_thermocline2,
-            parameters=self.params
-        )
 
-        top_temps = set([n.top_temp for n in self.bid_nodes[0]])
-        closest_top_temp = min(top_temps, key=lambda x: abs(x-self.initial_state.top_temp))
+        if self.params.flo_params.Version in ['000','001','002']:
+            self.initial_state = DNode(
+                top_temp = self.params.initial_top_temp,
+                middle_temp=self.params.initial_bottom_temp,
+                bottom_temp=self.params.initial_bottom_temp,
+                thermocline1=self.params.initial_thermocline,
+                thermocline2=self.params.initial_thermocline,
+                parameters=self.params
+            )
 
-        bottom_temps = set([n.bottom_temp for n in self.bid_nodes[0] if n.top_temp==closest_top_temp])
-        closest_bottom_temp = min(bottom_temps, key=lambda x: abs(x-self.initial_state.bottom_temp))
+            top_temps = set([n.top_temp for n in self.nodes[0]])
+            closest_top_temp = min(top_temps, key=lambda x: abs(x-self.initial_state.top_temp))
 
-        middle_temps = set([n.middle_temp for n in self.bid_nodes[0] if n.top_temp==closest_top_temp  and n.bottom_temp==closest_bottom_temp])
-        closest_middle_temp = min(middle_temps, key=lambda x: abs(x-self.initial_state.middle_temp))
+            middle_temps = set([n.middle_temp for n in self.nodes[0] if n.top_temp==closest_top_temp])
+            closest_middle_temp = min(middle_temps, key=lambda x: abs(x-self.initial_state.bottom_temp))
 
-        nodes_with_similar_temperatures = [
-            n for n in self.bid_nodes[0]
-            if n.top_temp == closest_top_temp
-            and n.middle_temp == closest_middle_temp
-            and n.bottom_temp == closest_bottom_temp
-        ]
+            thermoclines1 = set([n.thermocline1 for n in self.nodes[0] if n.top_temp==closest_top_temp and n.middle_temp==closest_middle_temp])
+            closest_thermocline1 = min(thermoclines1, key=lambda x: abs(x-self.initial_state.thermocline1))
 
-        thermoclines1 = set([n.thermocline1 for n in nodes_with_similar_temperatures])
-        closest_thermocline1 = min(thermoclines1, key=lambda x: abs(x-self.initial_state.thermocline1))
+            nodes_with_initial_top_and_middle = [
+                n for n in self.nodes[0]
+                if n.top_temp == closest_top_temp
+                and n.middle_temp == closest_middle_temp
+                and n.thermocline1 == closest_thermocline1
+            ]
 
-        similar_nodes = [
-            n for n in nodes_with_similar_temperatures
-            if n.thermocline1 == closest_thermocline1
-        ]
+            self.initial_node = min(
+                nodes_with_initial_top_and_middle, 
+                key=lambda x: abs(x.energy-self.initial_state.energy)
+            )
+            print(f"Initial state: {self.initial_state}")
+            print(f"Initial node: {self.initial_node}")
 
-        self.initial_node = min(
-            similar_nodes, 
-            key=lambda x: abs(x.energy-self.initial_state.energy)
-        )
-        print(f"Initial state: {self.initial_state}")
-        print(f"Initial node: {self.initial_node}")
+            for e in self.edges[self.initial_node]:
+                if self.initial_state.top_temp > 170 and e.head.energy > self.initial_node.energy:
+                    self.edges[self.initial_node].remove(e)
+                    print(f"Removed edge {e} because the storage is already close to full.")
 
-        for e in self.bid_edges[self.initial_node]:
-            if self.initial_state.top_temp > 170 and e.head.energy > self.initial_node.energy:
-                self.bid_edges[self.initial_node].remove(e)
-                print(f"Removed edge {e} because the storage is already close to full.")
+        else:
+            self.initial_state = DNode(
+                top_temp=self.params.initial_top_temp,
+                middle_temp=self.params.initial_middle_temp,
+                bottom_temp=self.params.initial_bottom_temp,
+                thermocline1=self.params.initial_thermocline1,
+                thermocline2=self.params.initial_thermocline2,
+                parameters=self.params
+            )
+
+            top_temps = set([n.top_temp for n in self.bid_nodes[0]])
+            closest_top_temp = min(top_temps, key=lambda x: abs(x-self.initial_state.top_temp))
+
+            bottom_temps = set([n.bottom_temp for n in self.bid_nodes[0] if n.top_temp==closest_top_temp])
+            closest_bottom_temp = min(bottom_temps, key=lambda x: abs(x-self.initial_state.bottom_temp))
+
+            middle_temps = set([n.middle_temp for n in self.bid_nodes[0] if n.top_temp==closest_top_temp  and n.bottom_temp==closest_bottom_temp])
+            closest_middle_temp = min(middle_temps, key=lambda x: abs(x-self.initial_state.middle_temp))
+
+            nodes_with_similar_temperatures = [
+                n for n in self.bid_nodes[0]
+                if n.top_temp == closest_top_temp
+                and n.middle_temp == closest_middle_temp
+                and n.bottom_temp == closest_bottom_temp
+            ]
+
+            thermoclines1 = set([n.thermocline1 for n in nodes_with_similar_temperatures])
+            closest_thermocline1 = min(thermoclines1, key=lambda x: abs(x-self.initial_state.thermocline1))
+
+            similar_nodes = [
+                n for n in nodes_with_similar_temperatures
+                if n.thermocline1 == closest_thermocline1
+            ]
+
+            self.initial_node = min(
+                similar_nodes, 
+                key=lambda x: abs(x.energy-self.initial_state.energy)
+            )
+            print(f"Initial state: {self.initial_state}")
+            print(f"Initial node: {self.initial_node}")
+
+            for e in self.bid_edges[self.initial_node]:
+                if self.initial_state.top_temp > 170 and e.head.energy > self.initial_node.energy:
+                    self.bid_edges[self.initial_node].remove(e)
+                    print(f"Removed edge {e} because the storage is already close to full.")
 
     def generate_bid(self, updated_flo_params: FloParamsHouse0=None):
         print("Generating bid...")
