@@ -59,8 +59,8 @@ class DGraph():
             top_temp=self.params.initial_top_temp,
             middle_temp=self.params.initial_bottom_temp,
             bottom_temp=self.params.initial_bottom_temp,
-            thermocline1=self.params.initial_thermocline,
-            thermocline2=self.params.initial_thermocline,
+            thermocline1=self.params.initial_thermocline1,
+            thermocline2=self.params.initial_thermocline2,
             parameters=self.params
         )
 
@@ -86,6 +86,8 @@ class DGraph():
                     hp_heat_out_levels = [0, hp_heat_out_for_full] if hp_heat_out_for_full > 10 else [0]
                 else:
                     hp_heat_out_levels = [0, max_hp_heat_out]
+                # if not self.params.hp_is_off:
+                #     hp_heat_out_levels += [load+losses]
                 
                 for hp_heat_out in hp_heat_out_levels:
                     store_heat_in = hp_heat_out - load - losses
@@ -125,11 +127,11 @@ class DGraph():
             self.params = DParams(updated_flo_params)
         
         self.initial_state = DNode(
-            top_temp = self.params.initial_top_temp,
-            middle_temp=self.params.initial_bottom_temp,
+            top_temp=self.params.initial_top_temp,
+            middle_temp=self.params.initial_middle_temp,
             bottom_temp=self.params.initial_bottom_temp,
-            thermocline1=self.params.initial_thermocline,
-            thermocline2=self.params.initial_thermocline,
+            thermocline1=self.params.initial_thermocline1,
+            thermocline2=self.params.initial_thermocline2,
             parameters=self.params
         )
 
