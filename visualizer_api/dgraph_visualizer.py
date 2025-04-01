@@ -13,7 +13,6 @@ from dijkstra_types import DNode
 class DGraphVisualizer():
     def __init__(self, d_graph: DGraph):
         self.g: DGraph = d_graph
-        pass
 
     def plot(self, show=True, print_details=False):
         self.g.find_initial_node()

@@ -1,4 +1,5 @@
 import io
+import gc
 import os
 import csv
 import time
@@ -739,6 +740,9 @@ class VisualizerApi():
                 g.solve_dijkstra()
                 v = DGraphVisualizer(g)
                 v.export_to_excel()
+                del g 
+                del v
+                gc.collect()
                 print("Done.")
                 
                 if os.path.exists('result.xlsx'):
@@ -831,6 +835,8 @@ class VisualizerApi():
                         zip_file.writestr(f'pq_plot_{i}.png', img_buf.getvalue())
                         plt.close()
 
+                del g
+                gc.collect()
                 zip_buffer.seek(0)
                 return StreamingResponse(
                     zip_buffer, 
