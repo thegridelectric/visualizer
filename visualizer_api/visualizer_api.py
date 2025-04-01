@@ -1,4 +1,5 @@
 import io
+import gc
 import os
 import csv
 import time
@@ -371,14 +372,6 @@ class VisualizerApi():
                 print(error)
                 return error
             
-            if os.path.exists('wip.json'):
-                import json
-                with open('wip.json', 'r') as file:
-                    loaded_data = json.load(file)
-                loaded_data['timestamp'] = [pd.to_datetime(ts) for ts in loaded_data['timestamp']]
-                self.data[request] = loaded_data
-                return
-            
             self.data[request] = {}
             self.timestamp_min_max[request] = {}
             async with self.AsyncSessionLocal() as session:
@@ -739,6 +732,9 @@ class VisualizerApi():
                 g.solve_dijkstra()
                 v = DGraphVisualizer(g)
                 v.export_to_excel()
+                del g 
+                del v
+                gc.collect()
                 print("Done.")
                 
                 if os.path.exists('result.xlsx'):
@@ -831,6 +827,8 @@ class VisualizerApi():
                         zip_file.writestr(f'pq_plot_{i}.png', img_buf.getvalue())
                         plt.close()
 
+                del g
+                gc.collect()
                 zip_buffer.seek(0)
                 return StreamingResponse(
                     zip_buffer, 
