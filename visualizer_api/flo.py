@@ -97,6 +97,20 @@ class DGraph():
                 parameters=self.params
             )
 
+        # If more than half of top above 170, and no water colder than 170-deltaT, storage considered full
+        self.storage_is_currently_full = False
+        half_above_170 = (
+            (current_state.top_temp>170 and current_state.thermocline1>=self.params.num_layers/2) 
+            or (current_state.middle_temp>=170 and current_state.thermocline2>=self.params.num_layers/2)
+        )
+        cold_water_available = (
+            (current_state.thermocline2-current_state.thermocline1>0 and current_state.middle_temp<170-self.params.delta_T(170))
+            or (self.params.num_layers-current_state.thermocline2>0 and current_state.bottom_temp<170-self.params.delta_T(170))
+        )
+        if half_above_170 and not cold_water_available:
+            print(f"Storage is currently full.")
+            self.storage_is_currently_full = True
+
         for h in range(self.params.horizon):
 
             load = self.params.load_forecast[h]
@@ -121,8 +135,9 @@ class DGraph():
                     hp_heat_out_levels = [0, hp_heat_out_for_full] if hp_heat_out_for_full > 10 else [0]
                 else:
                     hp_heat_out_levels = [0, max_hp_heat_out]
-                # if not self.params.hp_is_off:
-                #     hp_heat_out_levels += [load+losses]
+                # If the HP is already on, add the "meet the load" edge in the first hour
+                if h==0 and load>0 and not self.params.hp_is_off:
+                    hp_heat_out_levels += [load+losses]
                 
                 for hp_heat_out in hp_heat_out_levels:
                     store_heat_in = hp_heat_out - load - losses
@@ -131,8 +146,8 @@ class DGraph():
                     node_next_str: str = self.super_graph[str(closest_store_heat_in)][node_now.to_string()]
                     t, th1, m, th2, b = self.read_node_str(node_next_str)
                     node_next = self.nodes_by[node_now.time_slice+1][(t,m,b)][(th1,th2)]
-                    
-                    if self.params.initial_top_temp>170 and node_next.energy>current_state.energy:
+
+                    if self.storage_is_currently_full and node_next.energy>current_state.energy:
                         t, m, b = node_now.top_temp, node_now.middle_temp, node_now.bottom_temp
                         th1, th2 = node_now.thermocline1, node_now.thermocline2
                         node_next = self.nodes_by[node_now.time_slice+1][(t,m,b)][(th1,th2)]
@@ -199,13 +214,6 @@ class DGraph():
                 nodes_with_initial_top_and_middle, 
                 key=lambda x: abs(x.energy-self.initial_state.energy)
             )
-            print(f"Initial state: {self.initial_state}")
-            print(f"Initial node: {self.initial_node}")
-
-            for e in self.edges[self.initial_node]:
-                if self.initial_state.top_temp > 170 and e.head.energy > self.initial_node.energy:
-                    self.edges[self.initial_node].remove(e)
-                    print(f"Removed edge {e} because the storage is already close to full.")
 
         else:
             self.initial_state = DNode(
@@ -245,13 +253,14 @@ class DGraph():
                 similar_nodes, 
                 key=lambda x: abs(x.energy-self.initial_state.energy)
             )
-            print(f"Initial state: {self.initial_state}")
-            print(f"Initial node: {self.initial_node}")
+        
+        print(f"Initial state: {self.initial_state}")
+        print(f"Initial node: {self.initial_node}")
 
-            for e in self.bid_edges[self.initial_node]:
-                if self.initial_state.top_temp > 170 and e.head.energy > self.initial_node.energy:
-                    self.bid_edges[self.initial_node].remove(e)
-                    print(f"Removed edge {e} because the storage is already close to full.")
+        for e in self.bid_edges[self.initial_node]:
+            if self.storage_is_currently_full and e.head.energy > self.initial_node.energy:
+                self.bid_edges[self.initial_node].remove(e)
+                print(f"Removed edge {e} because the storage is already close to full.")
 
     def generate_bid(self, updated_flo_params: FloParamsHouse0=None):
         print("Generating bid...")
