@@ -36,6 +36,7 @@ class EnergyDataset():
         print("Generating dataset...")
         existing_dataset_dates = []
         if os.path.exists(self.dataset_file):
+            print(f"Found existing dataset: {self.dataset_file}")
             df = pd.read_csv(self.dataset_file)
             existing_dataset_dates = list(df['hour_start'])
         day_start_ms = int(pendulum.from_timestamp(self.start_ms/1000, tz=self.timezone_str).replace(hour=0, minute=0).timestamp()*1000)
@@ -44,7 +45,9 @@ class EnergyDataset():
             if day_start_ms/1000 > time.time():
                 print("Will not look for data in the future.")
                 return
-            if day_start_ms in existing_dataset_dates and day_start_ms+24*3600*1000 in existing_dataset_dates:
+            day_start = pendulum.from_timestamp(int(day_start_ms)/1000, tz="America/New_York").format('YYYY-MM-DD-HH:00')
+            day_end = pendulum.from_timestamp(int(day_start_ms+24*3600*1000)/1000, tz="America/New_York").format('YYYY-MM-DD-HH:00')
+            if day_start in existing_dataset_dates and day_end in existing_dataset_dates:
                 print(f"\nAlready in dataset: {self.unix_ms_to_date(day_start_ms)}")
             else:
                 self.add_data(day_start_ms, day_end_ms)
@@ -224,10 +227,9 @@ def generate(house_alias, start_year, start_month, start_day):
     s.generate_dataset()
 
 if __name__ == '__main__':
-    
     # THE ONLY PART YOU SHOULD EDIT:
     generate(
-        house_alias='maple', 
+        house_alias='oak', 
         start_year=2025, 
         start_month=2, 
         start_day=15
