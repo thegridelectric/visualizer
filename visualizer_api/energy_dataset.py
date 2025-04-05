@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 
 
 class EnergyDataset():
-    def __init__(self, house_alias, start_ms, timezone):
+    def __init__(self, house_alias, start_ms, end_ms, timezone):
         settings = Settings(_env_file=dotenv.find_dotenv())
         engine = create_engine(settings.db_url.get_secret_value())
         Session = sessionmaker(bind=engine)
@@ -21,6 +21,7 @@ class EnergyDataset():
         self.house_alias = house_alias
         self.dataset_file = f"energy_data_{self.house_alias}.csv"
         self.start_ms = start_ms
+        self.end_ms = end_ms
         self.timezone_str = timezone
         self.data_format = {
             'hour_start': [],
@@ -42,8 +43,8 @@ class EnergyDataset():
         day_start_ms = int(pendulum.from_timestamp(self.start_ms/1000, tz=self.timezone_str).replace(hour=0, minute=0).timestamp()*1000)
         day_end_ms = day_start_ms + (24*60+7)*60*1000
         for day in range(200):
-            if day_start_ms/1000 > time.time():
-                print("Will not look for data in the future.")
+            if day_start_ms > self.end_ms or day_start_ms/1000 > time.time():
+                print("\nDone.")
                 return
             day_start = pendulum.from_timestamp(int(day_start_ms)/1000, tz="America/New_York").format('YYYY-MM-DD-HH:00')
             day_end = pendulum.from_timestamp(int(day_start_ms+24*3600*1000)/1000, tz="America/New_York").format('YYYY-MM-DD-HH:00')
@@ -220,10 +221,11 @@ class EnergyDataset():
     def to_fahrenheit(self, t):
         return round(t*9/5+32,1)
     
-def generate(house_alias, start_year, start_month, start_day):
+def generate(house_alias, start_year, start_month, start_day, end_year, end_month, end_day):
     timezone = 'America/New_York'
     start_ms = pendulum.datetime(start_year, start_month, start_day, tz=timezone).timestamp()*1000
-    s = EnergyDataset(house_alias, start_ms, timezone)
+    end_ms = pendulum.datetime(end_year, end_month, end_day, tz=timezone).timestamp()*1000
+    s = EnergyDataset(house_alias, start_ms, end_ms, timezone)
     s.generate_dataset()
 
 if __name__ == '__main__':
@@ -232,5 +234,8 @@ if __name__ == '__main__':
         house_alias='oak', 
         start_year=2025, 
         start_month=2, 
-        start_day=15
+        start_day=15,
+        end_year=2025,
+        end_month=2,
+        end_day=17
     )
