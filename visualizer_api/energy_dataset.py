@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 class EnergyDataset():
     def __init__(self, house_alias, start_ms, end_ms, timezone):
         settings = Settings(_env_file=dotenv.find_dotenv())
-        engine = create_engine(settings.db_url.get_secret_value())
+        engine = create_engine(settings.db_url_no_async.get_secret_value())
         Session = sessionmaker(bind=engine)
         self.session = Session()
         self.house_alias = house_alias
