@@ -151,16 +151,6 @@ class StorageDataset():
         )
         print(f"Added {len(formatted_data)} new lines to the dataset")
 
-    def from_dict_msg(self, data):
-        message = MessageSql(
-            message_id=data["MessageId"],
-            from_alias=data["FromAlias"],
-            message_type_name=data["MessageTypeName"],
-            message_persisted_ms=data["MessagePersistedMs"],
-            payload=data["Payload"],
-        )
-        return message
-
     def model_fit(self, plot=False):
         if not os.path.exists(self.dataset_file):
             print(f"Could not find {self.dataset_file}")
