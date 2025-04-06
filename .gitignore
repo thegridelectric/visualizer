@@ -2,6 +2,8 @@ results/
 messages.json
 result.xlsx
 super_graph.json
+*energy_data*
+*storage_data*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
