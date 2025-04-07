@@ -731,3 +731,292 @@ async function getAggOverviewPlot(event, just_prices=false) {
         enable_button('agg-refresh')
     }
 }
+
+// --------------------
+// For aggregators
+// --------------------
+
+let currentLmpList = new Array(48).fill(0.0);
+let currentTariffList = new Array(48).fill(0.0);
+let lmpList = JSON.parse(JSON.stringify(currentLmpList));
+let tariffList = JSON.parse(JSON.stringify(currentTariffList));
+let unix_s = [];
+let isKeyPressed = false;
+
+async function updateTable() {
+    const tableRows = document.querySelectorAll('#price-editor-table tbody tr');
+        tableRows.forEach((row, index) => {
+            const lmpCell = row.querySelectorAll('.current-value')[0];
+            const tariffCell = row.querySelectorAll('.current-value')[1];
+            const lmpInput = row.querySelectorAll('input')[0];
+            const tariffInput = row.querySelectorAll('input')[1];
+            lmpCell.textContent = lmpList[index];
+            tariffCell.textContent = tariffList[index];
+            updateCellStyle(lmpCell, lmpList[index], currentLmpList[index]);
+            updateCellStyle(tariffCell, tariffList[index], currentTariffList[index]);
+            lmpInput.placeholder = currentLmpList[index];
+            tariffInput.placeholder = currentTariffList[index];
+        });
+        checkIfPricesChanged();
+}
+
+async function getPrices() {
+    try {
+        const response = await fetch('https://price-forecasts.electricity.works/get_prices', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        });
+        if (!response.ok) {
+            throw new Error('Failed to fetch prices');
+        }
+        const data = await response.json();
+        currentLmpList = data.lmp.map(parseFloat);
+        currentTariffList = data.dist.map(parseFloat);
+        lmpList = data.lmp.map(parseFloat);
+        tariffList = data.dist.map(parseFloat);
+        updateTable();
+    } catch (error) {
+        console.error('Error fetching prices:', error);
+    }
+}
+
+async function getDefaultPrices() {
+    try {
+        const response = await fetch('https://price-forecasts.electricity.works/get_default_prices', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+        });
+        if (!response.ok) {
+            throw new Error('Failed to fetch prices');
+        }
+        const data = await response.json();
+        lmpList = data.lmp;
+        tariffList = data.dist;
+        updateTable();
+    } catch (error) {
+        console.error('Error fetching default prices:', error);
+    }
+}
+
+function resetPrices() {
+    lmpList = JSON.parse(JSON.stringify(currentLmpList));
+    tariffList = JSON.parse(JSON.stringify(currentTariffList));
+    updateTable();
+}
+
+async function sendPrices(event) {
+    event.preventDefault();
+    document.getElementById('prices-save-button').style.display = 'block';
+    document.getElementById('prices-reset-button').style.display = 'block';
+    try {
+        const response = await fetch('https://price-forecasts.electricity.works/update_prices', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                unix_s: unix_s,
+                lmp: lmpList,
+                dist: tariffList
+            })
+        });
+        if (!response.ok) {
+            throw new Error('Failed to update prices');
+        }
+        const data = await response.json();
+        currentLmpList = data.lmp.map(parseFloat);
+        currentTariffList = data.dist.map(parseFloat);
+        lmpList = data.lmp.map(parseFloat);
+        tariffList = data.dist.map(parseFloat);
+        updateTable();
+        getAggOverviewPlot(event, just_prices=true);
+    } catch (error) {
+        console.error('Error sending prices:', error);
+    }
+}
+
+function checkIfPricesChanged() {
+    function areArraysEqual(arr1, arr2) {
+        if (arr1.length !== arr2.length) return false;
+        for (let i = 0; i < arr1.length; i++) {
+            if (arr1[i] !== arr2[i]) return false;
+        }
+        return true;
+    }
+    const allCurrent = areArraysEqual(lmpList, currentLmpList) && areArraysEqual(tariffList, currentTariffList);
+    if (allCurrent) {
+        document.getElementById('prices-save-button').style.display = 'block';
+        document.getElementById('prices-reset-button').style.display = 'block';
+    } else {
+        document.getElementById('prices-save-button').style.display = 'block';
+        document.getElementById('prices-reset-button').style.display = 'block';
+    }
+}
+
+function setupHourlyRefresh() {
+    function scheduleNextRefresh() {
+        const now = DateTime.now().setZone('America/New_York');
+        const nextHour = now.plus({ hours: 1 }).startOf('hour');
+        const millisToNextHour = nextHour.toMillis() - now.toMillis();
+        
+        console.log(`Next price refresh scheduled for ${nextHour.toFormat('yyyy-MM-dd HH:mm:ss')}`);
+        
+        setTimeout(() => {
+            console.log('Refreshing prices at the top of the hour');
+            
+            const tableBody = document.querySelector('#price-editor-table tbody');
+            tableBody.innerHTML = '';
+            
+            initializeTable(true).then(() => {
+                scheduleNextRefresh();
+            }).catch(error => {
+                console.error('Error refreshing prices:', error);
+                scheduleNextRefresh();
+            });
+        }, millisToNextHour);
+    }
+    
+    scheduleNextRefresh();
+}
+
+const { DateTime } = luxon;
+
+async function initializeTable(isRefresh = false) {
+    await getPrices();
+    const tableBody = document.querySelector('#price-editor-table tbody');
+    tableBody.innerHTML = '';            
+    const currentDate = DateTime.now().setZone('America/New_York').startOf('hour');
+    unix_s = [];
+    
+    for (let i = 0; i < 24; i++) {
+        let date = currentDate.plus({ hours: i + 1 });                
+        unix_s.push(date.toUnixInteger());
+        
+        // Add row to the table
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${date.toFormat('cccc, LLL dd, yyyy')}</td>
+            <td>${date.toFormat('HH:00')}</td>
+            <td class="current-value">${currentLmpList[i]}</td>
+            <td><input class='price-edit-input' type="text" style="width:50px" placeholder=${currentLmpList[i]}></td>
+            <td class="current-value">${currentTariffList[i]}</td>
+            <td><input class='price-edit-input' type="text" style="width:50px" placeholder=${currentTariffList[i]}></td>
+        `;
+
+        // LMP input event listener
+        const lmpInput = row.querySelectorAll('input')[0];
+        lmpInput.addEventListener('keydown', function(event) {
+            handleArrowKey(event, row, currentLmpList[i], lmpInput, 'lmp');
+        });
+        lmpInput.addEventListener('blur', function(event) {
+            handleBlurEvent(event, row, currentLmpList[i], lmpInput, 'lmp');
+        });
+
+        // Tariff input event listener
+        const tariffInput = row.querySelectorAll('input')[1];
+        tariffInput.addEventListener('keydown', function(event) {
+            handleArrowKey(event, row, currentTariffList[i], tariffInput, 'tariff');
+        });
+        tariffInput.addEventListener('blur', function(event) {
+            handleBlurEvent(event, row, currentTariffList[i], tariffInput, 'tariff');
+        });
+        tableBody.appendChild(row);
+    }
+    if (!isRefresh) {
+        setupHourlyRefresh();
+    }
+}
+
+function handleBlurEvent(event, row, currentValue, input, type) {
+    if (isKeyPressed) {
+        isKeyPressed = false;
+        return;
+    }
+    const columnIndex = type === 'lmp' ? 0 : 1;
+    const currentCell = row.querySelectorAll('.current-value')[columnIndex];
+    let inputValue = input.value;
+
+    // If the input is empty or invalid, revert to the current value
+    if (isNaN(inputValue) || inputValue === '') {
+        input.value = ''
+        return
+    }
+
+    // Update the cell with the new value
+    currentCell.textContent = inputValue;
+
+    // Update the corresponding list based on the type (lmp or tariff)
+    if (type === 'lmp') {
+        lmpList[parseInt(row.rowIndex) - 1] = parseFloat(inputValue);
+    } else if (type === 'tariff') {
+        tariffList[parseInt(row.rowIndex) - 1] = parseFloat(inputValue);
+    }
+
+    updateCellStyle(currentCell, inputValue, currentValue);
+    input.value = '';
+    checkIfPricesChanged();
+}
+
+function handleArrowKey(event, row, currentValue, input, type) {
+    const columnIndex = type === 'lmp' ? 0 : 1;
+    const currentCell = row.querySelectorAll('.current-value')[columnIndex];
+    let inputValue = input.value;
+
+    // Handle Enter key
+    if (event.key === 'Enter') {
+        isKeyPressed = true;
+        if ((isNaN(inputValue) || inputValue === '')) {
+            inputValue = currentValue;
+        }
+        currentCell.textContent = inputValue;
+        if (type === 'lmp') {
+            lmpList[parseInt(row.rowIndex) - 1] = parseFloat(inputValue);
+        } else if (type === 'tariff') {
+            tariffList[parseInt(row.rowIndex) - 1] = parseFloat(inputValue);
+        }
+
+        updateCellStyle(currentCell, inputValue, currentValue);
+        input.value = '';
+        checkIfPricesChanged();
+
+        const nextRow = row.nextElementSibling;
+        if (nextRow) {
+            const nextInput = nextRow.querySelectorAll('input')[columnIndex];
+            if (nextInput) {
+                nextInput.focus();
+            }
+        }
+    }
+    // Handle ArrowDown key
+    if (event.key === 'ArrowDown') {
+        const nextRow = row.nextElementSibling;
+        if (nextRow) {
+            const nextInput = nextRow.querySelectorAll('input')[columnIndex];
+            if (nextInput) {
+                nextInput.focus();
+            }
+        }
+    }
+    // Handle ArrowUp key
+    if (event.key === 'ArrowUp') {
+        const prevRow = row.previousElementSibling;
+        if (prevRow) {
+            const prevInput = prevRow.querySelectorAll('input')[columnIndex];
+            if (prevInput) {
+                prevInput.focus();
+            }
+        }
+    }
+}
+
+function updateCellStyle(cell, inputValue, currentValue) {
+    if (parseFloat(inputValue) !== currentValue) {
+        cell.style.color = '#466ac4';
+        cell.style.fontWeight = 'bold';
+    } else {
+        cell.style.removeProperty('color');
+        cell.style.removeProperty('font-weight');
+    }
+}
