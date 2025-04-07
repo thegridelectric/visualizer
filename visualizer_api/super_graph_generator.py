@@ -1,7 +1,6 @@
 from typing import Dict, List, Tuple
 import json
 import time
-import os
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split, cross_val_score
@@ -81,12 +80,7 @@ class SuperGraphGenerator():
             f"[{store_heat_in_range[0]}, {store_heat_in_range[-1]}] kWh range, with a 0.1 kWh step."
             )
         
-        allowed_temperatures = {
-            'top': self.top_temps,
-            'middle': self.middle_temps,
-            'bottom': self.bottom_temps
-        }
-        storage_model = DataBasedStorageModel(self.params.flo_params, self.nodes, self.nodes_by, allowed_temperatures)
+        storage_model = RuleBasedStorageModel(self.params.flo_params, self.nodes, self.nodes_by)
         self.super_graph: Dict[str, Dict[str, str]] = {}
 
         for store_heat_in in store_heat_in_range:
@@ -231,217 +225,11 @@ class SuperGraphGenerator():
         print("Done.")
 
 
-class DataBasedStorageModel():
-    def __init__(self, flo_params: FloParamsHouse0, nodes: List, nodes_by: Dict, allowed_temperatures: Dict):
-        self.params = DParams(flo_params)
-        self.nodes: List[DNode] = nodes
-        self.nodes_by: Dict[Tuple, Dict[Tuple, DNode]] = nodes_by
-        self.top_temps = allowed_temperatures['top']
-        self.middle_temps = allowed_temperatures['middle']
-        self.bottom_temps = allowed_temperatures['bottom']
-        data_file = 'storage_data_maple.csv'
-        if os.path.exists(data_file):
-            self.data_file = data_file
-        else:
-            raise Exception(f"Could not find {data_file}")
-        self.learn_from_data()
-
-    def next_node(self, n:DNode, store_heat_in:float, print_detail:bool=True) -> DNode:
-        data_inputs = pd.DataFrame({
-            'store_heat_in': store_heat_in,
-            'init_t': n.top_temp,
-            'init_m': n.middle_temp,
-            'init_b': n.bottom_temp,
-            'init_th1': n.thermocline1,
-            'init_th2': n.thermocline2,
-        }, index=[0])
-        predicted_final_state = [int(x) for x in list(list(self.data_based_model.predict(data_inputs))[0])]
-        t, m, b, th1, th2 = predicted_final_state
-        th1 = int(max(1, min(24, th1)))
-        th2 = int(max(1, min(24, th2)))
-
-        predicted_next_node = DNode(
-            top_temp = t,
-            middle_temp = m,
-            bottom_temp = b,
-            thermocline1 = th1,
-            thermocline2 = th2,
-            parameters=n.params
-        )
-        if print_detail: print(f"{n} --{store_heat_in}--> {predicted_next_node}")
-        return predicted_next_node
-    
-    def learn_from_data(self):
-        df = pd.read_csv(self.data_file)
-
-        all_init_t, all_init_m, all_init_b = [],[],[]
-        all_init_th1, all_init_th2 = [],[]
-        all_final_t, all_final_m, all_final_b = [],[],[]
-        all_final_th1, all_final_th2 = [],[]
-
-        for row in range(len(df)):
-            initial_state = df.iloc[row].to_list()[2:12+2]
-            t, m, b, th1, th2 = self.three_layer_model(initial_state)
-            all_init_t.append(t)
-            all_init_m.append(m)
-            all_init_b.append(b)
-            all_init_th1.append(th1*2)
-            all_init_th2.append(th2*2)
-
-            final_state = df.iloc[row].to_list()[12+2:]
-            t, m, b, th1, th2 = self.three_layer_model(final_state)
-            all_final_t.append(t)
-            all_final_m.append(m)
-            all_final_b.append(b)
-            all_final_th1.append(th1*2)
-            all_final_th2.append(th2*2)
-
-        df['init_t'] = all_init_t
-        df['init_m'] = all_init_m
-        df['init_b'] = all_init_b
-        df['init_th1'] = all_init_th1
-        df['init_th2'] = all_init_th2
-        df['final_t'] = all_final_t
-        df['final_m'] = all_final_m
-        df['final_b'] = all_final_b
-        df['final_th1'] = all_final_th1
-        df['final_th2'] = all_final_th2
-        df = df.drop(columns=[x for x in df.columns if 'tank' in x])
-
-        X = df[[c for c in df.columns if 'init' in c or 'store_heat_in' in c]]
-        y = df[[c for c in df.columns if 'final' in c]]
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=42)
-        self.data_based_model = Ridge(alpha=1.0)
-        self.data_based_model.fit(X_train, y_train)
-        y_pred_ridge = self.data_based_model.predict(X_test)
-        mse_ridge = mean_squared_error(y_test, y_pred_ridge)
-        r2_ridge = r2_score(y_test, y_pred_ridge)
-        ridge_cv_score = cross_val_score(self.data_based_model, X, y, cv=5, scoring='neg_mean_squared_error')
-        print(f"Regressor performance on given data ({self.data_file}):")
-        print(f"- RMSE: {round(np.sqrt(abs(mse_ridge)),1)}")
-        print(f"- R-squared: {round(r2_ridge,1)}")
-        print(f"- Cross-Validation RMSE: {round(np.sqrt(abs(ridge_cv_score.mean())),1)}\n")
-
-    def three_layer_model(self, tank_temps, prints=False):
-        if isinstance(tank_temps, list):
-            tank_temps = {
-                f'tank{tank}-depth{depth}': tank_temps[tank*4 + depth] for tank in range(3) for depth in range(4)
-            }
-
-        # Process layer temperatures
-        layer_temps = [tank_temps[key] for key in tank_temps]
-        iter_count = 0
-        if prints: print(f"Before processing: {layer_temps}")
-        while (sorted(layer_temps, reverse=True) != layer_temps and iter_count<20):
-            iter_count += 1
-            layer_temps = []
-            for layer in tank_temps:
-                if layer_temps:
-                    if tank_temps[layer] > layer_temps[-1]:
-                        mean = round((layer_temps[-1] + tank_temps[layer]) / 2)
-                        layer_temps[-1] = mean
-                        layer_temps.append(mean)
-                    else:
-                        layer_temps.append(tank_temps[layer])
-                else:
-                    layer_temps.append(tank_temps[layer])
-            for i, layer in enumerate(tank_temps):
-                tank_temps[layer] = layer_temps[i]
-            if iter_count == 20:
-                layer_temps = sorted(layer_temps, reverse=True)
-        if prints: print(f"After processing: {layer_temps}")
-
-        # Cluster 10 times and select the result with the highest top temperature
-        data = layer_temps.copy()
-        clustering_runs = []
-        for i in range(10):
-            labels = self.kmeans(data, k=3)
-            cluster_0 = sorted([data[i] for i in range(len(data)) if labels[i] == 0], reverse=True)
-            cluster_1 = sorted([data[i] for i in range(len(data)) if labels[i] == 1], reverse=True)
-            cluster_2 = sorted([data[i] for i in range(len(data)) if labels[i] == 2], reverse=True)
-            cluster_top = max(cluster_0, cluster_1, cluster_2, key=lambda x: np.mean(x) if len(x)>0 else 0)
-            top_temp = sum(cluster_top)/len(cluster_top)
-            clustering_runs.append({
-                'cluster_0': cluster_0,
-                'cluster_1': cluster_1,
-                'cluster_2': cluster_2,
-                'top_temp': top_temp
-            })
-        best_run = max(clustering_runs, key=lambda x: x['top_temp'])
-        cluster_0 = best_run['cluster_0']
-        cluster_1 = best_run['cluster_1']
-        cluster_2 = best_run['cluster_2']
-
-        # Dealing with 3 clusters
-        if cluster_0 and cluster_1 and cluster_2:
-            cluster_top = max(cluster_0, cluster_1, cluster_2, key=lambda x: sum(x)/len(x))
-            cluster_bottom = min(cluster_0, cluster_1, cluster_2, key=lambda x: sum(x)/len(x))
-            cluster_middle = [
-                cluster_x for cluster_x in [cluster_0, cluster_1, cluster_2]
-                if cluster_x != cluster_top
-                and cluster_x != cluster_bottom
-                ][0]
-            if prints: print(f"{cluster_top}, {cluster_middle}, {cluster_bottom}")
-
-            thermocline1 = max(1, len(cluster_top))
-            thermocline2 = thermocline1 + len(cluster_middle)
-            if prints: print(f"Thermocline 1: {thermocline1}/12, thermocline 2: {thermocline2}/12")
-
-            top_temp = round(sum(cluster_top)/len(cluster_top))
-            middle_temp = round(sum(cluster_middle)/len(cluster_middle))
-            bottom_temp = round(sum(cluster_bottom)/len(cluster_bottom))
-            if prints: print(f"{top_temp}({thermocline1}){middle_temp}({thermocline2}){bottom_temp}")
-            return top_temp, middle_temp, bottom_temp, thermocline1, thermocline2
-
-        # Dealing with less than 3 clusters
-        else:
-            if cluster_0 and cluster_2:
-                cluster_1 = cluster_2
-            elif cluster_1 and cluster_2:
-                cluster_0 = cluster_2
-            # Two clusters
-            if cluster_0 and cluster_1:
-                cluster_top = max(cluster_0, cluster_1, key=lambda x: sum(x)/len(x))
-                cluster_bottom = min(cluster_0, cluster_1, key=lambda x: sum(x)/len(x))
-                thermocline1 = len(cluster_top)
-                top_temp = round(sum(cluster_top)/len(cluster_top))
-                bottom_temp = round(sum(cluster_bottom)/len(cluster_bottom))
-                if prints: print(f"{top_temp}({thermocline1}){bottom_temp}")
-                return top_temp, top_temp, bottom_temp, thermocline1, thermocline1
-            # Single cluster
-            else:
-                cluster_top = max(cluster_0, cluster_1, cluster_2, key=lambda x: len(x))
-                top_temp = round(sum(cluster_top)/len(cluster_top))
-                thermocline1 = 12
-                if prints: print(f"{top_temp}({thermocline1})")
-                return top_temp, top_temp, top_temp, thermocline1, thermocline1
-            
-    def kmeans(self, data, k=3, max_iters=100, tol=1e-4):
-        data = np.array(data).reshape(-1, 1)
-        centroids = data[np.random.choice(len(data), k, replace=False)]
-        for _ in range(max_iters):
-            labels = np.argmin(np.abs(data - centroids.T), axis=1)
-            new_centroids = np.zeros_like(centroids)
-            for i in range(k):
-                cluster_points = data[labels == i]
-                if len(cluster_points) > 0:
-                    new_centroids[i] = cluster_points.mean()
-                else:
-                    new_centroids[i] = data[np.random.choice(len(data))]
-            if np.all(np.abs(new_centroids - centroids) < tol):
-                break
-            centroids = new_centroids
-        return labels
-
-
 class RuleBasedStorageModel():
-    def __init__(self, flo_params: FloParamsHouse0, nodes: List, nodes_by: Dict, allowed_temperatures: Dict):
+    def __init__(self, flo_params: FloParamsHouse0, nodes: List, nodes_by: Dict):
         self.params = DParams(flo_params)
         self.nodes: List[DNode] = nodes
         self.nodes_by: Dict[Tuple, Dict[Tuple, DNode]] = nodes_by
-        self.top_temps = allowed_temperatures['top']
-        self.middle_temps = allowed_temperatures['middle']
-        self.bottom_temps = allowed_temperatures['bottom']
 
     def next_node(self, node_now:DNode, store_heat_in:float, print_detail:bool=False) -> DNode:
         if store_heat_in > 0:
@@ -701,6 +489,202 @@ class RuleBasedStorageModel():
         if top==bottom: top+=1  
         return int(1/(top-bottom)*(energy/(m_layer_kg*4.187/3600)-(-0.5*top+(self.params.num_layers+0.5)*bottom)))
 
+
+class DataBasedStorageModel():
+    def __init__(self, flo_params: FloParamsHouse0, nodes: List, nodes_by: Dict):
+        self.params = DParams(flo_params)
+        self.nodes: List[DNode] = nodes
+        self.nodes_by: Dict[Tuple, Dict[Tuple, DNode]] = nodes_by
+        self.data_file = 'storage_data_maple.csv'
+        self.learn_from_data()
+
+    def next_node(self, n:DNode, store_heat_in:float, print_detail:bool=True) -> DNode:
+        data_inputs = pd.DataFrame({
+            'store_heat_in': store_heat_in,
+            'init_t': n.top_temp,
+            'init_m': n.middle_temp,
+            'init_b': n.bottom_temp,
+            'init_th1': n.thermocline1,
+            'init_th2': n.thermocline2,
+        }, index=[0])
+        predicted_final_state = [int(x) for x in list(list(self.data_based_model.predict(data_inputs))[0])]
+        t, m, b, th1, th2 = predicted_final_state
+        th1 = int(max(1, min(24, th1)))
+        th2 = int(max(1, min(24, th2)))
+
+        predicted_next_node = DNode(
+            top_temp = t,
+            middle_temp = m,
+            bottom_temp = b,
+            thermocline1 = th1,
+            thermocline2 = th2,
+            parameters=n.params
+        )
+        if print_detail: print(f"{n} --{store_heat_in}--> {predicted_next_node}")
+        return predicted_next_node
+    
+    def learn_from_data(self):
+        df = pd.read_csv(self.data_file)
+
+        all_init_t, all_init_m, all_init_b = [],[],[]
+        all_init_th1, all_init_th2 = [],[]
+        all_final_t, all_final_m, all_final_b = [],[],[]
+        all_final_th1, all_final_th2 = [],[]
+
+        for row in range(len(df)):
+            initial_state = df.iloc[row].to_list()[2:12+2]
+            t, m, b, th1, th2 = self.three_layer_model(initial_state)
+            all_init_t.append(t)
+            all_init_m.append(m)
+            all_init_b.append(b)
+            all_init_th1.append(th1*2)
+            all_init_th2.append(th2*2)
+
+            final_state = df.iloc[row].to_list()[12+2:]
+            t, m, b, th1, th2 = self.three_layer_model(final_state)
+            all_final_t.append(t)
+            all_final_m.append(m)
+            all_final_b.append(b)
+            all_final_th1.append(th1*2)
+            all_final_th2.append(th2*2)
+
+        df['init_t'] = all_init_t
+        df['init_m'] = all_init_m
+        df['init_b'] = all_init_b
+        df['init_th1'] = all_init_th1
+        df['init_th2'] = all_init_th2
+        df['final_t'] = all_final_t
+        df['final_m'] = all_final_m
+        df['final_b'] = all_final_b
+        df['final_th1'] = all_final_th1
+        df['final_th2'] = all_final_th2
+        df = df.drop(columns=[x for x in df.columns if 'tank' in x])
+
+        X = df[[c for c in df.columns if 'init' in c or 'store_heat_in' in c]]
+        y = df[[c for c in df.columns if 'final' in c]]
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=42)
+        self.data_based_model = Ridge(alpha=1.0)
+        self.data_based_model.fit(X_train, y_train)
+        y_pred_ridge = self.data_based_model.predict(X_test)
+        mse_ridge = mean_squared_error(y_test, y_pred_ridge)
+        r2_ridge = r2_score(y_test, y_pred_ridge)
+        ridge_cv_score = cross_val_score(self.data_based_model, X, y, cv=5, scoring='neg_mean_squared_error')
+        print(f"Regressor performance on given data ({self.data_file}):")
+        print(f"- RMSE: {round(np.sqrt(abs(mse_ridge)),1)}")
+        print(f"- R-squared: {round(r2_ridge,1)}")
+        print(f"- Cross-Validation RMSE: {round(np.sqrt(abs(ridge_cv_score.mean())),1)}\n")
+
+    def three_layer_model(self, tank_temps, prints=False):
+        if isinstance(tank_temps, list):
+            tank_temps = {
+                f'tank{tank}-depth{depth}': tank_temps[tank*4 + depth] for tank in range(3) for depth in range(4)
+            }
+
+        # Process layer temperatures
+        layer_temps = [tank_temps[key] for key in tank_temps]
+        iter_count = 0
+        if prints: print(f"Before processing: {layer_temps}")
+        while (sorted(layer_temps, reverse=True) != layer_temps and iter_count<20):
+            iter_count += 1
+            layer_temps = []
+            for layer in tank_temps:
+                if layer_temps:
+                    if tank_temps[layer] > layer_temps[-1]:
+                        mean = round((layer_temps[-1] + tank_temps[layer]) / 2)
+                        layer_temps[-1] = mean
+                        layer_temps.append(mean)
+                    else:
+                        layer_temps.append(tank_temps[layer])
+                else:
+                    layer_temps.append(tank_temps[layer])
+            for i, layer in enumerate(tank_temps):
+                tank_temps[layer] = layer_temps[i]
+            if iter_count == 20:
+                layer_temps = sorted(layer_temps, reverse=True)
+        if prints: print(f"After processing: {layer_temps}")
+
+        # Cluster 10 times and select the result with the highest top temperature
+        data = layer_temps.copy()
+        clustering_runs = []
+        for i in range(10):
+            labels = self.kmeans(data, k=3)
+            cluster_0 = sorted([data[i] for i in range(len(data)) if labels[i] == 0], reverse=True)
+            cluster_1 = sorted([data[i] for i in range(len(data)) if labels[i] == 1], reverse=True)
+            cluster_2 = sorted([data[i] for i in range(len(data)) if labels[i] == 2], reverse=True)
+            cluster_top = max(cluster_0, cluster_1, cluster_2, key=lambda x: np.mean(x) if len(x)>0 else 0)
+            top_temp = sum(cluster_top)/len(cluster_top)
+            clustering_runs.append({
+                'cluster_0': cluster_0,
+                'cluster_1': cluster_1,
+                'cluster_2': cluster_2,
+                'top_temp': top_temp
+            })
+        best_run = max(clustering_runs, key=lambda x: x['top_temp'])
+        cluster_0 = best_run['cluster_0']
+        cluster_1 = best_run['cluster_1']
+        cluster_2 = best_run['cluster_2']
+
+        # Dealing with 3 clusters
+        if cluster_0 and cluster_1 and cluster_2:
+            cluster_top = max(cluster_0, cluster_1, cluster_2, key=lambda x: sum(x)/len(x))
+            cluster_bottom = min(cluster_0, cluster_1, cluster_2, key=lambda x: sum(x)/len(x))
+            cluster_middle = [
+                cluster_x for cluster_x in [cluster_0, cluster_1, cluster_2]
+                if cluster_x != cluster_top
+                and cluster_x != cluster_bottom
+                ][0]
+            if prints: print(f"{cluster_top}, {cluster_middle}, {cluster_bottom}")
+
+            thermocline1 = max(1, len(cluster_top))
+            thermocline2 = thermocline1 + len(cluster_middle)
+            if prints: print(f"Thermocline 1: {thermocline1}/12, thermocline 2: {thermocline2}/12")
+
+            top_temp = round(sum(cluster_top)/len(cluster_top))
+            middle_temp = round(sum(cluster_middle)/len(cluster_middle))
+            bottom_temp = round(sum(cluster_bottom)/len(cluster_bottom))
+            if prints: print(f"{top_temp}({thermocline1}){middle_temp}({thermocline2}){bottom_temp}")
+            return top_temp, middle_temp, bottom_temp, thermocline1, thermocline2
+
+        # Dealing with less than 3 clusters
+        else:
+            if cluster_0 and cluster_2:
+                cluster_1 = cluster_2
+            elif cluster_1 and cluster_2:
+                cluster_0 = cluster_2
+            # Two clusters
+            if cluster_0 and cluster_1:
+                cluster_top = max(cluster_0, cluster_1, key=lambda x: sum(x)/len(x))
+                cluster_bottom = min(cluster_0, cluster_1, key=lambda x: sum(x)/len(x))
+                thermocline1 = len(cluster_top)
+                top_temp = round(sum(cluster_top)/len(cluster_top))
+                bottom_temp = round(sum(cluster_bottom)/len(cluster_bottom))
+                if prints: print(f"{top_temp}({thermocline1}){bottom_temp}")
+                return top_temp, top_temp, bottom_temp, thermocline1, thermocline1
+            # Single cluster
+            else:
+                cluster_top = max(cluster_0, cluster_1, cluster_2, key=lambda x: len(x))
+                top_temp = round(sum(cluster_top)/len(cluster_top))
+                thermocline1 = 12
+                if prints: print(f"{top_temp}({thermocline1})")
+                return top_temp, top_temp, top_temp, thermocline1, thermocline1
+            
+    def kmeans(self, data, k=3, max_iters=100, tol=1e-4):
+        data = np.array(data).reshape(-1, 1)
+        centroids = data[np.random.choice(len(data), k, replace=False)]
+        for _ in range(max_iters):
+            labels = np.argmin(np.abs(data - centroids.T), axis=1)
+            new_centroids = np.zeros_like(centroids)
+            for i in range(k):
+                cluster_points = data[labels == i]
+                if len(cluster_points) > 0:
+                    new_centroids[i] = cluster_points.mean()
+                else:
+                    new_centroids[i] = data[np.random.choice(len(data))]
+            if np.all(np.abs(new_centroids - centroids) < tol):
+                break
+            centroids = new_centroids
+        return labels
+    
 
 if __name__ == '__main__':
 
