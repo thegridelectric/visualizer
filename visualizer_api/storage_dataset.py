@@ -18,11 +18,11 @@ from sklearn.metrics import mean_squared_error, r2_score
 class StorageDataset():
     def __init__(self, house_alias, start_ms, timezone):
         settings = Settings(_env_file=dotenv.find_dotenv())
-        engine = create_engine(settings.db_url.get_secret_value())
+        engine = create_engine(settings.db_url_no_async.get_secret_value())
         Session = sessionmaker(bind=engine)
         self.session = Session()
         self.house_alias = house_alias
-        self.dataset_file = f"{self.house_alias}_storage_data.csv"
+        self.dataset_file = f"storage_data_{self.house_alias}.csv"
         self.start_ms = start_ms
         self.timezone_str = timezone
         self.data_format = {
@@ -199,8 +199,8 @@ class StorageDataset():
 if __name__ == '__main__':
     house_alias = 'maple'
     timezone = 'America/New_York'
-    start_ms = pendulum.datetime(2025,1,1, tz=timezone).timestamp()*1000
+    start_ms = pendulum.datetime(2025,3,1, tz=timezone).timestamp()*1000
     
     s = StorageDataset(house_alias, start_ms, timezone)
-    # s.generate_dataset()
+    s.generate_dataset()
     s.model_fit()
