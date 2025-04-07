@@ -166,8 +166,8 @@ class EnergyDataset():
             if hour_end_times[-1] - hour_start_times[-1] < 45*60*1000:
                 continue
 
-            average_temp_start = sum(hour_start_values)/4
-            average_temp_end = sum(hour_end_values)/4
+            average_temp_start = sum(hour_start_values)/len(hour_start_values)
+            average_temp_end = sum(hour_end_values)/len(hour_end_values)
             buffer_heat_out = round(1*120*3.785*4.187/3600*(average_temp_start-average_temp_end),2)
 
             # Storage heat out
@@ -195,13 +195,14 @@ class EnergyDataset():
             if hour_end_times[-1] - hour_start_times[-1] < 45*60*1000:
                 continue
 
-            average_temp_start = sum(hour_start_values)/12
-            average_temp_end = sum(hour_end_values)/12
+            average_temp_start = sum(hour_start_values)/len(hour_start_values)
+            average_temp_end = sum(hour_end_values)/len(hour_end_values)
             store_heat_out = round(3*120*3.785*4.187/3600*(average_temp_start-average_temp_end),2)
 
             # House heat in
             house_heat_in = round(hp_heat_out + store_heat_out + buffer_heat_out,2)
-            print(f"HP: {hp_heat_out}, Store: {store_heat_out}, Buffer: {buffer_heat_out} => House {house_heat_in}")
+            hour = str(len(formatted_data)) if len(formatted_data)>9 else '0'+str(len(formatted_data))
+            print(f"{hour}:00 - HP: {hp_heat_out}, Store: {store_heat_out}, Buffer: {buffer_heat_out} => House {house_heat_in}")
 
             hour_start = pendulum.from_timestamp(int(hour_start_ms)/1000, tz="America/New_York").format('YYYY-MM-DD-HH:00')
             row = [hour_start, hp_heat_out, hp_elec_in, cop, buffer_heat_out, store_heat_out, house_heat_in]
@@ -231,11 +232,11 @@ def generate(house_alias, start_year, start_month, start_day, end_year, end_mont
 if __name__ == '__main__':
     # THE ONLY PART YOU SHOULD EDIT:
     generate(
-        house_alias='oak', 
+        house_alias='beech', 
         start_year=2025, 
-        start_month=2, 
-        start_day=15,
+        start_month=1, 
+        start_day=21,
         end_year=2025,
-        end_month=2,
-        end_day=17
+        end_month=1,
+        end_day=21
     )
