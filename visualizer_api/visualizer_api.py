@@ -472,6 +472,8 @@ class VisualizerApi():
 
             agg_data = {}
             for house_alias in self.data[request]:
+                if 'maple' in house_alias:
+                    continue
                 agg_data[house_alias] = {'timestamps': sampling_times}
                 for channel in self.data[request][house_alias]:
                     sampled = await asyncio.to_thread(
