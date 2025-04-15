@@ -1214,8 +1214,8 @@ class VisualizerApi():
         fig.update_layout(
             title=dict(text='Heat pump', x=0.5, xanchor='center'),
             margin=dict(t=30, b=30),
-            plot_bgcolor='#222222' if request.darkmode else 'white',
-            paper_bgcolor='#222222' if request.darkmode else 'white',
+            plot_bgcolor='#1b1b1c' if request.darkmode else 'white',
+            paper_bgcolor='#1b1b1c' if request.darkmode else 'white',
             font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
             title_font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
             xaxis=dict(
@@ -1335,8 +1335,8 @@ class VisualizerApi():
 
         fig.update_layout(
             title=dict(text='Distribution', x=0.5, xanchor='center'),
-            plot_bgcolor='#222222' if request.darkmode else 'white',
-            paper_bgcolor='#222222' if request.darkmode else 'white',
+            plot_bgcolor='#1b1b1c' if request.darkmode else 'white',
+            paper_bgcolor='#1b1b1c' if request.darkmode else 'white',
             font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
             title_font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
             margin=dict(t=30, b=30),
@@ -1467,8 +1467,8 @@ class VisualizerApi():
 
         fig.update_layout(
             title=dict(text='Heat calls', x=0.5, xanchor='center'),
-            plot_bgcolor='#222222' if request.darkmode else 'white',
-            paper_bgcolor='#222222' if request.darkmode else 'white',
+            plot_bgcolor='#1b1b1c' if request.darkmode else 'white',
+            paper_bgcolor='#1b1b1c' if request.darkmode else 'white',
             font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
             title_font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
             margin=dict(t=30, b=30),
@@ -1574,8 +1574,8 @@ class VisualizerApi():
         fig.update_layout(yaxis=dict(title='Zone temperature [F]'))
         fig.update_layout(
             title=dict(text='Zones', x=0.5, xanchor='center'),
-            plot_bgcolor='#222222' if request.darkmode else 'white',
-            paper_bgcolor='#222222' if request.darkmode else 'white',
+            plot_bgcolor='#1b1b1c' if request.darkmode else 'white',
+            paper_bgcolor='#1b1b1c' if request.darkmode else 'white',
             font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
             title_font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
             margin=dict(t=30, b=30),
@@ -1685,8 +1685,8 @@ class VisualizerApi():
                
         fig.update_layout(
             title=dict(text='Buffer', x=0.5, xanchor='center'),
-            plot_bgcolor='#222222' if request.darkmode else 'white',
-            paper_bgcolor='#222222' if request.darkmode else 'white',
+            plot_bgcolor='#1b1b1c' if request.darkmode else 'white',
+            paper_bgcolor='#1b1b1c' if request.darkmode else 'white',
             font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
             title_font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
             margin=dict(t=30, b=30),
@@ -1871,8 +1871,8 @@ class VisualizerApi():
 
         fig.update_layout(
             title=dict(text='Storage', x=0.5, xanchor='center'),
-            plot_bgcolor='#222222' if request.darkmode else 'white',
-            paper_bgcolor='#222222' if request.darkmode else 'white',
+            plot_bgcolor='#1b1b1c' if request.darkmode else 'white',
+            paper_bgcolor='#1b1b1c' if request.darkmode else 'white',
             font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
             title_font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
             margin=dict(t=30, b=30),
@@ -1958,8 +1958,8 @@ class VisualizerApi():
 
         fig.update_layout(
             title=dict(text='Top State', x=0.5, xanchor='center'),
-            plot_bgcolor='#222222' if request.darkmode else 'white',
-            paper_bgcolor='#222222' if request.darkmode else 'white',
+            plot_bgcolor='#1b1b1c' if request.darkmode else 'white',
+            paper_bgcolor='#1b1b1c' if request.darkmode else 'white',
             font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
             title_font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
             margin=dict(t=30, b=30),
@@ -2041,8 +2041,8 @@ class VisualizerApi():
 
         fig.update_layout(
             title=dict(text='HomeAlone State', x=0.5, xanchor='center'),
-            plot_bgcolor='#222222' if request.darkmode else 'white',
-            paper_bgcolor='#222222' if request.darkmode else 'white',
+            plot_bgcolor='#1b1b1c' if request.darkmode else 'white',
+            paper_bgcolor='#1b1b1c' if request.darkmode else 'white',
             font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
             title_font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
             margin=dict(t=30, b=30),
@@ -2124,8 +2124,8 @@ class VisualizerApi():
 
         fig.update_layout(
             title=dict(text='AtomicAlly State', x=0.5, xanchor='center'),
-            plot_bgcolor='#222222' if request.darkmode else 'white',
-            paper_bgcolor='#222222' if request.darkmode else 'white',
+            plot_bgcolor='#1b1b1c' if request.darkmode else 'white',
+            paper_bgcolor='#1b1b1c' if request.darkmode else 'white',
             font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
             title_font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
             margin=dict(t=30, b=30),
@@ -2195,8 +2195,8 @@ class VisualizerApi():
 
         fig.update_layout(
             title=dict(text='Weather Forecasts', x=0.5, xanchor='center'),
-            plot_bgcolor='#222222' if request.darkmode else 'white',
-            paper_bgcolor='#222222' if request.darkmode else 'white',
+            plot_bgcolor='#1b1b1c' if request.darkmode else 'white',
+            paper_bgcolor='#1b1b1c' if request.darkmode else 'white',
             font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
             title_font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
             margin=dict(t=30, b=30),
@@ -2299,8 +2299,8 @@ class VisualizerApi():
         else: 
             min_timestep = self.data[request]['min_timestamp']
             max_timestep = self.data[request]['max_timestamp']
-            plot_bgcolor='#222222' if request.darkmode else 'white'
-            paper_bgcolor='#222222' if request.darkmode else 'white'
+            plot_bgcolor='#1b1b1c' if request.darkmode else 'white'
+            paper_bgcolor='#1b1b1c' if request.darkmode else 'white'
             font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)'
             title_font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)'
             
