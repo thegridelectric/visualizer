@@ -223,8 +223,6 @@ class VisualizerApi():
         return False
     
     def check_request(self, request: BaseRequest, aggregate=False):
-        if not self.check_password(request):
-            return {"success": False, "message": "Wrong password.", "reload": False}
         if isinstance(request, Union[DataRequest, CsvRequest]) and not request.confirm_with_user:
             if (request.end_ms - request.start_ms)/1000/3600/24 > 3:
                 warning_message = f"That's a lot of data! Are you sure you want to proceed?"
