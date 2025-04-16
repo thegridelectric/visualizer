@@ -1008,7 +1008,7 @@ class VisualizerApi():
                 print(f"Deleted request data")
             print(f"Unfinished requests in data: {len(self.data)}")
 
-    async def get_plots(self, request: DataRequest):
+    async def get_plots(self, request: DataRequest, current_user = Depends(get_current_user)):
         try:
             async with async_timeout.timeout(self.timeout_seconds):
                 error = await self.get_data(request)
