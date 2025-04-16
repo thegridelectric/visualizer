@@ -16,24 +16,88 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, Union
 import asyncio
 import async_timeout
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.responses import FileResponse
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy import asc, or_, and_, desc
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy import create_engine, MetaData, Table
 from sqlalchemy.future import select
+from jose import JWTError, jwt
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 import plotly.colors as pc
-from datetime import datetime
-from pathlib import Path
+from datetime import datetime, timedelta, timezone
+from passlib.context import CryptContext
 from config import Settings
 from models import MessageSql
 from named_types import FloParamsHouse0
 from flo import DGraph
 from dgraph_visualizer import DGraphVisualizer
+
+
+# Backoffice database
+settings = Settings(_env_file=dotenv.find_dotenv())
+engine_gbo = create_engine(settings.gbo_db_url_no_async.get_secret_value())
+gbo_secret_key = settings.secret_key.get_secret_value()
+gbo_algorithm = "HS256"
+gbo_access_token_expire_minutes = 30
+users = Table('users', MetaData(), autoload_with=engine_gbo)
+homes = Table('homes', MetaData(), autoload_with=engine_gbo)
+gbo_pwd_context = CryptContext(
+    schemes=["bcrypt"],
+    deprecated="auto",
+    bcrypt__rounds=12,
+    bcrypt__ident="2b"
+)
+gbo_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+Session = sessionmaker(bind=engine_gbo)
+
+def verify_password(plain_password, hashed_password):
+    return gbo_pwd_context.verify(plain_password, hashed_password)
+
+def get_password_hash(password):
+    return gbo_pwd_context.hash(password)
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.now(timezone.utc) + expires_delta
+    else:
+        expire = datetime.now(timezone.utc) + timedelta(minutes=15)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, gbo_secret_key, algorithm=gbo_algorithm)
+    return encoded_jwt
+
+def get_db():
+    db = Session()
+    try:
+        yield db
+    finally:
+        db.close()
+
+async def get_current_user(token: str = Depends(gbo_oauth2_scheme), db: Session = Depends(get_db)):
+    credentials_exception = HTTPException(
+        status_code=401,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, gbo_secret_key, algorithms=[gbo_algorithm])
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+        token_data = TokenData(username=username)
+    except JWTError:
+        raise credentials_exception
+    
+    user = db.execute(users.select().where(users.c.username == token_data.username)).first()
+    if user is None:
+        raise credentials_exception
+    return user
 
 
 class Prices(BaseModel):
@@ -67,6 +131,34 @@ class DijkstraRequest(BaseRequest):
     time_ms: int
 
 
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    username: Optional[str] = None
+
+class User(BaseModel):
+    username: str
+    email: Optional[str] = None
+    is_active: Optional[bool] = None
+
+    class Config:
+        from_attributes = True
+
+class House(BaseModel):
+    short_alias: Optional[str] = None
+    address: Optional[dict] = None
+    owner_contact: Optional[dict] = None
+    hardware_layout: Optional[str] = None
+    unique_id: int
+    g_node_alias: Optional[str] = None
+    status: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
 class VisualizerApi():
     def __init__(self):
         self.settings = Settings(_env_file=dotenv.find_dotenv())
@@ -92,12 +184,16 @@ class VisualizerApi():
         self.app = FastAPI()
         self.app.add_middleware(
             CORSMiddleware,
-            # TODO: allow_origins=["https://thegridelectric.github.io"]
-            allow_origins=["*"], 
+            allow_origins=["*"],
             allow_credentials=True,
-            allow_methods=["*"],
+            allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+            allow_headers=["*"],
+            expose_headers=["*"]
         )
-        self.app.post("/login")(self.check_password)
+        self.app.post("/login", response_model=Token)(self.login)
+        self.app.post("/logout")(self.logout)
+        self.app.get("/me", response_model=User)(self.read_users_me)
+        self.app.get("/homes", response_model=list[House])(self.get_homes)
         self.app.post("/plots")(self.get_plots)
         self.app.post("/csv")(self.get_csv)
         self.app.post("/messages")(self.get_messages)
@@ -962,7 +1058,7 @@ class VisualizerApi():
                     
                     html_buffer = await self.plot_weather(request)
                     zip_file.writestr('plot11.html', html_buffer.read())
-                    
+
                 zip_buffer.seek(0)
 
                 return StreamingResponse(
@@ -2356,6 +2452,46 @@ class VisualizerApi():
         html_buffer.seek(0)
         print(f"Prices plot done in {round(time.time()-plot_start,1)} seconds")   
         return html_buffer             
+
+    async def login(self, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+        user = db.execute(users.select().where(users.c.username == form_data.username)).first()
+        if not user or not verify_password(form_data.password, user.password_hash):
+            raise HTTPException(
+                status_code=401,
+                detail="Incorrect username or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        access_token_expires = timedelta(minutes=gbo_access_token_expire_minutes)
+        access_token = create_access_token(
+            data={"sub": user.username}, expires_delta=access_token_expires
+        )
+        
+        # Update last login with timezone-aware datetime
+        db.execute(
+            users.update().where(users.c.username == user.username).values(
+                last_login=datetime.now(timezone.utc)
+            )
+        )
+        db.commit()
+        
+        return {"access_token": access_token, "token_type": "bearer"}
+
+    async def logout(self, current_user = Depends(get_current_user)):
+        return {"message": "Successfully logged out"}
+
+    async def read_users_me(self, current_user = Depends(get_current_user)):
+        return current_user
+
+    async def get_homes(self, current_user = Depends(get_current_user), db: Session = Depends(get_db)):
+        print(f"Fetching homes for user: {current_user.username}")
+        try:
+            houses = db.execute(homes.select()).all()
+            print(f"Found {len(houses)} houses")
+            return houses
+        except Exception as e:
+            print(f"Error fetching houses: {e}")
+            raise HTTPException(status_code=500, detail=f"Error fetching houses: {str(e)}")
 
 
 if __name__ == "__main__":

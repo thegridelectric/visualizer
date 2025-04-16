@@ -9,8 +9,15 @@ class Settings(BaseSettings):
         "postgresql://persister:PASSWD@journaldb.electricity.works/journaldb"
     )
     db_url_no_async: SecretStr = SecretStr(
-        "postgresql+asyncpg://persister:PASSWD@journaldb.electricity.works/journaldb"
+        "postgresql://persister:PASSWD@journaldb.electricity.works/journaldb"
     )
+    gbo_db_url: SecretStr = SecretStr(
+        "postgresql://backofficedb:PASSWD@journaldb.electricity.works/backofficedb"
+    )
+    gbo_db_url_no_async: SecretStr = SecretStr(
+        "postgresql://backofficedb:PASSWD@journaldb.electricity.works/backofficedb"
+    )
+    secret_key: SecretStr = SecretStr("secret_key")
     ops_genie_api_key: SecretStr = SecretStr("OpsGenieAPIKey")
     visualizer_api_password: SecretStr = SecretStr("ThermostatAPIKey")
     oak_owner_password: SecretStr = SecretStr("OakOwnerPassword")
