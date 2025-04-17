@@ -2539,7 +2539,7 @@ class VisualizerApi():
                 opacity=0.6 if request.darkmode else 0.3,
                 marker=dict(color='#2a4ca2', line=dict(width=0)),
                 name='Electricity used',
-                hovertemplate="%{x|%H}:00-%{x|%H}:59<br>%{y:.1f} kWh<extra></extra>",
+                hovertemplate="%{x|%H}:00-%{x|%H}:59 | %{y:.1f} kWh<extra></extra>",
                 width=[3600000/1.2] * len(elec_use['timestamps']),
             )
         )
@@ -2554,7 +2554,7 @@ class VisualizerApi():
                 line_shape='hv',
                 name='Electricity price',
                 yaxis='y2',
-                hovertemplate="%{x|%H:%M} | %{y:.2f} cts/kWh"
+                hovertemplate="%{x|%H:%M} | %{y:.2f} cts/kWh<extra></extra>"
             )
         )
 
@@ -2577,6 +2577,7 @@ class VisualizerApi():
                 showgrid=False,
             ),
             yaxis=dict(
+                range = [0, 1.3*max(elec_use['total_kwh'])],
                 mirror=True,
                 ticks='outside',
                 showline=True,
@@ -2587,6 +2588,7 @@ class VisualizerApi():
                 gridcolor=white_color
             ),
             yaxis2=dict(
+                range = [0, 1.3*max(total_price_values)],
                 mirror=True,
                 ticks='outside',
                 zeroline=False,
