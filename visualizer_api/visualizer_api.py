@@ -2510,6 +2510,8 @@ class VisualizerApi():
     async def plot_electricity_use(self, elec_use, request: ElectricityUseRequest):
         plot_start = time.time()
 
+        white_color = '#858585' if request.darkmode else '#6c757d'
+
         # Open and read the price CSV file
         csv_times, csv_dist, csv_lmp = [], [], []
         project_dir = os.path.dirname(os.path.abspath(__file__))
@@ -2532,21 +2534,21 @@ class VisualizerApi():
         fig = go.Figure()
         fig.add_trace(
             go.Bar(
-                x=elec_use['timestamps'], 
+                x=[x+timedelta(minutes=30) for x in elec_use['timestamps']],
                 y=elec_use['total_kwh'],
                 opacity=0.6 if request.darkmode else 0.3,
                 marker=dict(color='#2a4ca2', line=dict(width=0)),
                 name='Electricity used',
-                hovertemplate="%{x|%H:%M} | %{y:.1f} kWh<extra></extra>"
-                )
+                hovertemplate="%{x|%H}:00-%{x|%H}:59<br>%{y:.1f} kWh<extra></extra>",
+                width=[3600000/1.2] * len(elec_use['timestamps']),
             )
+        )
         
         fig.add_trace(
             go.Scatter(
                 x=price_times,
                 y=total_price_values,
                 mode='lines',
-                # line=dict('#f0f0f0' if request.darkmode else '#5e5e5e'),
                 opacity=0.8,
                 showlegend=True,
                 line_shape='hv',
@@ -2564,47 +2566,47 @@ class VisualizerApi():
             title=dict(text='', x=0.5, xanchor='center'),
             plot_bgcolor='#1b1b1c' if request.darkmode else 'white',
             paper_bgcolor='#1b1b1c' if request.darkmode else 'white',
-            font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
-            title_font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
+            font_color=white_color,
+            title_font_color=white_color,
             margin=dict(t=30, b=30),
             xaxis=dict(
                 mirror=True,
                 ticks='outside',
                 showline=True,
-                linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
-                showgrid=False
-                ),
+                linecolor=white_color,
+                showgrid=False,
+            ),
             yaxis=dict(
                 mirror=True,
                 ticks='outside',
                 showline=True,
-                linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
+                linecolor=white_color,
                 zeroline=False,
-                showgrid=False, 
-                gridwidth=1, 
-                gridcolor='#424242' if request.darkmode else 'LightGray'
-                ),
+                showgrid=False,
+                gridwidth=1,
+                gridcolor=white_color
+            ),
             yaxis2=dict(
                 mirror=True,
                 ticks='outside',
                 zeroline=False,
                 showline=False,
-                linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
+                linecolor=white_color,
                 showgrid=False,
-                overlaying='y', 
+                overlaying='y',
                 side='right'
-                ),
+            ),
             legend=dict(
                 x=0,
                 y=1,
                 xanchor='left',
                 yanchor='top',
                 bgcolor='rgba(0, 0, 0, 0)'
-                )
-            )
+            ),
+        )
         html_buffer = io.StringIO()
         fig.write_html(html_buffer, config={'displayModeBar': False})
-        html_buffer.seek(0) 
+        html_buffer.seek(0)
         print(f"Electricity use plot done in {round(time.time()-plot_start,1)} seconds")
         return html_buffer
         
