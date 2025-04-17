@@ -210,6 +210,7 @@ class VisualizerApi():
         self.app.get("/me", response_model=User)(self.read_users_me)
         self.app.get("/homes", response_model=list[House])(self.get_homes)
         self.app.post("/electricity-use")(self.get_electricity_use)
+        self.app.post("/electricity-use-csv")(self.get_electricity_use_csv)
         self.app.post("/plots")(self.get_plots)
         self.app.post("/csv")(self.get_csv)
         self.app.post("/messages")(self.get_messages)
@@ -2658,6 +2659,67 @@ class VisualizerApi():
         except Exception as e:
             print(f"Error getting electricity use: {e}")
             raise HTTPException(status_code=500, detail=f"Error getting electricity use: {str(e)}")
+
+    async def get_electricity_use_csv(self, request: ElectricityUseRequest, current_user = Depends(get_current_user), db: Session = Depends(get_db)):
+        try:
+            # Query the database for electricity records matching the selected short_aliases
+            query = select(hourly_electricity).where(
+                hourly_electricity.c.short_alias.in_(request.selected_short_aliases),
+                hourly_electricity.c.hour_start_s >= request.start_ms // 1000,
+                hourly_electricity.c.hour_start_s <= request.end_ms // 1000
+            ).order_by(hourly_electricity.c.hour_start_s)
+            
+            records = db.execute(query).all()
+            
+            if not records:
+                return {"success": False}
+            
+            # Group the data by timestamp and sum the kwh values
+            timestamps = []
+            total_kwh = []            
+            for record in records:
+                if record.hour_start_s not in timestamps:
+                    timestamps.append(record.hour_start_s)
+                    total_kwh.append(record.kwh)
+                else:
+                    idx = timestamps.index(record.hour_start_s)
+                    total_kwh[idx] += record.kwh
+
+            # Convert timestamps to datetime objects in America/New_York timezone
+            datetime_timestamps = []
+            for ts in timestamps:
+                dt = pd.to_datetime(ts * 1000, unit='ms', utc=True)
+                dt = dt.tz_convert('America/New_York')
+                datetime_timestamps.append(dt)
+
+            # Create DataFrame
+            df = pd.DataFrame({
+                'timestamp': datetime_timestamps,
+                'kwh': [round(x, 2) for x in total_kwh]
+            })
+
+            # Build file name
+            start_date = self.to_datetime(request.start_ms)
+            end_date = self.to_datetime(request.end_ms)
+            formatted_start_date = start_date.strftime('%Y-%m-%d-%H-%M')
+            formatted_end_date = end_date.strftime('%Y-%m-%d-%H-%M')
+            house_alias = request.selected_short_aliases[0] if len(request.selected_short_aliases) == 1 else 'aggregated'
+            filename = f'{house_alias}_electricity_use_{formatted_start_date}-{formatted_end_date}.csv'
+
+            # Create CSV buffer
+            csv_buffer = io.StringIO()
+            df.to_csv(csv_buffer, index=False)
+            csv_buffer.seek(0)
+
+            return StreamingResponse(
+                iter([csv_buffer.getvalue()]),
+                media_type="text/csv",
+                headers={"Content-Disposition": f"attachment; filename={filename}"}
+            )
+
+        except Exception as e:
+            print(f"Error getting electricity use CSV: {e}")
+            return {"success": False, "message": "An error occurred while getting electricity use CSV", "reload": False}
 
 
 if __name__ == "__main__":
