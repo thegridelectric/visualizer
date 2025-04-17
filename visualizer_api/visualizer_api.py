@@ -44,9 +44,10 @@ settings = Settings(_env_file=dotenv.find_dotenv())
 engine_gbo = create_engine(settings.gbo_db_url_no_async.get_secret_value())
 gbo_secret_key = settings.secret_key.get_secret_value()
 gbo_algorithm = "HS256"
-gbo_access_token_expire_minutes = 30
+gbo_access_token_expire_minutes = int(7*24*60)
 users = Table('users', MetaData(), autoload_with=engine_gbo)
 homes = Table('homes', MetaData(), autoload_with=engine_gbo)
+hourly_electricity = Table('hourly_electricity', MetaData(), autoload_with=engine_gbo)
 gbo_pwd_context = CryptContext(
     schemes=["bcrypt"],
     deprecated="auto",
@@ -130,6 +131,11 @@ class MessagesRequest(DataRequest):
 class DijkstraRequest(BaseRequest):
     time_ms: int
 
+class ElectricityUseRequest(BaseModel):
+    selected_short_aliases: List[str]
+    darkmode: Optional[bool] = False
+    start_ms: int
+    end_ms: int
 
 class Token(BaseModel):
     access_token: str
@@ -154,6 +160,15 @@ class House(BaseModel):
     unique_id: int
     g_node_alias: Optional[str] = None
     status: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class HourlyElectricity(BaseModel):
+    g_node_alias: str
+    short_alias: str
+    hour_start_s: int
+    kwh: float
 
     class Config:
         from_attributes = True
@@ -194,6 +209,7 @@ class VisualizerApi():
         self.app.post("/logout")(self.logout)
         self.app.get("/me", response_model=User)(self.read_users_me)
         self.app.get("/homes", response_model=list[House])(self.get_homes)
+        self.app.post("/electricity-use")(self.get_electricity_use)
         self.app.post("/plots")(self.get_plots)
         self.app.post("/csv")(self.get_csv)
         self.app.post("/messages")(self.get_messages)
@@ -2490,6 +2506,153 @@ class VisualizerApi():
         except Exception as e:
             print(f"Error fetching houses: {e}")
             raise HTTPException(status_code=500, detail=f"Error fetching houses: {str(e)}")
+        
+    async def plot_electricity_use(self, elec_use, request: ElectricityUseRequest):
+        plot_start = time.time()
+
+        # Open and read the price CSV file
+        csv_times, csv_dist, csv_lmp = [], [], []
+        project_dir = os.path.dirname(os.path.abspath(__file__))
+        elec_file = os.path.join(project_dir, 'price_forecast_dates.csv')
+        with open(elec_file, newline='', encoding='utf-8') as csvfile:
+            csvreader = csv.reader(csvfile)
+            next(csvreader)
+            for row in csvreader:
+                csv_times.append(float(row[0]))
+                csv_dist.append(float(row[1])/10)
+                csv_lmp.append(float(row[2])/10)
+
+        request_hours = int((request.end_ms - request.start_ms)/1000 / 3600)
+        price_times_s = [request.start_ms/1000 + x*3600 for x in range(request_hours)]
+        lmp_values = [lmp for time, dist, lmp in zip(csv_times, csv_dist, csv_lmp) if time in price_times_s]
+        total_price_values = [lmp+dist for time, dist, lmp in zip(csv_times, csv_dist, csv_lmp) if time in price_times_s]
+        csv_times = [time for time in csv_times if time in price_times_s]
+        price_times = [self.to_datetime(x*1000) for x in csv_times]
+
+        fig = go.Figure()
+        fig.add_trace(
+            go.Bar(
+                x=elec_use['timestamps'], 
+                y=elec_use['total_kwh'],
+                opacity=0.6 if request.darkmode else 0.3,
+                marker=dict(color='#2a4ca2', line=dict(width=0)),
+                name='Electricity used',
+                hovertemplate="%{x|%H:%M} | %{y:.1f} kWh<extra></extra>"
+                )
+            )
+        
+        fig.add_trace(
+            go.Scatter(
+                x=price_times,
+                y=total_price_values,
+                mode='lines',
+                # line=dict('#f0f0f0' if request.darkmode else '#5e5e5e'),
+                opacity=0.8,
+                showlegend=True,
+                line_shape='hv',
+                name='Electricity price',
+                yaxis='y2',
+                hovertemplate="%{x|%H:%M} | %{y:.2f} cts/kWh"
+            )
+        )
+
+        fig.update_layout(
+            yaxis=dict(title='Quantity [kWh]'),
+            yaxis2=dict(title='Price [cts/kWh]')
+        )
+        fig.update_layout(
+            title=dict(text='', x=0.5, xanchor='center'),
+            plot_bgcolor='#1b1b1c' if request.darkmode else 'white',
+            paper_bgcolor='#1b1b1c' if request.darkmode else 'white',
+            font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
+            title_font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
+            margin=dict(t=30, b=30),
+            xaxis=dict(
+                mirror=True,
+                ticks='outside',
+                showline=True,
+                linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
+                showgrid=False
+                ),
+            yaxis=dict(
+                mirror=True,
+                ticks='outside',
+                showline=True,
+                linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
+                zeroline=False,
+                showgrid=False, 
+                gridwidth=1, 
+                gridcolor='#424242' if request.darkmode else 'LightGray'
+                ),
+            yaxis2=dict(
+                mirror=True,
+                ticks='outside',
+                zeroline=False,
+                showline=False,
+                linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
+                showgrid=False,
+                overlaying='y', 
+                side='right'
+                ),
+            legend=dict(
+                x=0,
+                y=1,
+                xanchor='left',
+                yanchor='top',
+                bgcolor='rgba(0, 0, 0, 0)'
+                )
+            )
+        html_buffer = io.StringIO()
+        fig.write_html(html_buffer, config={'displayModeBar': False})
+        html_buffer.seek(0) 
+        print(f"Electricity use plot done in {round(time.time()-plot_start,1)} seconds")
+        return html_buffer
+        
+    async def get_electricity_use(self, request: ElectricityUseRequest, current_user = Depends(get_current_user), db: Session = Depends(get_db)):
+        try:
+            # Query the database for electricity records matching the selected short_aliases
+            query = select(hourly_electricity).where(
+                hourly_electricity.c.short_alias.in_(request.selected_short_aliases),
+                hourly_electricity.c.hour_start_s >= request.start_ms // 1000,
+                hourly_electricity.c.hour_start_s <= request.end_ms // 1000
+            ).order_by(hourly_electricity.c.hour_start_s)
+            
+            records = db.execute(query).all()
+            
+            if not records:
+                raise HTTPException(status_code=404, detail="No electricity data found for the selected houses")
+            
+            # Group the data by timestamp and sum the kwh values
+            timestamps = []
+            total_kwh = []            
+            for record in records:
+                if record.hour_start_s not in timestamps:
+                    timestamps.append(record.hour_start_s)
+                    total_kwh.append(record.kwh)
+                else:
+                    idx = timestamps.index(record.hour_start_s)
+                    total_kwh[idx] += record.kwh
+
+            elec_use = {
+                "timestamps": [self.to_datetime(x*1000) for x in timestamps],
+                "total_kwh": total_kwh
+            }
+
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
+                html_buffer = await self.plot_electricity_use(elec_use, request)
+                zip_file.writestr('plot1.html', html_buffer.read())
+            zip_buffer.seek(0)
+
+            return StreamingResponse(
+                zip_buffer, 
+                media_type='application/zip', 
+                headers={"Content-Disposition": "attachment; filename=plots.zip"}
+                )
+            
+        except Exception as e:
+            print(f"Error getting electricity use: {e}")
+            raise HTTPException(status_code=500, detail=f"Error getting electricity use: {str(e)}")
 
 
 if __name__ == "__main__":
