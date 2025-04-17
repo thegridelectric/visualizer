@@ -2624,7 +2624,8 @@ class VisualizerApi():
             records = db.execute(query).all()
             
             if not records:
-                raise HTTPException(status_code=404, detail="No electricity data found for the selected houses")
+                return {"success": False}
+                # raise HTTPException(status_code=404, detail="No electricity data found for the selected houses")
             
             # Group the data by timestamp and sum the kwh values
             timestamps = []
