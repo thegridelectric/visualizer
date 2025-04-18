@@ -207,6 +207,7 @@ class VisualizerApi():
         )
         self.app.post("/login", response_model=Token)(self.login)
         self.app.post("/logout")(self.logout)
+        self.app.get("/google-maps-api-key")(self.get_google_maps_api_key)
         self.app.get("/me", response_model=User)(self.read_users_me)
         self.app.get("/homes", response_model=list[House])(self.get_homes)
         self.app.post("/electricity-use")(self.get_electricity_use)
@@ -2497,6 +2498,9 @@ class VisualizerApi():
 
     async def read_users_me(self, current_user = Depends(get_current_user)):
         return current_user
+
+    async def get_google_maps_api_key(self, current_user = Depends(get_current_user)):
+        return {"api_key": settings.google_maps_api_key.get_secret_value()}
 
     async def get_homes(self, current_user = Depends(get_current_user), db: Session = Depends(get_db)):
         print(f"Fetching homes for user: {current_user.username}")
