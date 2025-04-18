@@ -159,7 +159,7 @@ class House(BaseModel):
     hardware_layout: Optional[str] = None
     unique_id: int
     g_node_alias: Optional[str] = None
-    status: Optional[str] = None
+    status: Optional[dict] = None
 
     class Config:
         from_attributes = True
