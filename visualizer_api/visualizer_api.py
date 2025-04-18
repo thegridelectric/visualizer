@@ -22,7 +22,8 @@ from fastapi.responses import StreamingResponse
 from fastapi.responses import FileResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy import asc, or_, and_, desc
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine, MetaData, Table, select, Column, String, JSON, Integer
+from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy import create_engine, MetaData, Table
 from sqlalchemy.future import select
@@ -56,6 +57,18 @@ gbo_pwd_context = CryptContext(
 )
 gbo_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 Session = sessionmaker(bind=engine_gbo)
+
+Base = declarative_base()
+
+class HouseSql(Base):
+    __tablename__ = 'homes'
+    short_alias = Column(String, nullable=False)
+    address = Column(JSON, nullable=False)
+    owner_contact = Column(JSON, nullable=False)
+    hardware_layout = Column(JSON, nullable=True)
+    unique_id = Column(Integer, primary_key=True)
+    g_node_alias = Column(String, nullable=False)
+    status = Column(JSON, nullable=False)
 
 def verify_password(plain_password, hashed_password):
     return gbo_pwd_context.verify(plain_password, hashed_password)
@@ -173,6 +186,10 @@ class HourlyElectricity(BaseModel):
     class Config:
         from_attributes = True
 
+class AlertReactionRequest(BaseModel):
+    house_alias: str
+    new_status: str
+
 
 class VisualizerApi():
     def __init__(self):
@@ -212,6 +229,7 @@ class VisualizerApi():
         self.app.get("/homes", response_model=list[House])(self.get_homes)
         self.app.post("/electricity-use")(self.get_electricity_use)
         self.app.post("/electricity-use-csv")(self.get_electricity_use_csv)
+        self.app.post("/alert-reaction")(self.receive_alert_reaction)
         self.app.post("/plots")(self.get_plots)
         self.app.post("/csv")(self.get_csv)
         self.app.post("/messages")(self.get_messages)
@@ -2501,6 +2519,37 @@ class VisualizerApi():
 
     async def get_google_maps_api_key(self, current_user = Depends(get_current_user)):
         return {"api_key": settings.google_maps_api_key.get_secret_value()}
+
+    async def receive_alert_reaction(self, alert_reaction: AlertReactionRequest, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+
+        print(f"Received alert reaction: {alert_reaction}")
+        
+        if alert_reaction.new_status == 'ok':
+            new_house_data = {
+                "status": {'status': 'ok'},
+            }
+        else:
+            return
+        
+        try:
+            # Find the house by short_alias
+            house = db.query(HouseSql).filter(HouseSql.short_alias == alert_reaction.house_alias).first()
+            
+            if not house:
+                print(f"House '{alert_reaction.house_alias}' not found.")
+                return False
+            
+            # Update the house with new data
+            for key, value in new_house_data.items():
+                if hasattr(house, key):
+                    setattr(house, key, value)
+            
+            # Commit the changes
+            db.commit()
+            print(f"House '{alert_reaction.house_alias}' updated successfully")
+            
+        except Exception as e:
+            print(f"Error updating house: {e}")
 
     async def get_homes(self, current_user = Depends(get_current_user), db: Session = Depends(get_db)):
         print(f"Fetching homes for user: {current_user.username}")
