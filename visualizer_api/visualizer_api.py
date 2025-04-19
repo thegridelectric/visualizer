@@ -64,7 +64,8 @@ class HouseSql(Base):
     __tablename__ = 'homes'
     short_alias = Column(String, nullable=False)
     address = Column(JSON, nullable=False)
-    owner_contact = Column(JSON, nullable=False)
+    primary_contact = Column(JSON, nullable=False)
+    secondary_contact = Column(JSON, nullable=False)
     hardware_layout = Column(JSON, nullable=True)
     unique_id = Column(Integer, primary_key=True)
     g_node_alias = Column(String, nullable=False)
@@ -168,7 +169,8 @@ class User(BaseModel):
 class House(BaseModel):
     short_alias: Optional[str] = None
     address: Optional[dict] = None
-    owner_contact: Optional[dict] = None
+    primary_contact: Optional[dict] = None
+    secondary_contact: Optional[dict] = None
     hardware_layout: Optional[str] = None
     unique_id: int
     g_node_alias: Optional[str] = None
