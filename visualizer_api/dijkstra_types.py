@@ -7,6 +7,7 @@ class DParams():
     def __init__(self, flo_params: FloParamsHouse0) -> None:
         self.flo_params = flo_params
         self.start_time = flo_params.StartUnixS
+        self.timezone_str = flo_params.TimezoneStr
         self.horizon = flo_params.HorizonHours
         self.num_layers = flo_params.NumLayers
         self.storage_volume = flo_params.StorageVolumeGallons
