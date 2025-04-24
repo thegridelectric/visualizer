@@ -70,6 +70,8 @@ class HouseSql(Base):
     unique_id = Column(Integer, primary_key=True)
     g_node_alias = Column(String, nullable=False)
     status = Column(JSON, nullable=False)
+    scada_ip_address = Column(String, nullable=True)
+    scada_git_commit = Column(String, nullable=True)
 
 def verify_password(plain_password, hashed_password):
     return gbo_pwd_context.verify(plain_password, hashed_password)
@@ -175,6 +177,8 @@ class House(BaseModel):
     unique_id: int
     g_node_alias: Optional[str] = None
     status: Optional[dict] = None
+    scada_ip_address: str
+    scada_git_commit: str
 
     class Config:
         from_attributes = True
@@ -192,6 +196,8 @@ class AlertReactionRequest(BaseModel):
     house_alias: str
     new_status: str
 
+class ScadaUpdateRequest(BaseModel):
+    selected_short_aliases: List[str]
 
 class VisualizerApi():
     def __init__(self):
@@ -238,6 +244,7 @@ class VisualizerApi():
         self.app.post("/flo")(self.get_flo)
         self.app.post("/aggregate-plot")(self.get_aggregate_plot)
         self.app.post("/prices")(self.receive_prices)
+        self.app.post("/update-scada-code")(self.update_scada_code)
         uvicorn.run(self.app, host="0.0.0.0", port=8000)
 
     def to_datetime(self, time_ms):
@@ -2775,6 +2782,95 @@ class VisualizerApi():
         except Exception as e:
             print(f"Error getting electricity use CSV: {e}")
             return {"success": False, "message": "An error occurred while getting electricity use CSV", "reload": False}
+
+    async def update_scada_code(self, request: ScadaUpdateRequest, current_user = Depends(get_current_user), db: Session = Depends(get_db)):
+        print(f"Updating SCADA code for {request.selected_short_aliases}")
+
+        results = []
+        for house_alias in request.selected_short_aliases:
+            print(f"Updating SCADA code for {house_alias}...")
+            query = select(homes).where(homes.c.short_alias == house_alias)
+            result = db.execute(query).first()
+            if not result:
+                results.append({
+                    "house_alias": house_alias,
+                    "status": "error",
+                    "message": f"House with alias {house_alias} not found"
+                })
+                continue
+            
+            ssh_host = result.scada_ip_address
+            if not ssh_host:
+                results.append({
+                    "house_alias": house_alias,
+                    "status": "error",
+                    "message": "SSH host information not found for this house"
+                })
+                continue
+            
+            try:
+                ssh_command = f"ssh -o StrictHostKeyChecking=no -A pi@{ssh_host} 'cd ~/gridworks-scada && git pull && /home/pi/.local/bin/gwstop && /home/pi/.local/bin/gwstart'"
+                process = await asyncio.create_subprocess_shell(
+                    ssh_command,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                stdout, stderr = await process.communicate()
+                
+                if process.returncode != 0:
+                    print(f"Failed to update SCADA code: {stderr.decode()}")
+                    results.append({
+                        "house_alias": house_alias,
+                        "status": "error",
+                        "message": f"Failed to update SCADA code: {stderr.decode()}"
+                    })
+                    continue
+                
+                # Now, get the git commit hash
+                git_command = f"ssh -o StrictHostKeyChecking=no pi@{ssh_host} 'cd ~/gridworks-scada && git rev-parse HEAD && git log -1 --pretty=format:\"%h - %s (%cr)\"'"
+                git_process = await asyncio.create_subprocess_shell(
+                    git_command,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                git_stdout, git_stderr = await git_process.communicate()
+
+                if git_process.returncode != 0:
+                    print(f"Failed to get git commit hash: {git_stderr.decode()}")
+                    commit_info = "Failed to get commit information"
+                else:
+                    commit_info = git_stdout.decode().strip()
+                
+                # Update the database with the new commit hash
+                try:
+                    commit_hash = commit_info.split('\n')[0] if '\n' in commit_info else commit_info
+                    commit_hash = commit_hash[:7]
+                    print(f"Updating database with commit hash: {commit_hash}")
+                    update_query = homes.update().where(homes.c.short_alias == house_alias).values(scada_git_commit=commit_hash)
+                    db.execute(update_query)
+                    db.commit()
+                except Exception as db_error:
+                    print(f"Error updating database with commit hash: {db_error}")
+                
+                results.append({
+                    "house_alias": house_alias,
+                    "status": "success",
+                    "message": "SCADA code updated and restarted successfully",
+                    "output": stdout.decode(),
+                    "commit_info": commit_info
+                })
+                
+            except Exception as e:
+                results.append({
+                    "house_alias": house_alias,
+                    "status": "error",
+                    "message": f"Error updating SCADA code: {str(e)}"
+                })
+        
+        return {
+            "status": "completed",
+            "results": results
+        }
 
 
 if __name__ == "__main__":
