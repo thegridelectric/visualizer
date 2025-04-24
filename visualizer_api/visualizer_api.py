@@ -2819,6 +2819,15 @@ class VisualizerApi():
                 
                 if process.returncode != 0:
                     print(f"Failed to update SCADA code: {stderr.decode()}")
+                    # Update the database
+                    try:
+                        commit_hash = 'unknown'
+                        print(f"Updating database with commit hash: {commit_hash}")
+                        update_query = homes.update().where(homes.c.short_alias == house_alias).values(scada_git_commit=commit_hash)
+                        db.execute(update_query)
+                        db.commit()
+                    except Exception as db_error:
+                        print(f"Error updating database with commit hash: {db_error}")
                     results.append({
                         "house_alias": house_alias,
                         "status": "error",
