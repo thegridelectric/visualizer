@@ -2838,7 +2838,7 @@ class VisualizerApi():
                     continue
                 
                 # Now, get the git commit hash
-                git_command = f"ssh -o StrictHostKeyChecking=no pi@{ssh_host} 'cd ~/gridworks-scada && git rev-parse HEAD && git log -1 --pretty=format:\"%h - %s (%cr)\"'"
+                git_command = f"ssh -o StrictHostKeyChecking=no pi@{ssh_host} 'cd ~/gridworks-scada && git rev-parse HEAD && git rev-parse --abbrev-ref HEAD && git log -1 --pretty=format:\"%h - %s (%cr)\"'"
                 git_process = await asyncio.create_subprocess_shell(
                     git_command,
                     stdout=asyncio.subprocess.PIPE,
@@ -2854,10 +2854,12 @@ class VisualizerApi():
                 
                 # Update the database with the new commit hash
                 try:
-                    commit_hash = commit_info.split('\n')[0] if '\n' in commit_info else commit_info
-                    commit_hash = commit_hash[:7]
-                    print(f"Updating database with commit hash: {commit_hash}")
-                    update_query = homes.update().where(homes.c.short_alias == house_alias).values(scada_git_commit=commit_hash)
+                    commit_lines = commit_info.split('\n')
+                    commit_hash = commit_lines[0][:7] if commit_lines else "unknown"
+                    branch_name = commit_lines[1] if len(commit_lines) > 1 else "unknown"
+                    commit_hash_with_branch = f"{branch_name} / {commit_hash}"
+                    print(f"Updating database with commit hash: {commit_hash_with_branch}")
+                    update_query = homes.update().where(homes.c.short_alias == house_alias).values(scada_git_commit=commit_hash_with_branch)
                     db.execute(update_query)
                     db.commit()
                 except Exception as db_error:
