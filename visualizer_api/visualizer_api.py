@@ -1399,6 +1399,8 @@ class VisualizerApi():
                     ]
                 ww_times = self.data[request]['channels'][whitewire_ch]['times']
                 ww_values = self.data[request]['channels'][whitewire_ch]['values']
+                if 'state' not in self.data[request]['channels_by_zone'][zone]:
+                    continue  
                 # Plot heat calls as periods
                 last_was_1 = False
                 heatcall_period_start = None
