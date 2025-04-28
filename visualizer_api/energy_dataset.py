@@ -33,8 +33,10 @@ class EnergyDataset():
             'implied_heat_load': [],
             'start_storage': [],
             'end_storage': [],
+            'change_storage': [],
             'start_buffer': [],
-            'end_buffer': []
+            'end_buffer': [],
+            'change_buffer': []
         }
 
     def generate_dataset(self):
@@ -219,6 +221,8 @@ class EnergyDataset():
             end_storage_and_buffer = round(end_storage + end_buffer,2)
             change_in_storage_and_buffer = round(end_storage_and_buffer - start_storage_and_buffer,2)
             implied_heat_load = round(hp_heat_out - change_in_storage_and_buffer,2)
+            change_buffer = round(end_buffer - start_buffer, 2)
+            change_storage = round(end_storage - start_storage, 2)
             row = [
                 hour_start, 
                 hp_elec_in, 
@@ -229,8 +233,10 @@ class EnergyDataset():
                 implied_heat_load,
                 start_storage,
                 end_storage,
+                change_storage,
                 start_buffer,
-                end_buffer
+                end_buffer,
+                change_buffer
                 ]
             formatted_data.loc[len(formatted_data)] = row 
 
