@@ -214,7 +214,7 @@ class VisualizerApi():
             'HpOnStoreCharge', 'StratBoss', 'Initializing', 'Dormant'
             ]
         self.aa_states_order = self.ha_states_order.copy()
-        self.whitewire_threshold_watts = {'beech': 100, 'default': 20}
+        self.whitewire_threshold_watts = {'beech': 100, 'elm': 0.9, 'default': 20}
         self.zone_color = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']*3
         self.data = {}
         self.timestamp_min_max = {}
@@ -1538,9 +1538,7 @@ class VisualizerApi():
                     int(abs(x)>threshold) for x in self.data[request]['channels'][whitewire_ch]['values']
                     ]
                 ww_times = self.data[request]['channels'][whitewire_ch]['times']
-                ww_values = self.data[request]['channels'][whitewire_ch]['values']
-                if 'state' not in self.data[request]['channels_by_zone'][zone]:
-                    continue                
+                ww_values = self.data[request]['channels'][whitewire_ch]['values']            
                 # Plot heat calls as periods
                 last_was_1 = False
                 heatcall_period_start = None
@@ -1555,7 +1553,7 @@ class VisualizerApi():
                                     mode='lines',
                                     line=dict(color=zone_color, width=2),
                                     opacity=0.7,
-                                    name=self.data[request]['channels_by_zone'][zone]['state'].replace('-state',''),
+                                    name=self.data[request]['channels_by_zone'][zone]['whitewire'].replace('-whitewire',''),
                                     showlegend=False,
                                     hovertemplate="%{x|%H:%M:%S}<extra></extra>"
                                 )
@@ -1573,7 +1571,7 @@ class VisualizerApi():
                                     mode='lines',
                                     line=dict(color=zone_color, width=2),
                                     opacity=0.7,
-                                    name=self.data[request]['channels_by_zone'][zone]['state'].replace('-state',''),
+                                    name=self.data[request]['channels_by_zone'][zone]['whitewire'].replace('-whitewire',''),
                                     showlegend=False,
                                     hovertemplate="%{x|%H:%M:%S}<extra></extra>"
                                 )
@@ -1590,7 +1588,7 @@ class VisualizerApi():
                                     line=dict(color=zone_color, width=0),
                                     fillcolor=zone_color,
                                     opacity=0.2,
-                                    name=self.data[request]['channels_by_zone'][zone]['state'].replace('-state', ''),
+                                    name=self.data[request]['channels_by_zone'][zone]['whitewire'].replace('-whitewire', ''),
                                 )
                                 heatcall_period_start = None
                         last_was_1 = True
@@ -1602,7 +1600,7 @@ class VisualizerApi():
                         y=[None],
                         mode='lines',
                         line=dict(color=zone_color, width=2),
-                        name=self.data[request]['channels_by_zone'][zone]['state'].replace('-state','')
+                        name=self.data[request]['channels_by_zone'][zone]['whitewire'].replace('-whitewire','')
                     )
                 )
 
