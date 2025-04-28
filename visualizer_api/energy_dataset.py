@@ -25,12 +25,16 @@ class EnergyDataset():
         self.timezone_str = timezone
         self.data_format = {
             'hour_start': [],
-            'hp_heat_out': [],
             'hp_elec_in': [],
-            'cop': [],
-            'buffer_heat_out': [],
-            'storage_heat_out': [],
-            'house_heat_in': [],
+            'hp_heat_out': [],
+            'start_storage_and_buffer': [],
+            'end_storage_and_buffer': [],
+            'change_in_storage_and_buffer': [],
+            'implied_heat_load': [],
+            'start_storage': [],
+            'end_storage': [],
+            'start_buffer': [],
+            'end_buffer': []
         }
 
     def generate_dataset(self):
@@ -102,7 +106,7 @@ class EnergyDataset():
             hp_channels = ['hp-idu-pwr', 'hp-odu-pwr', 'primary-flow', 'hp-lwt', 'hp-ewt']
             missing_channels = [c for c in hp_channels if c not in channels]
             if missing_channels: 
-                print(missing_channels)
+                print(f"Missing channels {missing_channels}")
                 continue
 
             timestep_seconds = 1
@@ -156,18 +160,23 @@ class EnergyDataset():
                 times_from_start = [abs(time-hour_start_ms) for time in channels[channel]['times']]
                 closest_index = times_from_start.index(min(times_from_start))
                 hour_start_times.append(channels[channel]['times'][closest_index])
-                hour_start_values.append(self.to_fahrenheit(channels[channel]['values'][closest_index]/1000))
+                hour_start_values.append(channels[channel]['values'][closest_index]/1000)
 
                 times_from_end = [abs(time-hour_end_ms) for time in channels[channel]['times']]
                 closest_index = times_from_end.index(min(times_from_end))
                 hour_end_times.append(channels[channel]['times'][closest_index])
-                hour_end_values.append(self.to_fahrenheit(channels[channel]['values'][closest_index]/1000))
+                hour_end_values.append(channels[channel]['values'][closest_index]/1000)
 
             if hour_end_times[-1] - hour_start_times[-1] < 45*60*1000:
+                print("Missing data!")
                 continue
-
-            average_temp_start = sum(hour_start_values)/len(hour_start_values)
-            average_temp_end = sum(hour_end_values)/len(hour_end_values)
+            
+            BASELINE_TEMP = 30
+            average_temp_start = sum(hour_start_values)/4
+            average_temp_end = sum(hour_end_values)/4
+            print(f"Average temperature start: {round(average_temp_start,1)}")
+            start_buffer = round(1*120*3.785*4.187/3600*(average_temp_start-BASELINE_TEMP),2)
+            end_buffer = round(1*120*3.785*4.187/3600*(average_temp_end-BASELINE_TEMP),2)
             buffer_heat_out = round(1*120*3.785*4.187/3600*(average_temp_start-average_temp_end),2)
 
             # Storage heat out
@@ -185,27 +194,44 @@ class EnergyDataset():
                 times_from_start = [abs(time-hour_start_ms) for time in channels[channel]['times']]
                 closest_index = times_from_start.index(min(times_from_start))
                 hour_start_times.append(channels[channel]['times'][closest_index])
-                hour_start_values.append(self.to_fahrenheit(channels[channel]['values'][closest_index]/1000))
+                hour_start_values.append(channels[channel]['values'][closest_index]/1000)
 
                 times_from_end = [abs(time-hour_end_ms) for time in channels[channel]['times']]
                 closest_index = times_from_end.index(min(times_from_end))
                 hour_end_times.append(channels[channel]['times'][closest_index])
-                hour_end_values.append(self.to_fahrenheit(channels[channel]['values'][closest_index]/1000))
+                hour_end_values.append(channels[channel]['values'][closest_index]/1000)
 
             if hour_end_times[-1] - hour_start_times[-1] < 45*60*1000:
                 continue
 
-            average_temp_start = sum(hour_start_values)/len(hour_start_values)
-            average_temp_end = sum(hour_end_values)/len(hour_end_values)
+            average_temp_start = sum(hour_start_values)/12
+            average_temp_end = sum(hour_end_values)/12
+            start_storage = round(3*120*3.785*4.187/3600*(average_temp_start-BASELINE_TEMP),2)
+            end_storage = round(3*120*3.785*4.187/3600*(average_temp_end-BASELINE_TEMP),2)
             store_heat_out = round(3*120*3.785*4.187/3600*(average_temp_start-average_temp_end),2)
 
             # House heat in
             house_heat_in = round(hp_heat_out + store_heat_out + buffer_heat_out,2)
-            hour = str(len(formatted_data)) if len(formatted_data)>9 else '0'+str(len(formatted_data))
-            print(f"{hour}:00 - HP: {hp_heat_out}, Store: {store_heat_out}, Buffer: {buffer_heat_out} => House {house_heat_in}")
+            print(f"HP: {hp_heat_out}, Store: {store_heat_out}, Buffer: {buffer_heat_out} => House {house_heat_in}")
 
             hour_start = pendulum.from_timestamp(int(hour_start_ms)/1000, tz="America/New_York").format('YYYY-MM-DD-HH:00')
-            row = [hour_start, hp_heat_out, hp_elec_in, cop, buffer_heat_out, store_heat_out, house_heat_in]
+            start_storage_and_buffer = round(start_storage + start_buffer,2)
+            end_storage_and_buffer = round(end_storage + end_buffer,2)
+            change_in_storage_and_buffer = round(end_storage_and_buffer - start_storage_and_buffer,2)
+            implied_heat_load = round(hp_heat_out - change_in_storage_and_buffer,2)
+            row = [
+                hour_start, 
+                hp_elec_in, 
+                hp_heat_out, 
+                start_storage_and_buffer,
+                end_storage_and_buffer,
+                change_in_storage_and_buffer,
+                implied_heat_load,
+                start_storage,
+                end_storage,
+                start_buffer,
+                end_buffer
+                ]
             formatted_data.loc[len(formatted_data)] = row 
 
         formatted_data.to_csv(
