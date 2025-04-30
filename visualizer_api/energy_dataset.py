@@ -27,16 +27,12 @@ class EnergyDataset():
             'hour_start': [],
             'hp_elec_in': [],
             'hp_heat_out': [],
-            'start_storage_and_buffer': [],
-            'end_storage_and_buffer': [],
             'change_in_storage_and_buffer': [],
             'implied_heat_load': [],
-            'start_storage': [],
-            'end_storage': [],
-            'change_storage': [],
-            'start_buffer': [],
-            'end_buffer': [],
-            'change_buffer': []
+            'average_store_temp_start': [],
+            'average_store_temp_end': [],
+            'average_buffer_temp_start': [],
+            'average_buffer_temp_end': [],
         }
 
     def generate_dataset(self):
@@ -174,12 +170,12 @@ class EnergyDataset():
                 continue
             
             BASELINE_TEMP = 30
-            average_temp_start = sum(hour_start_values)/4
-            average_temp_end = sum(hour_end_values)/4
-            print(f"Average temperature start: {round(average_temp_start,1)}")
-            start_buffer = round(1*120*3.785*4.187/3600*(average_temp_start-BASELINE_TEMP),2)
-            end_buffer = round(1*120*3.785*4.187/3600*(average_temp_end-BASELINE_TEMP),2)
-            buffer_heat_out = round(1*120*3.785*4.187/3600*(average_temp_start-average_temp_end),2)
+            average_buffer_temp_start = round(sum(hour_start_values)/4,2)
+            average_buffer_temp_end = round(sum(hour_end_values)/4,2)
+            print(f"Average temperature start: {round(average_buffer_temp_start,1)}")
+            start_buffer = round(1*120*3.785*4.187/3600*(average_buffer_temp_start-BASELINE_TEMP),2)
+            end_buffer = round(1*120*3.785*4.187/3600*(average_buffer_temp_end-BASELINE_TEMP),2)
+            buffer_heat_out = round(1*120*3.785*4.187/3600*(average_buffer_temp_start-average_buffer_temp_end),2)
 
             # Storage heat out
             storage_channels = [x for x in channels if 'tank' in x and 'depth' in x and 'micro' not in x]
@@ -206,11 +202,11 @@ class EnergyDataset():
             if hour_end_times[-1] - hour_start_times[-1] < 45*60*1000:
                 continue
 
-            average_temp_start = sum(hour_start_values)/12
-            average_temp_end = sum(hour_end_values)/12
-            start_storage = round(3*120*3.785*4.187/3600*(average_temp_start-BASELINE_TEMP),2)
-            end_storage = round(3*120*3.785*4.187/3600*(average_temp_end-BASELINE_TEMP),2)
-            store_heat_out = round(3*120*3.785*4.187/3600*(average_temp_start-average_temp_end),2)
+            average_store_temp_start = round(sum(hour_start_values)/12,2)
+            average_store_temp_end = round(sum(hour_end_values)/12,2)
+            start_storage = round(3*120*3.785*4.187/3600*(average_store_temp_start-BASELINE_TEMP),2)
+            end_storage = round(3*120*3.785*4.187/3600*(average_store_temp_end-BASELINE_TEMP),2)
+            store_heat_out = round(3*120*3.785*4.187/3600*(average_store_temp_start-average_store_temp_end),2)
 
             # House heat in
             house_heat_in = round(hp_heat_out + store_heat_out + buffer_heat_out,2)
@@ -227,16 +223,12 @@ class EnergyDataset():
                 hour_start, 
                 hp_elec_in, 
                 hp_heat_out, 
-                start_storage_and_buffer,
-                end_storage_and_buffer,
                 change_in_storage_and_buffer,
                 implied_heat_load,
-                start_storage,
-                end_storage,
-                change_storage,
-                start_buffer,
-                end_buffer,
-                change_buffer
+                self.to_fahrenheit(average_store_temp_start),
+                self.to_fahrenheit(average_store_temp_end),
+                self.to_fahrenheit(average_buffer_temp_start),
+                self.to_fahrenheit(average_buffer_temp_end),
                 ]
             formatted_data.loc[len(formatted_data)] = row 
 
@@ -270,5 +262,5 @@ if __name__ == '__main__':
         start_day=21,
         end_year=2025,
         end_month=1,
-        end_day=21
+        end_day=24
     )
