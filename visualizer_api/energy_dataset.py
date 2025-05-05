@@ -19,22 +19,24 @@ class EnergyDataset():
         Session = sessionmaker(bind=engine)
         self.session = Session()
         self.house_alias = house_alias
-        self.dataset_file = f"energy_data_{self.house_alias}.csv"
         self.start_ms = start_ms
         self.end_ms = end_ms
+        start_date = pendulum.from_timestamp(self.start_ms/1000, tz=timezone)
+        end_date = pendulum.from_timestamp(self.end_ms/1000, tz=timezone)
+        start_date_str = f"{start_date.year}-{start_date.month}-{start_date.day}"
+        end_date_str = f"{end_date.year}-{end_date.month}-{end_date.day}"
+        self.dataset_file = f"energy_data_{self.house_alias}_{start_date_str}_{end_date_str}.csv"
         self.timezone_str = timezone
         self.data_format = {
             'hour_start': [],
             'hp_elec_in': [],
             'hp_heat_out': [],
-            'start_storage_and_buffer': [],
-            'end_storage_and_buffer': [],
             'change_in_storage_and_buffer': [],
             'implied_heat_load': [],
-            'start_storage': [],
-            'end_storage': [],
-            'start_buffer': [],
-            'end_buffer': []
+            'average_store_temp_start': [],
+            'average_store_temp_end': [],
+            'average_buffer_temp_start': [],
+            'average_buffer_temp_end': [],
         }
 
     def generate_dataset(self):
@@ -172,12 +174,12 @@ class EnergyDataset():
                 continue
             
             BASELINE_TEMP = 30
-            average_temp_start = sum(hour_start_values)/4
-            average_temp_end = sum(hour_end_values)/4
-            print(f"Average temperature start: {round(average_temp_start,1)}")
-            start_buffer = round(1*120*3.785*4.187/3600*(average_temp_start-BASELINE_TEMP),2)
-            end_buffer = round(1*120*3.785*4.187/3600*(average_temp_end-BASELINE_TEMP),2)
-            buffer_heat_out = round(1*120*3.785*4.187/3600*(average_temp_start-average_temp_end),2)
+            average_buffer_temp_start = round(sum(hour_start_values)/4,2)
+            average_buffer_temp_end = round(sum(hour_end_values)/4,2)
+            print(f"Average temperature start: {round(average_buffer_temp_start,1)}")
+            start_buffer = round(1*120*3.785*4.187/3600*(average_buffer_temp_start-BASELINE_TEMP),2)
+            end_buffer = round(1*120*3.785*4.187/3600*(average_buffer_temp_end-BASELINE_TEMP),2)
+            buffer_heat_out = round(1*120*3.785*4.187/3600*(average_buffer_temp_start-average_buffer_temp_end),2)
 
             # Storage heat out
             storage_channels = [x for x in channels if 'tank' in x and 'depth' in x and 'micro' not in x]
@@ -204,49 +206,33 @@ class EnergyDataset():
             if hour_end_times[-1] - hour_start_times[-1] < 45*60*1000:
                 continue
 
-            average_temp_start = sum(hour_start_values)/12
-            average_temp_end = sum(hour_end_values)/12
-            start_storage = round(3*120*3.785*4.187/3600*(average_temp_start-BASELINE_TEMP),2)
-            end_storage = round(3*120*3.785*4.187/3600*(average_temp_end-BASELINE_TEMP),2)
-            store_heat_out = round(3*120*3.785*4.187/3600*(average_temp_start-average_temp_end),2)
+            average_store_temp_start = round(sum(hour_start_values)/12,2)
+            average_store_temp_end = round(sum(hour_end_values)/12,2)
+            start_storage = round(3*120*3.785*4.187/3600*(average_store_temp_start-BASELINE_TEMP),2)
+            end_storage = round(3*120*3.785*4.187/3600*(average_store_temp_end-BASELINE_TEMP),2)
+            store_heat_out = round(3*120*3.785*4.187/3600*(average_store_temp_start-average_store_temp_end),2)
 
             # House heat in
             house_heat_in = round(hp_heat_out + store_heat_out + buffer_heat_out,2)
             print(f"HP: {hp_heat_out}, Store: {store_heat_out}, Buffer: {buffer_heat_out} => House {house_heat_in}")
 
             hour_start = pendulum.from_timestamp(int(hour_start_ms)/1000, tz="America/New_York").format('YYYY-MM-DD-HH:00')
-
-            self.data_format = {
-                'hour_start': [],
-                'hp_elec_in': [],
-                'hp_heat_out': [],
-                'start_storage_and_buffer': [],
-                'end_storage_and_buffer': [],
-                'change_in_storage_and_buffer': [],
-                'implied_heat_load': [],
-                'start_storage': [],
-                'end_storage': [],
-                'start_buffer': [],
-                'end_buffer': []
-            }
-
             start_storage_and_buffer = round(start_storage + start_buffer,2)
             end_storage_and_buffer = round(end_storage + end_buffer,2)
             change_in_storage_and_buffer = round(end_storage_and_buffer - start_storage_and_buffer,2)
             implied_heat_load = round(hp_heat_out - change_in_storage_and_buffer,2)
-
+            change_buffer = round(end_buffer - start_buffer, 2)
+            change_storage = round(end_storage - start_storage, 2)
             row = [
                 hour_start, 
                 hp_elec_in, 
                 hp_heat_out, 
-                start_storage_and_buffer,
-                end_storage_and_buffer,
                 change_in_storage_and_buffer,
                 implied_heat_load,
-                start_storage,
-                end_storage,
-                start_buffer,
-                end_buffer
+                self.to_fahrenheit(average_store_temp_start),
+                self.to_fahrenheit(average_store_temp_end),
+                self.to_fahrenheit(average_buffer_temp_start),
+                self.to_fahrenheit(average_buffer_temp_end),
                 ]
             formatted_data.loc[len(formatted_data)] = row 
 
@@ -272,13 +258,17 @@ def generate(house_alias, start_year, start_month, start_day, end_year, end_mont
     s.generate_dataset()
 
 if __name__ == '__main__':
-    # THE ONLY PART YOU SHOULD EDIT:
+    start_date = input("\nHi George\nEnter start date YYYY/MM/DD: ")
+    end_date = input("Enter end date YYYY/MM/DD: ")
+    START_YEAR, START_MONTH, START_DAY = [int(x) for x in start_date.split('/')]
+    END_YEAR, END_MONTH, END_DAY = [int(x) for x in end_date.split('/')]
+
     generate(
         house_alias='beech', 
-        start_year=2025, 
-        start_month=1, 
-        start_day=21,
-        end_year=2025,
-        end_month=1,
-        end_day=21
+        start_year=START_YEAR, 
+        start_month=START_MONTH, 
+        start_day=START_DAY,
+        end_year=END_YEAR,
+        end_month=END_MONTH,
+        end_day=END_DAY
     )
