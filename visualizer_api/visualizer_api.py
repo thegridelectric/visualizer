@@ -211,7 +211,7 @@ class VisualizerApi():
         self.top_states_order = ['HomeAlone', 'Atn', 'Dormant']
         self.ha_states_order = [
             'HpOffStoreDischarge', 'HpOffStoreOff', 'HpOnStoreOff', 
-            'HpOnStoreCharge', 'StratBoss', 'Initializing', 'Dormant'
+            'HpOnStoreCharge', 'HpOff', "HpOn", 'StratBoss', 'Initializing', 'Dormant'
             ]
         self.aa_states_order = self.ha_states_order.copy()
         self.whitewire_threshold_watts = {'beech': 100, 'elm': 0.9, 'default': 20}
@@ -2147,6 +2147,8 @@ class VisualizerApi():
             'HpOffStoreOff': '#00CC96',
             'HpOnStoreOff': '#636EFA',
             'HpOnStoreCharge': '#feca52',
+            'HpOn': '#636EFA',
+            'HpOff': '#00CC96',
             'Initializing': '#a3a3a3',
             'StratBoss': '#ee93fa',
             'Dormant': '#4f4f4f'
