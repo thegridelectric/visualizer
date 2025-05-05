@@ -256,17 +256,21 @@ def generate(house_alias, start_year, start_month, start_day, end_year, end_mont
     s.generate_dataset()
 
 if __name__ == '__main__':
-    start_date = input("\nHi George\nEnter start date YYYY/MM/DD: ")
-    end_date = input("Enter end date YYYY/MM/DD: ")
-    START_YEAR, START_MONTH, START_DAY = [int(x) for x in start_date.split('/')]
-    END_YEAR, END_MONTH, END_DAY = [int(x) for x in end_date.split('/')]
+    HOUSE = input("\nHi George\nEnter house alias: ")
+    if HOUSE not in ['beech', 'oak', 'fir', 'maple', 'elm']:
+        print("Incorrect house alias.")
+    else:
+        start_date = input("Enter start date YYYY/MM/DD: ")
+        end_date = input("Enter end date YYYY/MM/DD: ")
+        START_YEAR, START_MONTH, START_DAY = [int(x) for x in start_date.split('/')]
+        END_YEAR, END_MONTH, END_DAY = [int(x) for x in end_date.split('/')]
 
-    generate(
-        house_alias='beech', 
-        start_year=START_YEAR, 
-        start_month=START_MONTH, 
-        start_day=START_DAY,
-        end_year=END_YEAR,
-        end_month=END_MONTH,
-        end_day=END_DAY
-    )
+        generate(
+            house_alias=HOUSE, 
+            start_year=START_YEAR, 
+            start_month=START_MONTH, 
+            start_day=START_DAY,
+            end_year=END_YEAR,
+            end_month=END_MONTH,
+            end_day=END_DAY
+        )
