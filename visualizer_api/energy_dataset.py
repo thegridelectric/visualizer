@@ -254,13 +254,17 @@ def generate(house_alias, start_year, start_month, start_day, end_year, end_mont
     s.generate_dataset()
 
 if __name__ == '__main__':
-    # THE ONLY PART YOU SHOULD EDIT:
+    start_date = input("\nHi George\nEnter start date YYYY/MM/DD: ")
+    end_date = input("Enter end date YYYY/MM/DD: ")
+    START_YEAR, START_MONTH, START_DAY = [int(x) for x in start_date.split('/')]
+    END_YEAR, END_MONTH, END_DAY = [int(x) for x in end_date.split('/')]
+
     generate(
         house_alias='beech', 
-        start_year=2025, 
-        start_month=1, 
-        start_day=21,
-        end_year=2025,
-        end_month=1,
-        end_day=24
+        start_year=START_YEAR, 
+        start_month=START_MONTH, 
+        start_day=START_DAY,
+        end_year=END_YEAR,
+        end_month=END_MONTH,
+        end_day=END_DAY
     )
