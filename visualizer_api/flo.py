@@ -140,7 +140,10 @@ class DGraph():
                     hp_heat_out_levels += [load+losses]
                 
                 for hp_heat_out in hp_heat_out_levels:
-                    store_heat_in = hp_heat_out - load - losses
+                    if 'Shoulder' not in self.params.flo_params.FloAlias:
+                        store_heat_in = hp_heat_out - load - losses
+                    else:
+                        store_heat_in = hp_heat_out - losses
                     closest_store_heat_in = self.discretized_store_heat_in[abs(self.discretized_store_heat_in_array-store_heat_in).argmin()]
                     
                     node_next_str: str = self.super_graph[str(closest_store_heat_in)][node_now.to_string()]
@@ -172,7 +175,7 @@ class DGraph():
                     node.next_node = best_edge.head
             print(f"Solved Dijkstra in {round(time.time()-start_time, 1)} seconds")
         except Exception as e:
-            self.logger.error(f"Error solving Dijkstra algorithm: {e}")
+            print(f"Error solving Dijkstra algorithm: {e}")
             raise
 
     def read_node_str(self, node_str: str):
