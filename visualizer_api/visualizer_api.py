@@ -211,7 +211,7 @@ class VisualizerApi():
         self.top_states_order = ['HomeAlone', 'Atn', 'Dormant']
         self.ha_states_order = [
             'HpOffStoreDischarge', 'HpOffStoreOff', 'HpOnStoreOff', 
-            'HpOnStoreCharge', 'HpOff', "HpOn", 'StratBoss', 'Initializing', 'Dormant'
+            'HpOnStoreCharge', 'StratBoss', 'Initializing', 'Dormant'
             ]
         self.aa_states_order = self.ha_states_order.copy()
         self.whitewire_threshold_watts = {'beech': 100, 'elm': 0.9, 'default': 20}
@@ -467,6 +467,10 @@ class VisualizerApi():
             if 'auto.h.n' in relays or 'auto.h' in relays:
                 ha_handle = 'auto.h.n' if 'auto.h.n' in relays else 'auto.h'
                 for time, state in zip(relays[ha_handle]['times'], relays[ha_handle]['values']):
+                    if state == 'HpOn':
+                        state = 'HpOnStoreOff'
+                    if state == 'HpOff':
+                        state = 'HpOffStoreOff'
                     if state not in self.ha_states_order:
                         print(f"Warning: {state} is not a known HA state")
                         continue
@@ -2147,8 +2151,6 @@ class VisualizerApi():
             'HpOffStoreOff': '#00CC96',
             'HpOnStoreOff': '#636EFA',
             'HpOnStoreCharge': '#feca52',
-            'HpOn': '#636EFA',
-            'HpOff': '#00CC96',
             'Initializing': '#a3a3a3',
             'StratBoss': '#ee93fa',
             'Dormant': '#4f4f4f'
