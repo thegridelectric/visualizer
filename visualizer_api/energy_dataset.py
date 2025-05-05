@@ -108,7 +108,7 @@ class EnergyDataset():
             hp_channels = ['hp-idu-pwr', 'hp-odu-pwr', 'primary-flow', 'hp-lwt', 'hp-ewt']
             missing_channels = [c for c in hp_channels if c not in channels]
             if missing_channels: 
-                print(f"Missing channels {missing_channels}")
+                # print(f"Missing channels {missing_channels}")
                 continue
 
             timestep_seconds = 1
