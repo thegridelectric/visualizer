@@ -2613,19 +2613,20 @@ class VisualizerApi():
             )
         )
         
-        fig.add_trace(
-            go.Scatter(
-                x=price_times,
-                y=total_price_values,
-                mode='lines',
-                opacity=0.8,
-                showlegend=True,
-                line_shape='hv',
-                name='Electricity price',
-                yaxis='y2',
-                hovertemplate="%{x|%H:%M} | %{y:.2f} cts/kWh<extra></extra>"
+        if price_times:
+            fig.add_trace(
+                go.Scatter(
+                    x=price_times,
+                    y=total_price_values,
+                    mode='lines',
+                    opacity=0.8,
+                    showlegend=True,
+                    line_shape='hv',
+                    name='Electricity price',
+                    yaxis='y2',
+                    hovertemplate="%{x|%H:%M} | %{y:.2f} cts/kWh<extra></extra>"
+                )
             )
-        )
 
         fig.update_layout(
             yaxis=dict(title='Quantity [kWh]'),
