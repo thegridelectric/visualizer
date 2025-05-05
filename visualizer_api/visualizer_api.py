@@ -2628,10 +2628,16 @@ class VisualizerApi():
                 )
             )
 
-        fig.update_layout(
-            yaxis=dict(title='Quantity [kWh]'),
-            yaxis2=dict(title='Price [cts/kWh]')
-        )
+        if max(elec_use['total_kwh']) < 10:
+            fig.update_layout(
+                yaxis=dict(title='Quantity [kWh]', range=[0,10]),
+                yaxis2=dict(title='Price [cts/kWh]')
+            )
+        else:
+            fig.update_layout(
+                yaxis=dict(title='Quantity [kWh]'),
+                yaxis2=dict(title='Price [cts/kWh]')
+            )
         fig.update_layout(
             title=dict(text='', x=0.5, xanchor='center'),
             plot_bgcolor='#1b1b1c' if request.darkmode else 'white',
