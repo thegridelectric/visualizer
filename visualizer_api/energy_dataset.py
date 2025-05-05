@@ -19,9 +19,13 @@ class EnergyDataset():
         Session = sessionmaker(bind=engine)
         self.session = Session()
         self.house_alias = house_alias
-        self.dataset_file = f"energy_data_{self.house_alias}.csv"
         self.start_ms = start_ms
         self.end_ms = end_ms
+        start_date = pendulum.from_timestamp(self.start_ms/1000, tz=timezone)
+        end_date = pendulum.from_timestamp(self.end_ms/1000, tz=timezone)
+        start_date_str = f"{start_date.year}-{start_date.month}-{start_date.day}"
+        end_date_str = f"{end_date.year}-{end_date.month}-{end_date.day}"
+        self.dataset_file = f"energy_data_{self.house_alias}_{start_date_str}_{end_date_str}.csv"
         self.timezone_str = timezone
         self.data_format = {
             'hour_start': [],
@@ -104,7 +108,7 @@ class EnergyDataset():
             hp_channels = ['hp-idu-pwr', 'hp-odu-pwr', 'primary-flow', 'hp-lwt', 'hp-ewt']
             missing_channels = [c for c in hp_channels if c not in channels]
             if missing_channels: 
-                print(f"Missing channels {missing_channels}")
+                # print(f"Missing channels {missing_channels}")
                 continue
 
             timestep_seconds = 1
@@ -166,13 +170,11 @@ class EnergyDataset():
                 hour_end_values.append(channels[channel]['values'][closest_index]/1000)
 
             if hour_end_times[-1] - hour_start_times[-1] < 45*60*1000:
-                print("Missing data!")
                 continue
             
             BASELINE_TEMP = 30
             average_buffer_temp_start = round(sum(hour_start_values)/4,2)
             average_buffer_temp_end = round(sum(hour_end_values)/4,2)
-            print(f"Average temperature start: {round(average_buffer_temp_start,1)}")
             start_buffer = round(1*120*3.785*4.187/3600*(average_buffer_temp_start-BASELINE_TEMP),2)
             end_buffer = round(1*120*3.785*4.187/3600*(average_buffer_temp_end-BASELINE_TEMP),2)
             buffer_heat_out = round(1*120*3.785*4.187/3600*(average_buffer_temp_start-average_buffer_temp_end),2)
@@ -210,7 +212,7 @@ class EnergyDataset():
 
             # House heat in
             house_heat_in = round(hp_heat_out + store_heat_out + buffer_heat_out,2)
-            print(f"HP: {hp_heat_out}, Store: {store_heat_out}, Buffer: {buffer_heat_out} => House {house_heat_in}")
+            # print(f"HP: {hp_heat_out}, Store: {store_heat_out}, Buffer: {buffer_heat_out} => House {house_heat_in}")
 
             hour_start = pendulum.from_timestamp(int(hour_start_ms)/1000, tz="America/New_York").format('YYYY-MM-DD-HH:00')
             start_storage_and_buffer = round(start_storage + start_buffer,2)
@@ -254,17 +256,21 @@ def generate(house_alias, start_year, start_month, start_day, end_year, end_mont
     s.generate_dataset()
 
 if __name__ == '__main__':
-    start_date = input("\nHi George\nEnter start date YYYY/MM/DD: ")
-    end_date = input("Enter end date YYYY/MM/DD: ")
-    START_YEAR, START_MONTH, START_DAY = [int(x) for x in start_date.split('/')]
-    END_YEAR, END_MONTH, END_DAY = [int(x) for x in end_date.split('/')]
+    HOUSE = input("\nHi George\nEnter house alias: ")
+    if HOUSE not in ['beech', 'oak', 'fir', 'maple', 'elm']:
+        print("Incorrect house alias.")
+    else:
+        start_date = input("Enter start date YYYY/MM/DD: ")
+        end_date = input("Enter end date YYYY/MM/DD: ")
+        START_YEAR, START_MONTH, START_DAY = [int(x) for x in start_date.split('/')]
+        END_YEAR, END_MONTH, END_DAY = [int(x) for x in end_date.split('/')]
 
-    generate(
-        house_alias='beech', 
-        start_year=START_YEAR, 
-        start_month=START_MONTH, 
-        start_day=START_DAY,
-        end_year=END_YEAR,
-        end_month=END_MONTH,
-        end_day=END_DAY
-    )
+        generate(
+            house_alias=HOUSE, 
+            start_year=START_YEAR, 
+            start_month=START_MONTH, 
+            start_day=START_DAY,
+            end_year=END_YEAR,
+            end_month=END_MONTH,
+            end_day=END_DAY
+        )
