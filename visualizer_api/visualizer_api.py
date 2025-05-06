@@ -2604,7 +2604,7 @@ class VisualizerApi():
             )
         )
         
-        if price_times:
+        if price_times and total_price_values and len(price_times) == len(total_price_values):
             fig.add_trace(
                 go.Scatter(
                     x=price_times,
