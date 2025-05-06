@@ -2655,7 +2655,10 @@ class VisualizerApi():
                 gridcolor=white_color
             ),
             yaxis2=dict(
-                range = [0, 1.3*(10 if not total_price_values else max(total_price_values))],
+                range = [
+                    0 if not total_price_values else min(total_price_values)-5, 
+                    1.3*(10 if not total_price_values else max(total_price_values))
+                    ],
                 mirror=True,
                 ticks='outside',
                 zeroline=False,
