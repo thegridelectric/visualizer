@@ -183,15 +183,6 @@ class House(BaseModel):
     class Config:
         from_attributes = True
 
-class HourlyElectricity(BaseModel):
-    g_node_alias: str
-    short_alias: str
-    hour_start_s: int
-    kwh: float
-
-    class Config:
-        from_attributes = True
-
 class AlertReactionRequest(BaseModel):
     house_alias: str
     new_status: str
@@ -2763,15 +2754,26 @@ class VisualizerApi():
             # Convert timestamps to datetime objects in America/New_York timezone
             datetime_timestamps = []
             for ts in timestamps:
-                dt = pd.to_datetime(ts * 1000, unit='ms', utc=True)
-                dt = dt.tz_convert('America/New_York')
+                dt = pd.to_datetime(ts*1000, unit='ms', utc=True)
+                dt = dt.tz_convert('America/New_York').replace(tzinfo=None)
                 datetime_timestamps.append(dt)
 
             # Create DataFrame
-            df = pd.DataFrame({
-                'timestamp': datetime_timestamps,
-                'kwh': [round(x, 2) for x in total_kwh]
-            })
+            if len(request.selected_short_aliases) > 1:
+                df = pd.DataFrame({
+                    'timestamp': datetime_timestamps,
+                    'kwh': [round(x,2) for x in total_kwh]
+                })
+            else:
+                df = pd.DataFrame({
+                    'timestamp': datetime_timestamps,
+                    'hp_kwh_el': [x.kwh for x in records],
+                    'hp_kwh_th': [x.hp_kwh_th for x in records],
+                    'storage_avg_temp_start_f': [x.storage_avg_temp_start_f for x in records],
+                    'storage_avg_temp_end_f': [x.storage_avg_temp_end_f for x in records],
+                    'buffer_avg_temp_start_f': [x.buffer_avg_temp_start_f for x in records],
+                    'buffer_avg_temp_end_f': [x.buffer_avg_temp_end_f for x in records],
+                })
 
             # Build file name
             start_date = self.to_datetime(request.start_ms)
