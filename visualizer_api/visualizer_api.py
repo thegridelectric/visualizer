@@ -2772,10 +2772,13 @@ class VisualizerApi():
                     'timestamp': datetime_timestamps,
                     'hp_kwh_el': [x.kwh for x in records],
                     'hp_kwh_th': [x.hp_kwh_th for x in records],
-                    'storage_avg_temp_start_f': [x.storage_avg_temp_start_f for x in records],
-                    'storage_avg_temp_end_f': [x.storage_avg_temp_end_f for x in records],
                     'buffer_avg_temp_start_f': [x.buffer_avg_temp_start_f for x in records],
                     'buffer_avg_temp_end_f': [x.buffer_avg_temp_end_f for x in records],
+                    'storage_avg_temp_start_f': [x.storage_avg_temp_start_f for x in records],
+                    'storage_avg_temp_end_f': [x.storage_avg_temp_end_f for x in records],
+                    'relay_3_pulled_fraction': [x.relay_3_pulled_fraction for x in records],
+                    'store_change_kwh_flow': [x.store_energy_in_flow_kwh for x in records],
+                    'store_change_kwh_avg_temp': [x.store_energy_in_avg_temp_kwh for x in records],
                 })
 
             # Build file name
