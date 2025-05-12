@@ -20,7 +20,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.responses import FileResponse
-from sqlalchemy import asc, or_, and_, desc
+from sqlalchemy import asc, or_, and_, desc, cast, BigInteger
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.future import select
@@ -199,19 +199,22 @@ class VisualizerApi():
                 # Use select() instead of session.query()
                 stmt = select(MessageSql).filter(
                     MessageSql.from_alias.like(f'%.{request.house_alias}.%'),
-                    MessageSql.message_persisted_ms <= request.end_ms,
+                    MessageSql.message_persisted_ms <= cast(int(request.end_ms), BigInteger),
                     or_(
                         and_(
                             or_(
                                 MessageSql.message_type_name == "batched.readings",
                                 MessageSql.message_type_name == "report",
-                                MessageSql.message_type_name == "snapshot.spaceheat",
                             ),
-                            MessageSql.message_persisted_ms >= request.start_ms,
+                            MessageSql.message_persisted_ms >= cast(int(request.start_ms), BigInteger),
+                        ),
+                        and_(
+                            MessageSql.message_type_name == "snapshot.spaceheat",
+                            MessageSql.message_persisted_ms >= cast(int(request.end_ms - 10*60*1000), BigInteger),
                         ),
                         and_(
                             MessageSql.message_type_name == "weather.forecast",
-                            MessageSql.message_persisted_ms >= request.start_ms - 24 * 3600 * 1000,
+                            MessageSql.message_persisted_ms >= cast(int(request.start_ms - 24 * 3600 * 1000), BigInteger),
                         )
                     )
                 ).order_by(asc(MessageSql.message_persisted_ms))
