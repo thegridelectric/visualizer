@@ -22,7 +22,7 @@ filtered = df[
 print(filtered)
 
 # Take the dataframe between two of those rows
-df_same_start_and_end_state = df[:1852-1]
+df_same_start_and_end_state = df[0:2501-1]
 
 # Add weather data
 weather_and_prices_df = pd.read_csv('simulation_data.csv')
@@ -54,10 +54,11 @@ print(f"Beta: {SCADA_BETA} -> {round(SCADA_BETA/scaling_factor,2)}")
 print(f"Alpha: {SCADA_GAMMA} -> {round(SCADA_GAMMA/scaling_factor,5)}")
 
 final_df_cropped = final_df[:100000]
+final_df_cropped['hour_start'] = pd.to_datetime(final_df_cropped['hour_start'])
 plt.figure(figsize=(12,4))
-plt.step(range(len(final_df_cropped)), final_df_cropped['hp_heat_out'], label='HP heat output', alpha=0.4)
-plt.step(range(len(final_df_cropped)), final_df_cropped['implied_heat_load'], label='Load using tank energy changes')
-plt.step(range(len(final_df_cropped)), final_df_cropped['weather_load_scaled'], label='Load using weather and scaling')
+plt.step(final_df_cropped['hour_start'], final_df_cropped['hp_heat_out'], where='post', label='HP heat output', alpha=0.4)
+plt.step(final_df_cropped['hour_start'], final_df_cropped['implied_heat_load'], where='post', label='Load using tank energy changes')
+plt.step(final_df_cropped['hour_start'], final_df_cropped['weather_load_scaled'], where='post', label='Load using weather and scaling')
 plt.legend()
 plt.ylim([-1,30])
 plt.show()
