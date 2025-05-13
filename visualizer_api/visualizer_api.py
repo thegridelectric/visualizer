@@ -474,9 +474,7 @@ class VisualizerApi():
             sampling_times = [x.tz_convert(self.timezone_str).replace(tzinfo=None) for x in sampling_times]
 
             agg_data = {}
-            for house_alias in self.data[request]:
-                if 'maple' in house_alias:
-                    continue
+            for house_alias in [x for x in self.data[request] if 'maple' not in x]:
                 agg_data[house_alias] = {'timestamps': sampling_times}
                 for channel in self.data[request][house_alias]:
                     sampled = await asyncio.to_thread(
