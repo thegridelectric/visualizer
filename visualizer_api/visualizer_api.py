@@ -1309,6 +1309,20 @@ class VisualizerApi():
                     hovertemplate="%{x|%H:%M:%S} | %{y:.1f} GPM<extra></extra>"
                     )
                 )
+        if 'dist-flow' in request.selected_channels and 'dist-flow2' in self.data[request]['channels']:
+            plotting_power = True
+            fig.add_trace(
+                go.Scatter(
+                    x=self.data[request]['channels']['dist-flow2']['times'], 
+                    y=[x/100 for x in self.data[request]['channels']['dist-flow2']['values']], 
+                    mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
+                    opacity=0.4,
+                    line=dict(color='orange', dash='solid'),
+                    name='Distribution flow 2',
+                    yaxis = y_axis_power,
+                    hovertemplate="%{x|%H:%M:%S} | %{y:.1f} GPM<extra></extra>"
+                    )
+                )
         if 'dist-pump-pwr' in request.selected_channels and 'dist-pump-pwr' in self.data[request]['channels']:
             plotting_power = True
             fig.add_trace(
