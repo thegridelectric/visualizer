@@ -2772,7 +2772,7 @@ class VisualizerApi():
                 })
             else:
                 df = pd.DataFrame({
-                    'timestamp': datetime_timestamps,
+                    'hour_start': datetime_timestamps,
                     'hp_kwh_el': [x.hp_kwh_el for x in records],
                     'hp_kwh_th': [x.hp_kwh_th for x in records],
                     'dist_kwh': [x.dist_kwh for x in records],
