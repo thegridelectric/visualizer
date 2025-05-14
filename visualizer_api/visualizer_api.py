@@ -2706,10 +2706,10 @@ class VisualizerApi():
             for record in records:
                 if record.hour_start_s not in timestamps:
                     timestamps.append(record.hour_start_s)
-                    total_kwh.append(record.kwh)
+                    total_kwh.append(record.hp_kwh_el)
                 else:
                     idx = timestamps.index(record.hour_start_s)
-                    total_kwh[idx] += record.kwh
+                    total_kwh[idx] += record.hp_kwh_el
 
             elec_use = {
                 "timestamps": [self.to_datetime(x*1000) for x in timestamps],
@@ -2752,10 +2752,10 @@ class VisualizerApi():
             for record in records:
                 if record.hour_start_s not in timestamps:
                     timestamps.append(record.hour_start_s)
-                    total_kwh.append(record.kwh)
+                    total_kwh.append(record.hp_kwh_el)
                 else:
                     idx = timestamps.index(record.hour_start_s)
-                    total_kwh[idx] += record.kwh
+                    total_kwh[idx] += record.hp_kwh_el
 
             # Convert timestamps to datetime objects in America/New_York timezone
             datetime_timestamps = []
@@ -2773,15 +2773,38 @@ class VisualizerApi():
             else:
                 df = pd.DataFrame({
                     'timestamp': datetime_timestamps,
-                    'hp_kwh_el': [x.kwh for x in records],
+                    'hp_kwh_el': [x.hp_kwh_el for x in records],
                     'hp_kwh_th': [x.hp_kwh_th for x in records],
-                    'buffer_avg_temp_start_f': [x.buffer_avg_temp_start_f for x in records],
-                    'buffer_avg_temp_end_f': [x.buffer_avg_temp_end_f for x in records],
-                    'storage_avg_temp_start_f': [x.storage_avg_temp_start_f for x in records],
-                    'storage_avg_temp_end_f': [x.storage_avg_temp_end_f for x in records],
+                    'dist_kwh': [x.dist_kwh for x in records],
+                    'store_change_kwh': [x.store_change_kwh for x in records],
+                    'hp_avg_lwt': [x.hp_avg_lwt for x in records],
+                    'hp_avg_ewt': [x.hp_avg_ewt for x in records],
+                    'dist_avg_swt': [x.dist_avg_swt for x in records],
+                    'dist_avg_rwt': [x.dist_avg_rwt for x in records],
+                    'buffer_depth1_start': [x.buffer_depth1_start for x in records],
+                    'buffer_depth2_start': [x.buffer_depth2_start for x in records],
+                    'buffer_depth3_start': [x.buffer_depth3_start for x in records],
+                    'buffer_depth4_start': [x.buffer_depth4_start for x in records],
+                    'tank1_depth1_start': [x.tank1_depth1_start for x in records],
+                    'tank1_depth2_start': [x.tank1_depth2_start for x in records],
+                    'tank1_depth3_start': [x.tank1_depth3_start for x in records],
+                    'tank1_depth4_start': [x.tank1_depth4_start for x in records],
+                    'tank2_depth1_start': [x.tank2_depth1_start for x in records],
+                    'tank2_depth2_start': [x.tank2_depth2_start for x in records],
+                    'tank2_depth3_start': [x.tank2_depth3_start for x in records],
+                    'tank2_depth4_start': [x.tank2_depth4_start for x in records],
+                    'tank3_depth1_start': [x.tank3_depth1_start for x in records],
+                    'tank3_depth2_start': [x.tank3_depth2_start for x in records],
+                    'tank3_depth3_start': [x.tank3_depth3_start for x in records],
+                    'tank3_depth4_start': [x.tank3_depth4_start for x in records],
                     'relay_3_pulled_fraction': [x.relay_3_pulled_fraction for x in records],
-                    'store_change_kwh_flow': [x.store_energy_in_flow_kwh for x in records],
-                    'store_change_kwh_avg_temp': [x.store_energy_in_avg_temp_kwh for x in records],
+                    'relay_5_pulled_fraction': [x.relay_5_pulled_fraction for x in records],
+                    'relay_6_pulled_fraction': [x.relay_6_pulled_fraction for x in records],
+                    'relay_9_pulled_fraction': [x.relay_9_pulled_fraction for x in records],
+                    'zone1_heatcall_fraction': [x.zone1_heatcall_fraction for x in records],
+                    'zone2_heatcall_fraction': [x.zone2_heatcall_fraction for x in records],
+                    'zone3_heatcall_fraction': [x.zone3_heatcall_fraction for x in records],
+                    'zone4_heatcall_fraction': [x.zone4_heatcall_fraction for x in records],
                 })
 
             # Build file name
