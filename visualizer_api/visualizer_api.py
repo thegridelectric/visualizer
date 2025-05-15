@@ -1401,6 +1401,8 @@ class VisualizerApi():
         fig = go.Figure()
         if 'zone-heat-calls' in request.selected_channels:
             for zone in self.data[request]['channels_by_zone']:
+                if 'whitewire' not in self.data[request]['channels_by_zone'][zone]:
+                    continue
                 whitewire_ch = self.data[request]['channels_by_zone'][zone]['whitewire']
                 zone_number = int(whitewire_ch[4])
                 zone_color = self.zone_color[zone_number-1]
