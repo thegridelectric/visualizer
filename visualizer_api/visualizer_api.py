@@ -2621,17 +2621,7 @@ class VisualizerApi():
                     hovertemplate="%{x|%H:%M} | %{y:.2f} cts/kWh<extra></extra>"
                 )
             )
-
-        if max(elec_use['total_kwh']) < 10:
-            fig.update_layout(
-                yaxis=dict(title='Quantity [kWh]', range=[0,10]),
-                yaxis2=dict(title='Price [cts/kWh]')
-            )
-        else:
-            fig.update_layout(
-                yaxis=dict(title='Quantity [kWh]'),
-                yaxis2=dict(title='Price [cts/kWh]')
-            )
+                
         fig.update_layout(
             title=dict(text='', x=0.5, xanchor='center'),
             plot_bgcolor='#1b1b1c' if request.darkmode else 'white',
@@ -2647,7 +2637,8 @@ class VisualizerApi():
                 showgrid=False,
             ),
             yaxis=dict(
-                range = [0, 1.3*max(elec_use['total_kwh'])],
+                title='Quantity [kWh]',
+                range = [0, (1.3*max(elec_use['total_kwh']) if max(elec_use['total_kwh']) > 3 else 1.3*3)],
                 mirror=True,
                 ticks='outside',
                 showline=True,
@@ -2658,6 +2649,7 @@ class VisualizerApi():
                 gridcolor=white_color
             ),
             yaxis2=dict(
+                title='Price [cts/kWh]',
                 range = [
                     0 if not total_price_values else min(total_price_values)-5, 
                     1.3*(10 if not total_price_values else max(total_price_values))
