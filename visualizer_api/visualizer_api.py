@@ -69,7 +69,8 @@ class HouseSql(Base):
     hardware_layout = Column(JSON, nullable=True)
     unique_id = Column(Integer, primary_key=True)
     g_node_alias = Column(String, nullable=False)
-    status = Column(JSON, nullable=False)
+    alert_status = Column(JSON, nullable=False)
+    representation_status = Column(String, nullable=True)
     scada_ip_address = Column(String, nullable=True)
     scada_git_commit = Column(String, nullable=True)
 
@@ -176,7 +177,8 @@ class House(BaseModel):
     hardware_layout: Optional[str] = None
     unique_id: int
     g_node_alias: Optional[str] = None
-    status: Optional[dict] = None
+    alert_status: Optional[dict] = None
+    representation_status: Optional[str] = None
     scada_ip_address: str
     scada_git_commit: str
 
@@ -2689,6 +2691,7 @@ class VisualizerApi():
             records = db.execute(query).all()
             
             if not records:
+                print(f"No electricity data found for the selected houses")
                 return {"success": False}
                 # raise HTTPException(status_code=404, detail="No electricity data found for the selected houses")
             
