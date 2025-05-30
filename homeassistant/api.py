@@ -8,7 +8,7 @@ from pydantic import BaseModel, PositiveInt, field_validator
 R_FIXED_KOHMS = 5.65  # The voltage divider resistors in the TankModule
 THERMISTOR_T0 = 298  # i.e. 25 degrees
 THERMISTOR_R0_KOHMS = 10  # The R0 of the NTC thermistor - an industry standard
-THERMISTOR_BETA = 3950 #TODO!!!
+THERMISTOR_BETA = 3977
 
 
 class MicroVolts(BaseModel):
