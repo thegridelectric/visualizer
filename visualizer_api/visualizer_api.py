@@ -204,7 +204,7 @@ class VisualizerApi():
         self.top_states_order = ['HomeAlone', 'Atn', 'Dormant']
         self.ha_states_order = [
             'HpOffStoreDischarge', 'HpOffStoreOff', 'HpOnStoreOff', 
-            'HpOnStoreCharge', 'StratBoss', 'Initializing', 'Dormant'
+            'HpOnStoreCharge', 'StratBoss', 'Initializing', 'Dormant', 'EverythingOff'
             ]
         self.aa_states_order = self.ha_states_order.copy()
         self.whitewire_threshold_watts = {'beech': 100, 'elm': 0.9, 'default': 20}
@@ -400,6 +400,14 @@ class VisualizerApi():
             # Get minimum and maximum timestamp for plots
             max_timestamp = max(max(self.data[request]['channels'][x]['times']) for x in self.data[request]['channels'])
             min_timestamp = min(min(self.data[request]['channels'][x]['times']) for x in self.data[request]['channels'])
+
+            min_channel = min(self.data[request]['channels'].keys(), key=lambda x: min(self.data[request]['channels'][x]['times']))
+            print(f"Channel with minimum timestamp: {min_channel}, {self.to_datetime(min_timestamp)}")
+
+            min_timestamp = min(request.start_ms, min_timestamp)
+            max_timestamp = max(request.end_ms, max_timestamp)
+            print(f"After edit: {self.to_datetime(min_timestamp)}")
+
             min_timestamp += -(max_timestamp-min_timestamp)*0.05
             max_timestamp += (max_timestamp-min_timestamp)*0.05
             self.data[request]['min_timestamp'] = self.to_datetime(min_timestamp)
@@ -2151,7 +2159,8 @@ class VisualizerApi():
             'HpOnStoreCharge': '#feca52',
             'Initializing': '#a3a3a3',
             'StratBoss': '#ee93fa',
-            'Dormant': '#4f4f4f'
+            'Dormant': '#4f4f4f',
+            'EverythingOff': '#4f4f4f',
         }
 
         if self.data[request]['ha_states']!={}:
@@ -2851,7 +2860,7 @@ class VisualizerApi():
                 continue
             
             try:
-                ssh_command = f"ssh -o StrictHostKeyChecking=no -A pi@{ssh_host} 'cd ~/gridworks-scada && git pull && /home/pi/.local/bin/gwstop && /home/pi/.local/bin/gwstart'"
+                ssh_command = f"ssh -o StrictHostKeyChecking=no -A pi@{ssh_host} 'cd ~/gridworks-scada && git checkout main && git pull && /home/pi/.local/bin/gwstop && /home/pi/.local/bin/gwstart'"
                 process = await asyncio.create_subprocess_shell(
                     ssh_command,
                     stdout=asyncio.subprocess.PIPE,
