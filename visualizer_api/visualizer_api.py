@@ -404,8 +404,8 @@ class VisualizerApi():
             min_channel = min(self.data[request]['channels'].keys(), key=lambda x: min(self.data[request]['channels'][x]['times']))
             print(f"Channel with minimum timestamp: {min_channel}, {self.to_datetime(min_timestamp)}")
 
-            min_timestamp = min(request.start_ms, min_timestamp)
-            max_timestamp = max(request.end_ms, max_timestamp)
+            min_timestamp = max(request.start_ms, min_timestamp)
+            max_timestamp = min(request.end_ms, max_timestamp)
             print(f"After edit: {self.to_datetime(min_timestamp)}")
 
             min_timestamp += -(max_timestamp-min_timestamp)*0.05
