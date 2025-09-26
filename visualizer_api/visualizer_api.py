@@ -6,6 +6,7 @@ import time
 import uuid
 import pytz
 import dotenv
+import pendulum
 import uvicorn
 import zipfile
 import traceback
@@ -239,8 +240,11 @@ class VisualizerApi():
         self.app.post("/update-scada-code")(self.update_scada_code)
         uvicorn.run(self.app, host="0.0.0.0", port=8000)
 
-    def to_datetime(self, time_ms):
-        return datetime.fromtimestamp(time_ms / 1000, tz=pytz.timezone(self.timezone_str))
+    def to_datetime(self, time_ms, pendulum_format=False):
+        if pendulum_format:
+            return pendulum.from_timestamp(time_ms / 1000, tz=self.timezone_str)
+        else:
+            return datetime.fromtimestamp(time_ms / 1000, tz=pytz.timezone(self.timezone_str))
 
     def to_fahrenheit(self, t):
         return t*9/5+32
@@ -824,8 +828,8 @@ class VisualizerApi():
                 print("Done.")
 
                 # Build file name
-                start_date = self.to_datetime(request.start_ms) 
-                end_date = self.to_datetime(request.end_ms)
+                start_date = self.to_datetime(request.start_ms, pendulum_format=True) 
+                end_date = self.to_datetime(request.end_ms, pendulum_format=True)
                 formatted_start_date = start_date.to_iso8601_string()[:16].replace('T', '-')
                 formatted_end_date = end_date.to_iso8601_string()[:16].replace('T', '-')
                 filename = f'{request.house_alias}_{request.timestep}s_{formatted_start_date}-{formatted_end_date}.csv'.replace(':','_')
