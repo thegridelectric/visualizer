@@ -330,7 +330,7 @@ class VisualizerApi():
                 
                 # Use select() instead of session.query()
                 stmt = select(MessageSql).filter(
-                    MessageSql.from_alias.like(f'%.{request.house_alias}.%'),
+                    MessageSql.from_alias == f"hw1.isone.me.versant.keene.{request.house_alias}.scada",
                     MessageSql.message_persisted_ms <= cast(int(request.end_ms), BigInteger),
                     or_(
                         and_(
