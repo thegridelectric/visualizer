@@ -474,10 +474,11 @@ class VisualizerApi():
                 self.data[request]['channels'][channel_name]['times'] = list(sorted_times)
 
                 # Apply data reduction before converting to datetime
-                self.data[request]['channels'][channel_name] = self.reduce_data_size(
-                    self.data[request]['channels'][channel_name], 
-                    channel_name
-                )  
+                if not isinstance(request, CsvRequest):
+                    self.data[request]['channels'][channel_name] = self.reduce_data_size(
+                        self.data[request]['channels'][channel_name], 
+                        channel_name
+                    )  
 
                 # Convert timestamps to datetime (optimized)
                 conversion_start = time.time()
