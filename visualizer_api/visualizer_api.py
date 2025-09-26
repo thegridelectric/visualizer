@@ -418,6 +418,7 @@ class VisualizerApi():
                 return {"success": False, "message": warning_message, "reload": False}
             
             # Process reports
+            print(f"Processing data...")
             process_start = time.time()
             reports: List[MessageSql] = sorted(
                 [x for x in all_raw_messages if x.message_type_name in ['report', 'batched.readings']],
@@ -489,8 +490,8 @@ class VisualizerApi():
                 ]
                 total_conversion_time += time.time() - conversion_start
                 
-            print(f"Time to convert to datetime: {round(total_conversion_time, 1)} seconds")    
-            print(f"Time spent reducing data size: {round(self.time_spent_reducing_data, 1)} seconds")
+            print(f"Time to convert timestamps to datetime: {round(total_conversion_time, 1)} seconds")    
+            # print(f"Time spent reducing data size: {round(self.time_spent_reducing_data, 1)} seconds")
             self.time_spent_reducing_data = 0
 
             # Find all zone channels
@@ -578,7 +579,7 @@ class VisualizerApi():
                     key = lambda x: x.message_persisted_ms
                     )
             self.data[request]['weather_forecasts'] = weather_forecasts.copy()
-            print(f"Time to process data: {round(time.time() - process_start, 1)} seconds")
+            # print(f"Time to process data: {round(time.time() - process_start, 1)} seconds")
             return None
         except Exception as e:
             print(f"An error occurred in get_data():\n{traceback.format_exc()}")
@@ -916,7 +917,7 @@ class VisualizerApi():
                         csv_data[channel] = values
 
                     print(f"Sampling done in {round(time.time() - request_start, 1)} seconds.")
-                    
+
                 else:
                     csv_data = {}
                     for channel in channels_to_export:
@@ -1226,18 +1227,16 @@ class VisualizerApi():
                 print(f"Total plot generation: {round(plot_time, 1)} seconds")
                 
                 # Step 3: Response preparation
-                response_start = time.time()
                 zip_buffer.seek(0)
                 zip_size = len(zip_buffer.getvalue())
-                print(f"Zip file size: {round(zip_size/1024/1024, 1)} MB")
 
                 response = StreamingResponse(
                     zip_buffer, 
                     media_type='application/zip', 
                     headers={"Content-Disposition": "attachment; filename=plots.zip"}
                 )
-                response_time = time.time() - response_start
-                print(f"Response preparation: {round(response_time, 1)} seconds")
+
+                print(f"Sent zip file of size {round(zip_size/1024/1024, 1)} MB")
                 
                 total_time = time.time() - total_start
                 print(f"=== TOTAL TIME: {round(total_time, 1)} seconds ===\n")
