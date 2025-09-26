@@ -322,8 +322,8 @@ class VisualizerApi():
                 return {"success": False, "message": warning_message, "reload": False, "confirm_with_user": True}
         if not self.running_locally: 
             if isinstance(request, DataRequest) and not isinstance(request, CsvRequest): 
-                if (request.end_ms-request.start_ms)/1000/3600/24 > 5:
-                    warning_message = "Plotting data for this many days is not permitted. Please reduce the range and try again."
+                if (request.end_ms-request.start_ms)/1000/3600/24 > 30:
+                    warning_message = "Plotting data for this many days (>30 days) is not permitted. Please reduce the range and try again."
                     return {"success": False, "message": warning_message, "reload": False}
                 if aggregate and (request.end_ms-request.start_ms)/1000/3600/24 > 2:
                     warning_message = "Plotting data for this many days is not permitted. Please reduce the range and try again."
