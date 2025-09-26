@@ -216,11 +216,20 @@ class VisualizerApi():
             'hp-idu-pwr': 0.1*1000, #kWx1000
             'oil-boiler-pwr': 0.2*100, #kWx100
             'primary-flow': 0.1*100, #GPMx100
-            'primary-pump-pwr': 0.1*100, #kWx100
+            'primary-pump-pwr': 0.1*10, #kWx100
             'dist-swt': 0.2*1000, #degCx1000
             'dist-rwt': 0.2*1000, #degCx1000
             'dist-flow': 0.1*100, #GPMx100
             'dist-pump-pwr': 0.1*10, #Wx10
+            'oat': 0.2*1000, #degCx1000
+            'buffer-depths': 0.2*1000, #degCx1000
+            'tank-depths': 0.2*1000, #degCx1000
+            'buffer-hot-pipe': 0.2*1000, #degCx1000
+            'buffer-cold-pipe': 0.2*1000, #degCx1000
+            'store-hot-pipe': 0.2*1000, #degCx1000
+            'store-cold-pipe': 0.2*1000, #degCx1000
+            'store-flow': 0.1*100, #GPMx100
+            'store-pump-pwr': 0.1*10, #kWx100
         }
         self.data = {}
         self.timestamp_min_max = {}
@@ -267,6 +276,11 @@ class VisualizerApi():
         return f'#{r:02x}{g:02x}{b:02x}'
     
     def reduce_data_size(self, channel_data, channel_name):
+
+        if 'buffer-depth' in channel_name and 'micro' not in channel_name:
+            channel_name = 'buffer-depths'
+        if 'tank' in channel_name and 'depth' in channel_name and 'micro' not in channel_name:
+            channel_name = 'tank-depths'
 
         if channel_name not in self.threshold_per_channel or not channel_data['values'] or len(channel_data['values']) < 2:
             return channel_data
@@ -1784,7 +1798,7 @@ class VisualizerApi():
                     y=[self.to_fahrenheit(x/1000) for x in self.data[request]['channels']['oat']['values']], 
                     mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
                     opacity=0.8,
-                    line=dict(color='gray' if request.darkmode else '#d6d6d6', dash='solid'),
+                    line=dict(color='gray' if request.darkmode else '#d6d6d6', dash='solid', shape='hv'),
                     name='Outside air',
                     yaxis='y2',
                     hovertemplate="%{x|%H:%M:%S} | %{y:.1f}°F<extra></extra>"
@@ -1877,7 +1891,7 @@ class VisualizerApi():
                         mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
                         opacity=0.7,
                         name=buffer_channel.replace('buffer-',''),
-                        line=dict(color=buffer_layer_colors[buffer_channel], dash='solid'),
+                        line=dict(color=buffer_layer_colors[buffer_channel], dash='solid', shape='hv'),
                         hovertemplate="%{x|%H:%M:%S} | %{y:.1f}°F<extra></extra>"
                         )
                     )  
@@ -1891,7 +1905,7 @@ class VisualizerApi():
                     mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
                     opacity=0.7,
                     name='Hot pipe',
-                    line=dict(color='#d62728', dash='solid'),
+                    line=dict(color='#d62728', dash='solid', shape='hv'),
                     hovertemplate="%{x|%H:%M:%S} | %{y:.1f}°F<extra></extra>"
                     )
                 )
@@ -1905,7 +1919,7 @@ class VisualizerApi():
                     mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
                     opacity=0.7,
                     name='Cold pipe',
-                    line=dict(color='#1f77b4', dash='solid'),
+                    line=dict(color='#1f77b4', dash='solid', shape='hv'),
                     hovertemplate="%{x|%H:%M:%S} | %{y:.1f}°F<extra></extra>"
                     )
                 )
@@ -1993,7 +2007,7 @@ class VisualizerApi():
                         y=[self.to_fahrenheit(x/1000) for x in self.data[request]['channels'][tank_channel]['values']], 
                         mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', opacity=0.7,
                         name=tank_channel.replace('storage-',''),
-                        line=dict(color=storage_layer_colors[tank_channel], dash='solid'),
+                        line=dict(color=storage_layer_colors[tank_channel], dash='solid', shape='hv'),
                         hovertemplate="%{x|%H:%M:%S} | %{y:.1f}°F"
                         )
                     )
@@ -2008,7 +2022,7 @@ class VisualizerApi():
                     mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
                     opacity=0.7,
                     name='Hot pipe',
-                    line=dict(color='#d62728', dash='solid'),
+                    line=dict(color='#d62728', dash='solid', shape='hv'),
                     hovertemplate="%{x|%H:%M:%S} | %{y:.1f}°F<extra></extra>"
                     )
                 )
@@ -2039,7 +2053,7 @@ class VisualizerApi():
                     y=[x for x in self.data[request]['channels']['store-pump-pwr']['values']], 
                     mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
                     opacity=0.7,
-                    line=dict(color='pink', dash='solid'),
+                    line=dict(color='pink', dash='solid', shape='hv'),
                     name='Storage pump power x1000',
                     yaxis=y_axis_power,
                     visible='legendonly',
@@ -2054,7 +2068,7 @@ class VisualizerApi():
                     y=[x/100*10 for x in self.data[request]['channels']['store-flow']['values']], 
                     mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
                     opacity=0.4,
-                    line=dict(color='purple', dash='solid'),
+                    line=dict(color='purple', dash='solid', shape='hv'),
                     name='Storage pump flow x10',
                     yaxis=y_axis_power,
                     hovertemplate="%{x|%H:%M:%S} | %{y:.1f}/10 GPM<extra></extra>"
