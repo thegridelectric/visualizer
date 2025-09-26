@@ -478,13 +478,15 @@ class VisualizerApi():
                     channel_name
                 )  
 
-                # Converted to datetime
-                self.data[request]['channels'][channel_name]['times'] = pd.to_datetime(list(self.data[request]['channels'][channel_name]['times']), unit='ms', utc=True)
-                self.data[request]['channels'][channel_name]['times'] = self.data[request]['channels'][channel_name]['times'].tz_convert(self.timezone_str)
-                self.data[request]['channels'][channel_name]['times'] = [x.replace(tzinfo=None) for x in self.data[request]['channels'][channel_name]['times']]
+                # Convert timestamps to datetime (optimized)
+                tz = pytz.timezone(self.timezone_str)
+                self.data[request]['channels'][channel_name]['times'] = [
+                    datetime.fromtimestamp(ts/1000, tz=tz).replace(tzinfo=None)
+                    for ts in self.data[request]['channels'][channel_name]['times']
+                ]
                 
             print(f"Time to sort values: {round(time.time() - process_start, 1)} seconds")    
-            print(f"OF WHICH time spent reducing data: {round(self.time_spent_reducing_data, 1)} seconds")
+            print(f"Time spent reducing data: {round(self.time_spent_reducing_data, 1)} seconds")
             self.time_spent_reducing_data = 0
 
             # Find all zone channels
@@ -530,7 +532,6 @@ class VisualizerApi():
             if "Dormant" in self.data[request]['top_states']:
                 self.data[request]['top_states']['Admin'] = self.data[request]['top_states']['Dormant']
                 del self.data[request]['top_states']['Dormant']
-            print(f"Time to process top states: {round(time.time() - process_start, 1)} seconds")
             
             # HomeAlone state
             self.data[request]['ha_states'] = {'all': {'times':[], 'values':[]}}
@@ -550,7 +551,6 @@ class VisualizerApi():
                     self.data[request]['ha_states']['all']['values'].append(self.ha_states_order.index(state))
                     self.data[request]['ha_states'][state]['times'].append(t)
                     self.data[request]['ha_states'][state]['values'].append(self.ha_states_order.index(state))
-            print(f"Time to process HA states: {round(time.time() - process_start, 1)} seconds")
 
             # AtomicAlly state
             self.data[request]['aa_states'] = {'all': {'times':[], 'values':[]}}
@@ -565,7 +565,6 @@ class VisualizerApi():
                     self.data[request]['aa_states']['all']['values'].append(self.aa_states_order.index(state))
                     self.data[request]['aa_states'][state]['times'].append(t)
                     self.data[request]['aa_states'][state]['values'].append(self.aa_states_order.index(state))
-            print(f"Time to process AA states: {round(time.time() - process_start, 1)} seconds")
 
             # Weather forecasts
             weather_forecasts: List[MessageSql] = []
