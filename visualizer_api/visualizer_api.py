@@ -401,11 +401,11 @@ class VisualizerApi():
             min_timestamp = min(min(self.data[request]['channels'][x]['times']) for x in self.data[request]['channels'])
 
             min_channel = min(self.data[request]['channels'].keys(), key=lambda x: min(self.data[request]['channels'][x]['times']))
-            print(f"Channel with minimum timestamp: {min_channel}, {self.to_datetime(min_timestamp)}")
+            # print(f"Channel with minimum timestamp: {min_channel}, {self.to_datetime(min_timestamp)}")
 
             min_timestamp = max(request.start_ms, min_timestamp)
             max_timestamp = min(request.end_ms, max_timestamp)
-            print(f"After edit: {self.to_datetime(min_timestamp)}")
+            # print(f"After edit: {self.to_datetime(min_timestamp)}")
 
             min_timestamp += -(max_timestamp-min_timestamp)*0.05
             max_timestamp += (max_timestamp-min_timestamp)*0.05
@@ -1062,6 +1062,9 @@ class VisualizerApi():
 
     async def get_plots(self, request: DataRequest, current_user = Depends(get_current_user)):
         try:
+            total_start = time.time()
+            print(f"=== PLOT GENERATION STARTED ===")
+            
             async with async_timeout.timeout(self.timeout_seconds):
                 error = await self.get_data(request)
                 if error:
@@ -1073,7 +1076,8 @@ class VisualizerApi():
                     zip_bids = await self.get_bids(request)
                     return zip_bids
                 
-                # Get plots, zip and return
+                # Step 2: Plot generation
+                plot_start = time.time()
                 zip_buffer = io.BytesIO()
                 with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
                     html_buffer = await self.plot_heatpump(request)
@@ -1109,13 +1113,27 @@ class VisualizerApi():
                     html_buffer = await self.plot_weather(request)
                     zip_file.writestr('plot11.html', html_buffer.read())
 
+                plot_time = time.time() - plot_start
+                print(f"Total plot generation: {round(plot_time, 1)} seconds")
+                
+                # Step 3: Response preparation
+                response_start = time.time()
                 zip_buffer.seek(0)
+                zip_size = len(zip_buffer.getvalue())
+                print(f"Zip file size: {round(zip_size/1024/1024, 1)} MB")
 
-                return StreamingResponse(
+                response = StreamingResponse(
                     zip_buffer, 
                     media_type='application/zip', 
                     headers={"Content-Disposition": "attachment; filename=plots.zip"}
-                    )
+                )
+                response_time = time.time() - response_start
+                print(f"Response preparation: {round(response_time, 1)} seconds")
+                
+                total_time = time.time() - total_start
+                print(f"=== TOTAL TIME: {round(total_time, 1)} seconds ===")
+
+                return response
                 
         except asyncio.TimeoutError:
             print("Timed out in get_plots()")
@@ -1403,7 +1421,7 @@ class VisualizerApi():
         html_buffer = io.StringIO()
         fig.write_html(html_buffer, config={'displayModeBar': False})
         html_buffer.seek(0)
-        print(f"Heat pump plot done in {round(time.time()-plot_start,1)} seconds")
+        # print(f"Heat pump plot done in {round(time.time()-plot_start,1)} seconds")
         return html_buffer
 
     async def plot_distribution(self, request: DataRequest):
@@ -1525,7 +1543,7 @@ class VisualizerApi():
         html_buffer = io.StringIO()
         fig.write_html(html_buffer, config={'displayModeBar': False})
         html_buffer.seek(0) 
-        print(f"Distribution plot done in {round(time.time()-plot_start,1)} seconds")
+        # print(f"Distribution plot done in {round(time.time()-plot_start,1)} seconds")
         return html_buffer
     
     async def plot_heatcalls(self, request: DataRequest):
@@ -1658,7 +1676,7 @@ class VisualizerApi():
         html_buffer = io.StringIO()
         fig.write_html(html_buffer, config={'displayModeBar': False})
         html_buffer.seek(0)
-        print(f"Heat calls plot done in {round(time.time()-plot_start,1)} seconds")
+        # print(f"Heat calls plot done in {round(time.time()-plot_start,1)} seconds")
         return html_buffer
     
     async def plot_zones(self, request: DataRequest):
@@ -1769,7 +1787,7 @@ class VisualizerApi():
         html_buffer = io.StringIO()
         fig.write_html(html_buffer, config={'displayModeBar': False})
         html_buffer.seek(0)
-        print(f"Zones plot done in {round(time.time()-plot_start,1)} seconds")
+        # print(f"Zones plot done in {round(time.time()-plot_start,1)} seconds")
         return html_buffer
     
     async def plot_buffer(self, request: DataRequest):
@@ -1871,7 +1889,7 @@ class VisualizerApi():
         html_buffer = io.StringIO()
         fig.write_html(html_buffer, config={'displayModeBar': False})
         html_buffer.seek(0)
-        print(f"Buffer plot done in {round(time.time()-plot_start,1)} seconds")
+        # print(f"Buffer plot done in {round(time.time()-plot_start,1)} seconds")
         return html_buffer
 
     async def plot_storage(self, request: DataRequest):
@@ -2065,7 +2083,7 @@ class VisualizerApi():
         html_buffer = io.StringIO()
         fig.write_html(html_buffer, config={'displayModeBar': False})
         html_buffer.seek(0)
-        print(f"Storage plot done in {round(time.time()-plot_start,1)} seconds")
+        # print(f"Storage plot done in {round(time.time()-plot_start,1)} seconds")
         return html_buffer
     
     async def plot_top_state(self, request: DataRequest):
@@ -2144,7 +2162,7 @@ class VisualizerApi():
         html_buffer = io.StringIO()
         fig.write_html(html_buffer, config={'displayModeBar': False})
         html_buffer.seek(0)
-        print(f"Top state plot done in {round(time.time()-plot_start,1)} seconds")
+        # print(f"Top state plot done in {round(time.time()-plot_start,1)} seconds")
         return html_buffer
     
     async def plot_ha_state(self, request: DataRequest):
@@ -2228,7 +2246,7 @@ class VisualizerApi():
         html_buffer = io.StringIO()
         fig.write_html(html_buffer, config={'displayModeBar': False})
         html_buffer.seek(0)
-        print(f"HA state plot done in {round(time.time()-plot_start,1)} seconds")
+        # print(f"HA state plot done in {round(time.time()-plot_start,1)} seconds")
         return html_buffer
     
     async def plot_aa_state(self, request: DataRequest):
@@ -2311,7 +2329,7 @@ class VisualizerApi():
         html_buffer = io.StringIO()
         fig.write_html(html_buffer, config={'displayModeBar': False})
         html_buffer.seek(0)
-        print(f"AA state plot done in {round(time.time()-plot_start,1)} seconds")
+        # print(f"AA state plot done in {round(time.time()-plot_start,1)} seconds")
         return html_buffer 
 
     async def plot_weather(self, request: DataRequest):
@@ -2380,7 +2398,7 @@ class VisualizerApi():
         html_buffer = io.StringIO()
         fig.write_html(html_buffer, config={'displayModeBar': False})
         html_buffer.seek(0)
-        print(f"Weather plot done in {round(time.time()-plot_start,1)} seconds")
+        # print(f"Weather plot done in {round(time.time()-plot_start,1)} seconds")
         return html_buffer
     
     async def plot_prices(self, request: Union[DataRequest, BaseRequest], aggregate=False):
@@ -2503,7 +2521,7 @@ class VisualizerApi():
         html_buffer = io.StringIO()
         fig.write_html(html_buffer, config={'displayModeBar': False})
         html_buffer.seek(0)
-        print(f"Prices plot done in {round(time.time()-plot_start,1)} seconds")   
+        # print(f"Prices plot done in {round(time.time()-plot_start,1)} seconds")   
         return html_buffer             
 
     async def login(self, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
