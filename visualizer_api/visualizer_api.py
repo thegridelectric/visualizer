@@ -439,7 +439,6 @@ class VisualizerApi():
                         self.data[request]['channels'][channel_name] = {'values': [], 'times': []}
                     self.data[request]['channels'][channel_name]['values'].extend(channel['ValueList'])
                     self.data[request]['channels'][channel_name]['times'].extend(channel['ScadaReadTimeUnixMsList'])
-            print(f"Time to process reports: {round(time.time() - process_start, 1)} seconds")
                 
             # Process snapshots
             max_timestamp = max(max(self.data[request]['channels'][channel_name]['times']) for channel_name in self.data[request]['channels'])
@@ -453,19 +452,13 @@ class VisualizerApi():
                     if snap['ChannelName'] in self.data[request]['channels']:
                         self.data[request]['channels'][snap['ChannelName']]['times'].append(snap['ScadaReadTimeUnixMs'])
                         self.data[request]['channels'][snap['ChannelName']]['values'].append(snap['Value'])
-            print(f"Time to process snapshots: {round(time.time() - process_start, 1)} seconds")
             # Get minimum and maximum timestamp for plots
             max_timestamp = max(max(self.data[request]['channels'][x]['times']) for x in self.data[request]['channels'])
             min_timestamp = min(min(self.data[request]['channels'][x]['times']) for x in self.data[request]['channels'])
-            print(f"Time to find min/max timestamp: {round(time.time() - process_start, 1)} seconds")  
-            # min_channel = min(self.data[request]['channels'].keys(), key=lambda x: min(self.data[request]['channels'][x]['times']))
-            print(f"Time to find min channel: {round(time.time()-process_start, 1)} seconds")
-            # print(f"Channel with minimum timestamp: {min_channel}, {self.to_datetime(min_timestamp)}")
 
             min_timestamp = max(request.start_ms, min_timestamp)
             max_timestamp = min(request.end_ms, max_timestamp)
             # print(f"After edit: {self.to_datetime(min_timestamp)}")
-            print(f"Time to edit min/max timestamp: {round(time.time()-process_start, 1)} seconds") 
             min_timestamp += -(max_timestamp-min_timestamp)*0.05
             max_timestamp += (max_timestamp-min_timestamp)*0.05
             self.data[request]['min_timestamp'] = self.to_datetime(min_timestamp)
@@ -473,14 +466,14 @@ class VisualizerApi():
 
             # Sort values according to time and convert to datetime
             for channel_name in self.data[request]['channels'].keys():
-                sorted_times_values = sorted(zip(self.data[request]['channels'][channel_name]['times'], self.data[request]['channels'][channel_name]['values']))
-                sorted_times, sorted_values = zip(*sorted_times_values)
+                # sorted_times_values = sorted(zip(self.data[request]['channels'][channel_name]['times'], self.data[request]['channels'][channel_name]['values']))
+                sorted_times, sorted_values = self.data[request]['channels'][channel_name]['times'], self.data[request]['channels'][channel_name]['times']
                 self.data[request]['channels'][channel_name]['values'] = list(sorted_values)
                 self.data[request]['channels'][channel_name]['times'] = pd.to_datetime(list(sorted_times), unit='ms', utc=True)
                 self.data[request]['channels'][channel_name]['times'] = self.data[request]['channels'][channel_name]['times'].tz_convert(self.timezone_str)
                 self.data[request]['channels'][channel_name]['times'] = [x.replace(tzinfo=None) for x in self.data[request]['channels'][channel_name]['times']]
                 
-                # Apply data reduction for temperature channels (change-based filtering)
+                # Apply data reduction
                 self.data[request]['channels'][channel_name] = self.reduce_data_size(
                     self.data[request]['channels'][channel_name], 
                     channel_name
