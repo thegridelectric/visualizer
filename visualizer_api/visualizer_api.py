@@ -417,6 +417,7 @@ class VisualizerApi():
                 return {"success": False, "message": warning_message, "reload": False}
             
             # Process reports
+            process_start = time.time()
             reports: List[MessageSql] = sorted(
                 [x for x in all_raw_messages if x.message_type_name in ['report', 'batched.readings']],
                 key = lambda x: x.message_persisted_ms
@@ -438,6 +439,7 @@ class VisualizerApi():
                         self.data[request]['channels'][channel_name] = {'values': [], 'times': []}
                     self.data[request]['channels'][channel_name]['values'].extend(channel['ValueList'])
                     self.data[request]['channels'][channel_name]['times'].extend(channel['ScadaReadTimeUnixMsList'])
+            print(f"Time to process reports: {round(time.time() - process_start, 1)} seconds")
                 
             # Process snapshots
             max_timestamp = max(max(self.data[request]['channels'][channel_name]['times']) for channel_name in self.data[request]['channels'])
@@ -451,18 +453,19 @@ class VisualizerApi():
                     if snap['ChannelName'] in self.data[request]['channels']:
                         self.data[request]['channels'][snap['ChannelName']]['times'].append(snap['ScadaReadTimeUnixMs'])
                         self.data[request]['channels'][snap['ChannelName']]['values'].append(snap['Value'])
-
+            print(f"Time to process snapshots: {round(time.time() - process_start, 1)} seconds")
             # Get minimum and maximum timestamp for plots
             max_timestamp = max(max(self.data[request]['channels'][x]['times']) for x in self.data[request]['channels'])
             min_timestamp = min(min(self.data[request]['channels'][x]['times']) for x in self.data[request]['channels'])
-
-            min_channel = min(self.data[request]['channels'].keys(), key=lambda x: min(self.data[request]['channels'][x]['times']))
+            print(f"Time to find min/max timestamp: {round(time.time() - process_start, 1)} seconds")  
+            # min_channel = min(self.data[request]['channels'].keys(), key=lambda x: min(self.data[request]['channels'][x]['times']))
+            print(f"Time to find min channel: {round(time.time()-process_start, 1)} seconds")
             # print(f"Channel with minimum timestamp: {min_channel}, {self.to_datetime(min_timestamp)}")
 
             min_timestamp = max(request.start_ms, min_timestamp)
             max_timestamp = min(request.end_ms, max_timestamp)
             # print(f"After edit: {self.to_datetime(min_timestamp)}")
-
+            print(f"Time to edit min/max timestamp: {round(time.time()-process_start, 1)} seconds") 
             min_timestamp += -(max_timestamp-min_timestamp)*0.05
             max_timestamp += (max_timestamp-min_timestamp)*0.05
             self.data[request]['min_timestamp'] = self.to_datetime(min_timestamp)
@@ -481,8 +484,9 @@ class VisualizerApi():
                 self.data[request]['channels'][channel_name] = self.reduce_data_size(
                     self.data[request]['channels'][channel_name], 
                     channel_name
-                )      
-            print(f"Time spent reducing data: {round(self.time_spent_reducing_data, 1)} seconds")
+                )  
+            print(f"Time to sort values: {round(time.time() - process_start, 1)} seconds")    
+            print(f"OF WHICH time spent reducing data: {round(self.time_spent_reducing_data, 1)} seconds")
             self.time_spent_reducing_data = 0
 
             # Find all zone channels
@@ -500,6 +504,7 @@ class VisualizerApi():
                         self.data[request]['channels_by_zone'][zone_number]['temp'] = channel_name
                     elif 'set' in channel_name:
                         self.data[request]['channels_by_zone'][zone_number]['set'] = channel_name
+            print(f"Time to find channels by zone: {round(time.time() - process_start, 1)} seconds")
 
             # Relays
             relays = {}
@@ -511,6 +516,7 @@ class VisualizerApi():
                         relays[state['MachineHandle']] = {'times': [], 'values': []}
                     relays[state['MachineHandle']]['times'].extend([self.to_datetime(x) for x in state['UnixMsList']])
                     relays[state['MachineHandle']]['values'].extend(state['StateList'])
+            print(f"Time to process relays: {round(time.time() - process_start, 1)} seconds")
 
             # Top state
             self.data[request]['top_states'] = {'all': {'times':[], 'values':[]}}
@@ -528,6 +534,7 @@ class VisualizerApi():
             if "Dormant" in self.data[request]['top_states']:
                 self.data[request]['top_states']['Admin'] = self.data[request]['top_states']['Dormant']
                 del self.data[request]['top_states']['Dormant']
+            print(f"Time to process top states: {round(time.time() - process_start, 1)} seconds")
             
             # HomeAlone state
             self.data[request]['ha_states'] = {'all': {'times':[], 'values':[]}}
@@ -547,6 +554,7 @@ class VisualizerApi():
                     self.data[request]['ha_states']['all']['values'].append(self.ha_states_order.index(state))
                     self.data[request]['ha_states'][state]['times'].append(time)
                     self.data[request]['ha_states'][state]['values'].append(self.ha_states_order.index(state))
+            print(f"Time to process HA states: {round(time.time() - process_start, 1)} seconds")
 
             # AtomicAlly state
             self.data[request]['aa_states'] = {'all': {'times':[], 'values':[]}}
@@ -561,6 +569,7 @@ class VisualizerApi():
                     self.data[request]['aa_states']['all']['values'].append(self.aa_states_order.index(state))
                     self.data[request]['aa_states'][state]['times'].append(time)
                     self.data[request]['aa_states'][state]['values'].append(self.aa_states_order.index(state))
+            print(f"Time to process AA states: {round(time.time() - process_start, 1)} seconds")
 
             # Weather forecasts
             weather_forecasts: List[MessageSql] = []
@@ -570,6 +579,7 @@ class VisualizerApi():
                     key = lambda x: x.message_persisted_ms
                     )
             self.data[request]['weather_forecasts'] = weather_forecasts.copy()
+            print(f"Time to process data: {round(time.time() - process_start, 1)} seconds")
             return None
         except Exception as e:
             print(f"An error occurred in get_data():\n{traceback.format_exc()}")
