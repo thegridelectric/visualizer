@@ -466,6 +466,7 @@ class VisualizerApi():
             self.data[request]['max_timestamp'] = self.to_datetime(max_timestamp)
 
             # Sort values according to time and convert to datetime
+            total_conversion_time = 0
             for channel_name in self.data[request]['channels'].keys():
                 sorted_times_values = sorted(zip(self.data[request]['channels'][channel_name]['times'], self.data[request]['channels'][channel_name]['values']))
                 sorted_times, sorted_values = zip(*sorted_times_values)
@@ -479,14 +480,16 @@ class VisualizerApi():
                 )  
 
                 # Convert timestamps to datetime (optimized)
+                conversion_start = time.time()
                 tz = pytz.timezone(self.timezone_str)
                 self.data[request]['channels'][channel_name]['times'] = [
                     datetime.fromtimestamp(ts/1000, tz=tz).replace(tzinfo=None)
                     for ts in self.data[request]['channels'][channel_name]['times']
                 ]
+                total_conversion_time += time.time() - conversion_start
                 
-            print(f"Time to sort values: {round(time.time() - process_start, 1)} seconds")    
-            print(f"Time spent reducing data: {round(self.time_spent_reducing_data, 1)} seconds")
+            print(f"Time to convert to datetime: {round(total_conversion_time, 1)} seconds")    
+            print(f"Time spent reducing data size: {round(self.time_spent_reducing_data, 1)} seconds")
             self.time_spent_reducing_data = 0
 
             # Find all zone channels
