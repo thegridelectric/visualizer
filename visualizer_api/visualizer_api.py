@@ -740,12 +740,19 @@ class VisualizerApi():
                 print("Querying journaldb for messages...")
 
                 async with self.AsyncSessionLocal() as session:
-                    stmt = select(MessageSql).filter(
-                        MessageSql.from_alias.like(f"%{f'.{request.house_alias}.' if request.house_alias else ''}%"),
-                        MessageSql.message_type_name.in_(request.selected_message_types),
-                        MessageSql.message_persisted_ms >= request.start_ms,
-                        MessageSql.message_persisted_ms <= request.end_ms,
-                    ).order_by(asc(MessageSql.message_persisted_ms))
+                    if request.house_alias:
+                        stmt = select(MessageSql).filter(
+                            MessageSql.from_alias == f"hw1.isone.me.versant.keene.{request.house_alias}.scada",
+                            MessageSql.message_type_name.in_(request.selected_message_types),
+                            MessageSql.message_persisted_ms >= request.start_ms,
+                            MessageSql.message_persisted_ms <= request.end_ms,
+                        ).order_by(asc(MessageSql.message_persisted_ms))
+                    else:
+                        stmt = select(MessageSql).filter(
+                            MessageSql.message_type_name.in_(request.selected_message_types),
+                            MessageSql.message_persisted_ms >= request.start_ms,
+                            MessageSql.message_persisted_ms <= request.end_ms,
+                        ).order_by(asc(MessageSql.message_persisted_ms))
 
                     result = await session.execute(stmt)
                     messages: List[MessageSql] = result.scalars().all()
@@ -923,7 +930,7 @@ class VisualizerApi():
                 async with self.AsyncSessionLocal() as session:
                     stmt = select(MessageSql).filter(
                         MessageSql.message_type_name == "flo.params.house0",
-                        MessageSql.from_alias.like(f'%{request.house_alias}%'),
+                        MessageSql.from_alias == f"hw1.isone.me.versant.keene.{request.house_alias}.scada",
                         MessageSql.message_persisted_ms >= request.time_ms - 48*3600*1000,
                         MessageSql.message_persisted_ms <= request.time_ms,
                     ).order_by(desc(MessageSql.message_persisted_ms))
@@ -977,7 +984,7 @@ class VisualizerApi():
                 async with self.AsyncSessionLocal() as session:
                     stmt = select(MessageSql).filter(
                         MessageSql.message_type_name == "flo.params.house0",
-                        MessageSql.from_alias.like(f'%{request.house_alias}%'),
+                        MessageSql.from_alias == f"hw1.isone.me.versant.keene.{request.house_alias}.scada",
                         MessageSql.message_persisted_ms >= request.start_ms,
                         MessageSql.message_persisted_ms <= request.end_ms,
                     ).order_by(desc(MessageSql.payload['StartUnixS']))
