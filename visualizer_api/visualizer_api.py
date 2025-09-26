@@ -209,6 +209,15 @@ class VisualizerApi():
         self.aa_states_order = self.ha_states_order.copy()
         self.whitewire_threshold_watts = {'beech': 100, 'elm': 0.9, 'default': 20}
         self.zone_color = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']*3
+        self.threshold_per_channel = {
+            'hp-lwt': 0.2*1000, #degCx1000
+            'hp-ewt': 0.2*1000, #degCx1000
+            'hp-odu-pwr': 0.1*1000, #kWx1000
+            'hp-idu-pwr': 0.1*1000, #kWx1000
+            'oil-boiler-pwr': 0.1*100, #kWx100
+            'primary-flow': 0.1*100, #GPMx100
+            'primary-pump-pwr': 0.1*100, #kWx100
+        }
         self.data = {}
         self.timestamp_min_max = {}
         print(f"Running {'locally' if self.running_locally else 'on EC2'}")
@@ -253,44 +262,26 @@ class VisualizerApi():
         r, g, b, a = (int(c * 255) for c in rgba)
         return f'#{r:02x}{g:02x}{b:02x}'
     
-    def _reduce_temperature_data(self, channel_data, threshold_f=0.5):
-        """
-        Reduce temperature data by keeping only points where the temperature changes
-        by at least threshold_f degrees Fahrenheit.
-        
-        Args:
-            channel_data: Dict with 'times' and 'values' keys
-            threshold_f: Temperature change threshold in Fahrenheit
-            
-        Returns:
-            Reduced channel_data dict
-        """
-        if not channel_data['values'] or len(channel_data['values']) < 2:
+    def reduce_data_size(self, channel_data, channel_name):
+
+        if channel_name not in self.threshold_per_channel or not channel_data['values'] or len(channel_data['values']) < 2:
             return channel_data
-            
-        # Convert threshold from Fahrenheit to the raw units (assuming values are in millidegrees)
-        threshold_raw = threshold_f * 1000  # Convert F to millidegrees
-        
+                
         reduced_times = [channel_data['times'][0]]
         reduced_values = [channel_data['values'][0]]
-        
+
         for i in range(1, len(channel_data['values'])):
-            # Check if temperature change is significant
-            if abs(channel_data['values'][i] - reduced_values[-1]) >= threshold_raw:
+            if abs(channel_data['values'][i] - reduced_values[-1]) >= self.threshold_per_channel[channel_name]:
                 reduced_times.append(channel_data['times'][i])
                 reduced_values.append(channel_data['values'][i])
         
-        # Always keep the last point to maintain data integrity
         if len(reduced_times) > 1 and reduced_times[-1] != channel_data['times'][-1]:
             reduced_times.append(channel_data['times'][-1])
             reduced_values.append(channel_data['values'][-1])
         
-        print(f"Data reduction: {len(channel_data['values'])} -> {len(reduced_values)} points ({len(reduced_values)/len(channel_data['values'])*100:.1f}% kept)")
+        print(f"{channel_name} reduction: {len(channel_data['values'])} -> {len(reduced_values)} points ({len(reduced_values)/len(channel_data['values'])*100:.1f}% kept)")
         
-        return {
-            'times': reduced_times,
-            'values': reduced_values
-        }
+        return {'times': reduced_times, 'values': reduced_values}
 
     def check_password(self, request: BaseRequest):
         if request.password == self.admin_user_password:
@@ -465,11 +456,10 @@ class VisualizerApi():
                 self.data[request]['channels'][channel_name]['times'] = [x.replace(tzinfo=None) for x in self.data[request]['channels'][channel_name]['times']]
                 
                 # Apply data reduction for temperature channels (change-based filtering)
-                if channel_name in ['hp-lwt', 'hp-ewt']:
-                    self.data[request]['channels'][channel_name] = self._reduce_temperature_data(
-                        self.data[request]['channels'][channel_name], 
-                        threshold_f=0.5
-                    )        
+                self.data[request]['channels'][channel_name] = self.reduce_data_size(
+                    self.data[request]['channels'][channel_name], 
+                    channel_name
+                )        
 
             # Find all zone channels
             self.data[request]['channels_by_zone'] = {}
