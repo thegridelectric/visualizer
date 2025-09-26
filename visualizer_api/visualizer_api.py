@@ -411,7 +411,7 @@ class VisualizerApi():
                 result = await session.execute(stmt)
                 all_raw_messages = result.scalars().all()  # Use scalars() to retrieve the data
                 
-                print(f"- Time to fetch data: {round(time.time() - query_start, 1)}s")
+                print(f"\033[91m- Time to query data from journaldb: {round(time.time() - query_start, 1)}s\033[0m")
 
             if not all_raw_messages:
                 warning_message = f"No data found for house '{request.house_alias}' in the selected timeframe."
