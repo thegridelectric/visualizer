@@ -886,21 +886,32 @@ class VisualizerApi():
                 csv_times = pd.to_datetime(csv_times, unit='ms', utc=True)
                 csv_times = [x.tz_convert(self.timezone_str).replace(tzinfo=None) for x in csv_times]
                 
-                # Re-sample the data to the desired time step
+                # Re-sample the data to the desired time step (optimized)
                 print(f"Sampling data with {request.timestep}-second time step...")
                 request_start = time.time()
+                
+                target_df = pd.DataFrame({'times': csv_times})
                 csv_data = {'timestamps': csv_times}
-                for channel in channels_to_export:
+                
+                # Use asyncio.gather to run multiple merge_asof operations in parallel
+                async def resample_channel(channel):
+                    channel_df = pd.DataFrame(self.data[request]['channels'][channel])
                     sampled = await asyncio.to_thread(
-                        pd.merge_asof, 
-                        pd.DataFrame({'times': csv_times}),
-                        pd.DataFrame(self.data[request]['channels'][channel]),
-                        on='times', 
+                        pd.merge_asof,
+                        target_df,
+                        channel_df,
+                        on='times',
                         direction='backward'
-                        )
-                    csv_data[channel] = list(sampled['values'])
+                    )
+                    return channel, list(sampled['values'])
+                
+                # Run all channel resampling in parallel
+                results = await asyncio.gather(*[resample_channel(channel) for channel in channels_to_export])
+                
+                for channel, values in results:
+                    csv_data[channel] = values
                 df = pd.DataFrame(csv_data)
-                print("Done.")
+                print(f"Sampling done in {round(time.time() - request_start, 1)} seconds.")
 
                 # Build file name
                 start_date = self.to_datetime(request.start_ms, pendulum_format=True) 
