@@ -317,8 +317,8 @@ class VisualizerApi():
     
     def check_request(self, request: BaseRequest, aggregate=False):
         if isinstance(request, Union[DataRequest, CsvRequest]) and not request.confirm_with_user:
-            if (request.end_ms - request.start_ms)/1000/3600/24 > 3:
-                warning_message = f"That's a lot of data! Are you sure you want to proceed?"
+            if (request.end_ms - request.start_ms)/1000/3600/24 > 30:
+                warning_message = f"That's a lot of data (>30 days)! Are you sure you want to proceed?"
                 return {"success": False, "message": warning_message, "reload": False, "confirm_with_user": True}
         if not self.running_locally: 
             if isinstance(request, DataRequest) and not isinstance(request, CsvRequest): 
@@ -483,6 +483,7 @@ class VisualizerApi():
                     channel_name
                 )      
             print(f"Time spent reducing data: {round(self.time_spent_reducing_data, 1)} seconds")
+            self.time_spent_reducing_data = 0
 
             # Find all zone channels
             self.data[request]['channels_by_zone'] = {}
