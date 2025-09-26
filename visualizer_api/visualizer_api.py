@@ -223,7 +223,7 @@ class VisualizerApi():
             'dist-rwt': 0.2*1000, #degCx1000
             'dist-flow': 0.1*100, #GPMx100
             'dist-pump-pwr': 0.1*10, #Wx10
-            'oat': 0.2*1000, #degCx1000
+            'oat': 0.5*1000, #degCx1000
             'buffer-depths': 0.2*1000, #degCx1000
             'tank-depths': 0.2*1000, #degCx1000
             'buffer-hot-pipe': 0.2*1000, #degCx1000
@@ -882,37 +882,54 @@ class VisualizerApi():
                     error_message += "\n- Reduce the difference between the start and end time"
                     return {"success": False, "message": error_message, "reload": False}
 
-                # Create the timestamps on which the data will be sampled
-                csv_times = np.linspace(request.start_ms, request.end_ms, num_points)
-                csv_times = pd.to_datetime(csv_times, unit='ms', utc=True)
-                csv_times = [x.tz_convert(self.timezone_str).replace(tzinfo=None) for x in csv_times]
-                
-                # Re-sample the data to the desired time step (optimized)
-                print(f"Sampling data with {request.timestep}-second time step...")
-                request_start = time.time()
-                
-                target_df = pd.DataFrame({'times': csv_times})
-                csv_data = {'timestamps': csv_times}
-                
-                # Use asyncio.gather to run multiple merge_asof operations in parallel
-                async def resample_channel(channel):
-                    channel_df = pd.DataFrame(self.data[request]['channels'][channel])
-                    sampled = await asyncio.to_thread(
-                        pd.merge_asof,
-                        target_df,
-                        channel_df,
-                        on='times',
-                        direction='backward'
-                    )
-                    return channel, list(sampled['values'])
-                
-                # Run all channel resampling in parallel
-                results = await asyncio.gather(*[resample_channel(channel) for channel in channels_to_export])
-                
-                for channel, values in results:
-                    csv_data[channel] = values
+                SAMPLING = False
+
+                if SAMPLING:
+                    # Create the timestamps on which the data will be sampled
+                    csv_times = np.linspace(request.start_ms, request.end_ms, num_points)
+                    csv_times = pd.to_datetime(csv_times, unit='ms', utc=True)
+                    csv_times = [x.tz_convert(self.timezone_str).replace(tzinfo=None) for x in csv_times]
+                    
+                    # Re-sample the data to the desired time step (optimized)
+                    print(f"Sampling data with {request.timestep}-second time step...")
+                    request_start = time.time()
+                    
+                    target_df = pd.DataFrame({'times': csv_times})
+                    csv_data = {'timestamps': csv_times}
+                    
+                    # Use asyncio.gather to run multiple merge_asof operations in parallel
+                    async def resample_channel(channel):
+                        channel_df = pd.DataFrame(self.data[request]['channels'][channel])
+                        sampled = await asyncio.to_thread(
+                            pd.merge_asof,
+                            target_df,
+                            channel_df,
+                            on='times',
+                            direction='backward'
+                        )
+                        return channel, list(sampled['values'])
+                    
+                    # Run all channel resampling in parallel
+                    results = await asyncio.gather(*[resample_channel(channel) for channel in channels_to_export])
+                    
+                    for channel, values in results:
+                        csv_data[channel] = values
+
+                    print(f"Sampling done in {round(time.time() - request_start, 1)} seconds.")
+                    
+                else:
+                    csv_data = {}
+                    for channel in channels_to_export:
+                        csv_data[f'{channel}-timestamps'] = self.data[request]['channels'][channel]['times']
+                        csv_data[f'{channel}-values'] = self.data[request]['channels'][channel]['values']
+                    
+                    max_len = max(len(v) for v in csv_data.values())
+                    for col in csv_data:
+                        if len(csv_data[col]) < max_len:
+                            csv_data[col] = csv_data[col] + [np.nan]*(max_len-len(csv_data[col]))
+
+
                 df = pd.DataFrame(csv_data)
-                print(f"Sampling done in {round(time.time() - request_start, 1)} seconds.")
 
                 # Build file name
                 start_date = self.to_datetime(request.start_ms, pendulum_format=True) 
