@@ -1419,7 +1419,12 @@ class VisualizerApi():
                 )
             )
         html_buffer = io.StringIO()
-        fig.write_html(html_buffer, config={'displayModeBar': False})
+        # Optimize Plotly output for smaller file size
+        fig.write_html(html_buffer, config={
+            'displayModeBar': False,
+            'staticPlot': False,
+            'responsive': True
+        }, include_plotlyjs='cdn')  # Use CDN instead of embedding Plotly.js
         html_buffer.seek(0)
         # print(f"Heat pump plot done in {round(time.time()-plot_start,1)} seconds")
         return html_buffer
@@ -1541,7 +1546,11 @@ class VisualizerApi():
                 )
             )
         html_buffer = io.StringIO()
-        fig.write_html(html_buffer, config={'displayModeBar': False})
+        fig.write_html(html_buffer, config={
+            'displayModeBar': False,
+            'staticPlot': False,
+            'responsive': True
+        }, include_plotlyjs='cdn')
         html_buffer.seek(0) 
         # print(f"Distribution plot done in {round(time.time()-plot_start,1)} seconds")
         return html_buffer
@@ -1674,7 +1683,11 @@ class VisualizerApi():
             )
         )
         html_buffer = io.StringIO()
-        fig.write_html(html_buffer, config={'displayModeBar': False})
+        fig.write_html(html_buffer, config={
+            'displayModeBar': False,
+            'staticPlot': False,
+            'responsive': True
+        }, include_plotlyjs='cdn')
         html_buffer.seek(0)
         # print(f"Heat calls plot done in {round(time.time()-plot_start,1)} seconds")
         return html_buffer
@@ -1785,7 +1798,11 @@ class VisualizerApi():
                 )
             )
         html_buffer = io.StringIO()
-        fig.write_html(html_buffer, config={'displayModeBar': False})
+        fig.write_html(html_buffer, config={
+            'displayModeBar': False,
+            'staticPlot': False,
+            'responsive': True
+        }, include_plotlyjs='cdn')
         html_buffer.seek(0)
         # print(f"Zones plot done in {round(time.time()-plot_start,1)} seconds")
         return html_buffer
@@ -1887,7 +1904,11 @@ class VisualizerApi():
             )
 
         html_buffer = io.StringIO()
-        fig.write_html(html_buffer, config={'displayModeBar': False})
+        fig.write_html(html_buffer, config={
+            'displayModeBar': False,
+            'staticPlot': False,
+            'responsive': True
+        }, include_plotlyjs='cdn')
         html_buffer.seek(0)
         # print(f"Buffer plot done in {round(time.time()-plot_start,1)} seconds")
         return html_buffer
@@ -2081,7 +2102,11 @@ class VisualizerApi():
         )
 
         html_buffer = io.StringIO()
-        fig.write_html(html_buffer, config={'displayModeBar': False})
+        fig.write_html(html_buffer, config={
+            'displayModeBar': False,
+            'staticPlot': False,
+            'responsive': True
+        }, include_plotlyjs='cdn')
         html_buffer.seek(0)
         # print(f"Storage plot done in {round(time.time()-plot_start,1)} seconds")
         return html_buffer
@@ -2160,7 +2185,11 @@ class VisualizerApi():
         )
         
         html_buffer = io.StringIO()
-        fig.write_html(html_buffer, config={'displayModeBar': False})
+        fig.write_html(html_buffer, config={
+            'displayModeBar': False,
+            'staticPlot': False,
+            'responsive': True
+        }, include_plotlyjs='cdn')
         html_buffer.seek(0)
         # print(f"Top state plot done in {round(time.time()-plot_start,1)} seconds")
         return html_buffer
@@ -2244,7 +2273,11 @@ class VisualizerApi():
         )
 
         html_buffer = io.StringIO()
-        fig.write_html(html_buffer, config={'displayModeBar': False})
+        fig.write_html(html_buffer, config={
+            'displayModeBar': False,
+            'staticPlot': False,
+            'responsive': True
+        }, include_plotlyjs='cdn')
         html_buffer.seek(0)
         # print(f"HA state plot done in {round(time.time()-plot_start,1)} seconds")
         return html_buffer
@@ -2327,7 +2360,11 @@ class VisualizerApi():
         )
 
         html_buffer = io.StringIO()
-        fig.write_html(html_buffer, config={'displayModeBar': False})
+        fig.write_html(html_buffer, config={
+            'displayModeBar': False,
+            'staticPlot': False,
+            'responsive': True
+        }, include_plotlyjs='cdn')
         html_buffer.seek(0)
         # print(f"AA state plot done in {round(time.time()-plot_start,1)} seconds")
         return html_buffer 
@@ -2396,7 +2433,11 @@ class VisualizerApi():
         )
 
         html_buffer = io.StringIO()
-        fig.write_html(html_buffer, config={'displayModeBar': False})
+        fig.write_html(html_buffer, config={
+            'displayModeBar': False,
+            'staticPlot': False,
+            'responsive': True
+        }, include_plotlyjs='cdn')
         html_buffer.seek(0)
         # print(f"Weather plot done in {round(time.time()-plot_start,1)} seconds")
         return html_buffer
@@ -2519,7 +2560,11 @@ class VisualizerApi():
         )
 
         html_buffer = io.StringIO()
-        fig.write_html(html_buffer, config={'displayModeBar': False})
+        fig.write_html(html_buffer, config={
+            'displayModeBar': False,
+            'staticPlot': False,
+            'responsive': True
+        }, include_plotlyjs='cdn')
         html_buffer.seek(0)
         # print(f"Prices plot done in {round(time.time()-plot_start,1)} seconds")   
         return html_buffer             
