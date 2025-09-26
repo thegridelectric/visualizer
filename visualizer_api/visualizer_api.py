@@ -214,9 +214,13 @@ class VisualizerApi():
             'hp-ewt': 0.2*1000, #degCx1000
             'hp-odu-pwr': 0.1*1000, #kWx1000
             'hp-idu-pwr': 0.1*1000, #kWx1000
-            'oil-boiler-pwr': 0.1*100, #kWx100
+            'oil-boiler-pwr': 0.2*100, #kWx100
             'primary-flow': 0.1*100, #GPMx100
             'primary-pump-pwr': 0.1*100, #kWx100
+            'dist-swt': 0.2*1000, #degCx1000
+            'dist-rwt': 0.2*1000, #degCx1000
+            'dist-flow': 0.1*100, #GPMx100
+            'dist-pump-pwr': 0.1*10, #Wx10
         }
         self.data = {}
         self.timestamp_min_max = {}
@@ -1314,7 +1318,7 @@ class VisualizerApi():
                     y=[self.to_fahrenheit(x/1000) for x in self.data[request]['channels']['hp-lwt']['values']], 
                     mode='lines+markers' if 'show-points'in request.selected_channels else 'lines',
                     opacity=0.7,
-                    line=dict(color='#d62728', dash='solid'),
+                    line=dict(color='#d62728', dash='solid', shape='hv'),
                     name='HP LWT',
                     hovertemplate="%{x|%H:%M:%S} | %{y:.1f}°F<extra></extra>"
                     )
@@ -1327,7 +1331,7 @@ class VisualizerApi():
                     y=[self.to_fahrenheit(x/1000) for x in self.data[request]['channels']['hp-ewt']['values']], 
                     mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
                     opacity=0.7,
-                    line=dict(color='#1f77b4', dash='solid'),
+                    line=dict(color='#1f77b4', dash='solid', shape='hv'),
                     name='HP EWT',
                     hovertemplate="%{x|%H:%M:%S} | %{y:.1f}°F<extra></extra>"
                     )
@@ -1344,7 +1348,7 @@ class VisualizerApi():
                     y=[x/1000 for x in self.data[request]['channels']['hp-odu-pwr']['values']], 
                     mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
                     opacity=0.7,
-                    line=dict(color='#2ca02c', dash='solid'),
+                    line=dict(color='#2ca02c', dash='solid', shape='hv'),
                     name='HP outdoor power',
                     yaxis=y_axis_power,
                     hovertemplate="%{x|%H:%M:%S} | %{y:.1f} kW<extra></extra>"
@@ -1358,7 +1362,7 @@ class VisualizerApi():
                     y=[x/1000 for x in self.data[request]['channels']['hp-idu-pwr']['values']], 
                     mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
                     opacity=0.7,
-                    line=dict(color='#ff7f0e', dash='solid'),
+                    line=dict(color='#ff7f0e', dash='solid', shape='hv'),
                     name='HP indoor power',
                     yaxis=y_axis_power,
                     hovertemplate="%{x|%H:%M:%S} | %{y:.1f} kW<extra></extra>"
@@ -1372,7 +1376,7 @@ class VisualizerApi():
                     y=[x/100 for x in self.data[request]['channels']['oil-boiler-pwr']['values']], 
                     mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
                     opacity=0.7,
-                    line=dict(color='#f0f0f0' if request.darkmode else '#5e5e5e', dash='solid'),
+                    line=dict(color='#f0f0f0' if request.darkmode else '#5e5e5e', dash='solid', shape='hv'),
                     name='Oil boiler power x10',
                     yaxis=y_axis_power,
                     hovertemplate="%{x|%H:%M:%S} | %{y:.1f}/10 kW<extra></extra>"
@@ -1386,7 +1390,7 @@ class VisualizerApi():
                     y=[x/100 for x in self.data[request]['channels']['primary-flow']['values']], 
                     mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
                     opacity=0.4,
-                    line=dict(color='purple', dash='solid'),
+                    line=dict(color='purple', dash='solid', shape='hv'),
                     name='Primary pump flow',
                     yaxis=y_axis_power,
                     hovertemplate="%{x|%H:%M:%S} | %{y:.1f} GPM<extra></extra>"
@@ -1400,7 +1404,7 @@ class VisualizerApi():
                     y=[x/1000*100 for x in self.data[request]['channels']['primary-pump-pwr']['values']], 
                     mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
                     opacity=0.7,
-                    line=dict(color='pink', dash='solid'),
+                    line=dict(color='pink', dash='solid', shape='hv'),
                     name='Primary pump power x100',
                     yaxis=y_axis_power,
                     visible='legendonly',
@@ -1482,7 +1486,7 @@ class VisualizerApi():
                     y=[self.to_fahrenheit(x/1000) for x in self.data[request]['channels']['dist-swt']['values']], 
                     mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
                     opacity=0.7,
-                    line=dict(color='#d62728', dash='solid'),
+                    line=dict(color='#d62728', dash='solid', shape='hv'),
                     name='Distribution SWT',
                     hovertemplate="%{x|%H:%M:%S} | %{y:.1f}°F<extra></extra>"
                     )
@@ -1495,7 +1499,7 @@ class VisualizerApi():
                     y=[self.to_fahrenheit(x/1000) for x in self.data[request]['channels']['dist-rwt']['values']], 
                     mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
                     opacity=0.7,
-                    line=dict(color='#1f77b4', dash='solid'),
+                    line=dict(color='#1f77b4', dash='solid', shape='hv'),
                     name='Distribution RWT',
                     hovertemplate="%{x|%H:%M:%S} | %{y:.1f}°F<extra></extra>"
                     )
@@ -1512,7 +1516,7 @@ class VisualizerApi():
                     y=[x/100 for x in self.data[request]['channels']['dist-flow']['values']], 
                     mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
                     opacity=0.4,
-                    line=dict(color='purple', dash='solid'),
+                    line=dict(color='purple', dash='solid', shape='hv'),
                     name='Distribution flow',
                     yaxis = y_axis_power,
                     hovertemplate="%{x|%H:%M:%S} | %{y:.1f} GPM<extra></extra>"
@@ -1526,7 +1530,7 @@ class VisualizerApi():
                     y=[x/10 for x in self.data[request]['channels']['dist-pump-pwr']['values']], 
                     mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
                     opacity=0.7,
-                    line=dict(color='pink', dash='solid'),
+                    line=dict(color='pink', dash='solid', shape='hv'),
                     name='Distribution pump power /10',
                     yaxis = y_axis_power,
                     visible='legendonly',
