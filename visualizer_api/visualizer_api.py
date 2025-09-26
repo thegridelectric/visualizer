@@ -947,6 +947,9 @@ class VisualizerApi():
                 csv_buffer.write(filename+'\n')
                 df.to_csv(csv_buffer, index=False)
                 csv_buffer.seek(0)
+
+                csv_content = csv_buffer.getvalue()
+                print(f"CSV file size: {round(len(csv_content)/1024/1024, 1)} MB")
                 return StreamingResponse(
                     iter([csv_buffer.getvalue()]),
                     media_type="text/csv",
