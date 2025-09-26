@@ -41,6 +41,9 @@ from flo import DGraph
 from dgraph_visualizer import DGraphVisualizer
 
 
+CSV_SAMPLING = False
+
+
 # Backoffice database
 settings = Settings(_env_file=dotenv.find_dotenv())
 engine_gbo = create_engine(settings.gbo_db_url_no_async.get_secret_value())
@@ -482,13 +485,14 @@ class VisualizerApi():
                     )  
 
                 # Convert timestamps to datetime (optimized)
-                conversion_start = time.time()
-                tz = pytz.timezone(self.timezone_str)
-                self.data[request]['channels'][channel_name]['times'] = [
-                    datetime.fromtimestamp(ts/1000, tz=tz).replace(tzinfo=None)
-                    for ts in self.data[request]['channels'][channel_name]['times']
-                ]
-                total_conversion_time += time.time() - conversion_start
+                if not isinstance(request, CsvRequest) or CSV_SAMPLING:
+                    conversion_start = time.time()
+                    tz = pytz.timezone(self.timezone_str)
+                    self.data[request]['channels'][channel_name]['times'] = [
+                        datetime.fromtimestamp(ts/1000, tz=tz).replace(tzinfo=None)
+                        for ts in self.data[request]['channels'][channel_name]['times']
+                    ]
+                    total_conversion_time += time.time() - conversion_start
                 
             print(f"- Time to convert timestamps to datetime: {round(total_conversion_time, 1)}s")    
             # print(f"Time spent reducing data size: {round(self.time_spent_reducing_data, 1)} seconds")
@@ -883,9 +887,8 @@ class VisualizerApi():
                     error_message += "\n- Reduce the difference between the start and end time"
                     return {"success": False, "message": error_message, "reload": False}
 
-                SAMPLING = False
 
-                if SAMPLING:
+                if CSV_SAMPLING:
                     # Create the timestamps on which the data will be sampled
                     csv_times = np.linspace(request.start_ms, request.end_ms, num_points)
                     csv_times = pd.to_datetime(csv_times, unit='ms', utc=True)
