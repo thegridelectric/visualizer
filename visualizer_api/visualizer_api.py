@@ -2,6 +2,7 @@ import io
 import gc
 import os
 import csv
+from re import T
 import time
 import uuid
 import pytz
@@ -466,18 +467,22 @@ class VisualizerApi():
 
             # Sort values according to time and convert to datetime
             for channel_name in self.data[request]['channels'].keys():
-                # sorted_times_values = sorted(zip(self.data[request]['channels'][channel_name]['times'], self.data[request]['channels'][channel_name]['values']))
-                sorted_times, sorted_values = self.data[request]['channels'][channel_name]['times'], self.data[request]['channels'][channel_name]['times']
+                sorted_times_values = sorted(zip(self.data[request]['channels'][channel_name]['times'], self.data[request]['channels'][channel_name]['values']))
+                sorted_times, sorted_values = zip(*sorted_times_values)
                 self.data[request]['channels'][channel_name]['values'] = list(sorted_values)
-                self.data[request]['channels'][channel_name]['times'] = pd.to_datetime(list(sorted_times), unit='ms', utc=True)
-                self.data[request]['channels'][channel_name]['times'] = self.data[request]['channels'][channel_name]['times'].tz_convert(self.timezone_str)
-                self.data[request]['channels'][channel_name]['times'] = [x.replace(tzinfo=None) for x in self.data[request]['channels'][channel_name]['times']]
-                
-                # Apply data reduction
+                self.data[request]['channels'][channel_name]['times'] = list(sorted_times)
+
+                # Apply data reduction before converting to datetime
                 self.data[request]['channels'][channel_name] = self.reduce_data_size(
                     self.data[request]['channels'][channel_name], 
                     channel_name
                 )  
+
+                # Converted to datetime
+                self.data[request]['channels'][channel_name]['times'] = pd.to_datetime(list(self.data[request]['channels'][channel_name]['times']), unit='ms', utc=True)
+                self.data[request]['channels'][channel_name]['times'] = self.data[request]['channels'][channel_name]['times'].tz_convert(self.timezone_str)
+                self.data[request]['channels'][channel_name]['times'] = [x.replace(tzinfo=None) for x in self.data[request]['channels'][channel_name]['times']]
+                
             print(f"Time to sort values: {round(time.time() - process_start, 1)} seconds")    
             print(f"OF WHICH time spent reducing data: {round(self.time_spent_reducing_data, 1)} seconds")
             self.time_spent_reducing_data = 0
@@ -497,7 +502,6 @@ class VisualizerApi():
                         self.data[request]['channels_by_zone'][zone_number]['temp'] = channel_name
                     elif 'set' in channel_name:
                         self.data[request]['channels_by_zone'][zone_number]['set'] = channel_name
-            print(f"Time to find channels by zone: {round(time.time() - process_start, 1)} seconds")
 
             # Relays
             relays = {}
@@ -509,20 +513,19 @@ class VisualizerApi():
                         relays[state['MachineHandle']] = {'times': [], 'values': []}
                     relays[state['MachineHandle']]['times'].extend([self.to_datetime(x) for x in state['UnixMsList']])
                     relays[state['MachineHandle']]['values'].extend(state['StateList'])
-            print(f"Time to process relays: {round(time.time() - process_start, 1)} seconds")
 
             # Top state
             self.data[request]['top_states'] = {'all': {'times':[], 'values':[]}}
             if 'auto' in relays:
-                for time, state in zip(relays['auto']['times'], relays['auto']['values']):
+                for t, state in zip(relays['auto']['times'], relays['auto']['values']):
                     if state not in self.top_states_order:
                         print(f"Warning: {state} is not a known top state")
                         continue
                     if state not in self.data[request]['top_states']:
                         self.data[request]['top_states'][state] = {'times':[], 'values':[]}
-                    self.data[request]['top_states']['all']['times'].append(time)
+                    self.data[request]['top_states']['all']['times'].append(t)
                     self.data[request]['top_states']['all']['values'].append(self.top_states_order.index(state))
-                    self.data[request]['top_states'][state]['times'].append(time)
+                    self.data[request]['top_states'][state]['times'].append(t)
                     self.data[request]['top_states'][state]['values'].append(self.top_states_order.index(state))
             if "Dormant" in self.data[request]['top_states']:
                 self.data[request]['top_states']['Admin'] = self.data[request]['top_states']['Dormant']
@@ -533,7 +536,7 @@ class VisualizerApi():
             self.data[request]['ha_states'] = {'all': {'times':[], 'values':[]}}
             if 'auto.h.n' in relays or 'auto.h' in relays:
                 ha_handle = 'auto.h.n' if 'auto.h.n' in relays else 'auto.h'
-                for time, state in zip(relays[ha_handle]['times'], relays[ha_handle]['values']):
+                for t, state in zip(relays[ha_handle]['times'], relays[ha_handle]['values']):
                     if state == 'HpOn':
                         state = 'HpOnStoreOff'
                     if state == 'HpOff':
@@ -543,24 +546,24 @@ class VisualizerApi():
                         continue
                     if state not in self.data[request]['ha_states']:
                         self.data[request]['ha_states'][state] = {'times':[], 'values':[]}
-                    self.data[request]['ha_states']['all']['times'].append(time)
+                    self.data[request]['ha_states']['all']['times'].append(t)
                     self.data[request]['ha_states']['all']['values'].append(self.ha_states_order.index(state))
-                    self.data[request]['ha_states'][state]['times'].append(time)
+                    self.data[request]['ha_states'][state]['times'].append(t)
                     self.data[request]['ha_states'][state]['values'].append(self.ha_states_order.index(state))
             print(f"Time to process HA states: {round(time.time() - process_start, 1)} seconds")
 
             # AtomicAlly state
             self.data[request]['aa_states'] = {'all': {'times':[], 'values':[]}}
             if 'a.aa' in relays:
-                for time, state in zip(relays['a.aa']['times'], relays['a.aa']['values']):
+                for t, state in zip(relays['a.aa']['times'], relays['a.aa']['values']):
                     if state not in self.aa_states_order:
                         print(f"Warning: {state} is not a known AA state")
                         continue
                     if state not in self.data[request]['aa_states']:
                         self.data[request]['aa_states'][state] = {'times':[], 'values':[]}
-                    self.data[request]['aa_states']['all']['times'].append(time)
+                    self.data[request]['aa_states']['all']['times'].append(t)
                     self.data[request]['aa_states']['all']['values'].append(self.aa_states_order.index(state))
-                    self.data[request]['aa_states'][state]['times'].append(time)
+                    self.data[request]['aa_states'][state]['times'].append(t)
                     self.data[request]['aa_states'][state]['values'].append(self.aa_states_order.index(state))
             print(f"Time to process AA states: {round(time.time() - process_start, 1)} seconds")
 
