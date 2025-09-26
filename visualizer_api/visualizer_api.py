@@ -411,7 +411,7 @@ class VisualizerApi():
                 result = await session.execute(stmt)
                 all_raw_messages = result.scalars().all()  # Use scalars() to retrieve the data
                 
-                print(f"Time to fetch data: {round(time.time() - query_start, 1)} seconds")
+                print(f"- Time to fetch data: {round(time.time() - query_start, 1)}s")
 
             if not all_raw_messages:
                 warning_message = f"No data found for house '{request.house_alias}' in the selected timeframe."
@@ -490,7 +490,7 @@ class VisualizerApi():
                 ]
                 total_conversion_time += time.time() - conversion_start
                 
-            print(f"Time to convert timestamps to datetime: {round(total_conversion_time, 1)} seconds")    
+            print(f"- Time to convert timestamps to datetime: {round(total_conversion_time, 1)}s")    
             # print(f"Time spent reducing data size: {round(self.time_spent_reducing_data, 1)} seconds")
             self.time_spent_reducing_data = 0
 
@@ -611,7 +611,7 @@ class VisualizerApi():
 
                 result = await session.execute(stmt)  # Use async execute
                 all_raw_messages = result.scalars().all()  # Get the results
-                print(f"Time to fetch data: {round(time.time()-query_start,1)} seconds")
+                print(f"Time to fetch data: {round(time.time()-query_start,1)}s")
 
             if not all_raw_messages:
                 warning_message = f"No data found for the aggregation in the selected timeframe."
@@ -916,7 +916,7 @@ class VisualizerApi():
                     for channel, values in results:
                         csv_data[channel] = values
 
-                    print(f"Sampling done in {round(time.time() - request_start, 1)} seconds.")
+                    print(f"Sampling done in {round(time.time() - request_start, 1)}s.")
 
                 else:
                     csv_data = {}
@@ -1224,7 +1224,7 @@ class VisualizerApi():
                     zip_file.writestr('plot11.html', html_buffer.read())
 
                 plot_time = time.time() - plot_start
-                print(f"Total plot generation: {round(plot_time, 1)} seconds")
+                print(f"- Time to generate all plots: {round(plot_time, 1)}s")
                 
                 # Step 3: Response preparation
                 zip_buffer.seek(0)
@@ -1239,7 +1239,7 @@ class VisualizerApi():
                 print(f"Sent zip file of size {round(zip_size/1024/1024, 1)} MB")
                 
                 total_time = time.time() - total_start
-                print(f"=== TOTAL TIME: {round(total_time, 1)} seconds ===\n")
+                print(f"=== TOTAL TIME: {round(total_time, 1)}s ===\n")
 
                 return response
                 
