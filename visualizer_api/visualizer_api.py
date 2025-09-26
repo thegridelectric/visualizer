@@ -252,6 +252,45 @@ class VisualizerApi():
     def to_hex(self, rgba):
         r, g, b, a = (int(c * 255) for c in rgba)
         return f'#{r:02x}{g:02x}{b:02x}'
+    
+    def _reduce_temperature_data(self, channel_data, threshold_f=0.5):
+        """
+        Reduce temperature data by keeping only points where the temperature changes
+        by at least threshold_f degrees Fahrenheit.
+        
+        Args:
+            channel_data: Dict with 'times' and 'values' keys
+            threshold_f: Temperature change threshold in Fahrenheit
+            
+        Returns:
+            Reduced channel_data dict
+        """
+        if not channel_data['values'] or len(channel_data['values']) < 2:
+            return channel_data
+            
+        # Convert threshold from Fahrenheit to the raw units (assuming values are in millidegrees)
+        threshold_raw = threshold_f * 1000  # Convert F to millidegrees
+        
+        reduced_times = [channel_data['times'][0]]
+        reduced_values = [channel_data['values'][0]]
+        
+        for i in range(1, len(channel_data['values'])):
+            # Check if temperature change is significant
+            if abs(channel_data['values'][i] - reduced_values[-1]) >= threshold_raw:
+                reduced_times.append(channel_data['times'][i])
+                reduced_values.append(channel_data['values'][i])
+        
+        # Always keep the last point to maintain data integrity
+        if len(reduced_times) > 1 and reduced_times[-1] != channel_data['times'][-1]:
+            reduced_times.append(channel_data['times'][-1])
+            reduced_values.append(channel_data['values'][-1])
+        
+        print(f"Data reduction: {len(channel_data['values'])} -> {len(reduced_values)} points ({len(reduced_values)/len(channel_data['values'])*100:.1f}% kept)")
+        
+        return {
+            'times': reduced_times,
+            'values': reduced_values
+        }
 
     def check_password(self, request: BaseRequest):
         if request.password == self.admin_user_password:
@@ -423,7 +462,14 @@ class VisualizerApi():
                 self.data[request]['channels'][channel_name]['values'] = list(sorted_values)
                 self.data[request]['channels'][channel_name]['times'] = pd.to_datetime(list(sorted_times), unit='ms', utc=True)
                 self.data[request]['channels'][channel_name]['times'] = self.data[request]['channels'][channel_name]['times'].tz_convert(self.timezone_str)
-                self.data[request]['channels'][channel_name]['times'] = [x.replace(tzinfo=None) for x in self.data[request]['channels'][channel_name]['times']]        
+                self.data[request]['channels'][channel_name]['times'] = [x.replace(tzinfo=None) for x in self.data[request]['channels'][channel_name]['times']]
+                
+                # Apply data reduction for temperature channels (change-based filtering)
+                if channel_name in ['hp-lwt', 'hp-ewt']:
+                    self.data[request]['channels'][channel_name] = self._reduce_temperature_data(
+                        self.data[request]['channels'][channel_name], 
+                        threshold_f=0.5
+                    )        
 
             # Find all zone channels
             self.data[request]['channels_by_zone'] = {}
