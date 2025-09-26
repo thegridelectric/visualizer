@@ -8,7 +8,6 @@ import pytz
 import dotenv
 import uvicorn
 import zipfile
-import pendulum
 import traceback
 import numpy as np
 import pandas as pd
@@ -241,7 +240,7 @@ class VisualizerApi():
         uvicorn.run(self.app, host="0.0.0.0", port=8000)
 
     def to_datetime(self, time_ms):
-        return pendulum.from_timestamp(time_ms/1000, tz=self.timezone_str)
+        return datetime.fromtimestamp(time_ms / 1000, tz=pytz.timezone(self.timezone_str))
 
     def to_fahrenheit(self, t):
         return t*9/5+32
