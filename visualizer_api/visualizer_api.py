@@ -1142,7 +1142,7 @@ class VisualizerApi():
     async def get_plots(self, request: DataRequest, current_user = Depends(get_current_user)):
         try:
             total_start = time.time()
-            print(f"=== PLOT GENERATION STARTED ===")
+            print(f"\n=== PLOT GENERATION STARTED ===")
             
             async with async_timeout.timeout(self.timeout_seconds):
                 error = await self.get_data(request)
@@ -1157,6 +1157,7 @@ class VisualizerApi():
                 
                 # Step 2: Plot generation
                 plot_start = time.time()
+                print("Generating plots...")
                 zip_buffer = io.BytesIO()
                 with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
                     html_buffer = await self.plot_heatpump(request)
@@ -1210,7 +1211,7 @@ class VisualizerApi():
                 print(f"Response preparation: {round(response_time, 1)} seconds")
                 
                 total_time = time.time() - total_start
-                print(f"=== TOTAL TIME: {round(total_time, 1)} seconds ===")
+                print(f"=== TOTAL TIME: {round(total_time, 1)} seconds ===\n")
 
                 return response
                 
