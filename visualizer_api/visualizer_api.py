@@ -41,7 +41,7 @@ from flo import DGraph
 from dgraph_visualizer import DGraphVisualizer
 
 
-CSV_SAMPLING = False
+CSV_SAMPLING = True
 
 
 # Backoffice database
