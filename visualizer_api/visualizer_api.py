@@ -300,9 +300,8 @@ class VisualizerApi():
                 reduced_times.append(channel_data['times'][i])
                 reduced_values.append(channel_data['values'][i])
         
-        if len(reduced_times) > 1 and reduced_times[-1] != channel_data['times'][-1]:
-            reduced_times.append(channel_data['times'][-1])
-            reduced_values.append(channel_data['values'][-1])
+        reduced_times.append(channel_data['times'][-1])
+        reduced_values.append(channel_data['values'][-1])
         
         # print(f"{channel_name} reduction: {len(channel_data['values'])} -> {len(reduced_values)} points ({len(reduced_values)/len(channel_data['values'])*100:.1f}% kept)")
         self.time_spent_reducing_data += time.time() - start_time_reduction
