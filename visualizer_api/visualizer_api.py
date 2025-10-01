@@ -1611,9 +1611,9 @@ class VisualizerApi():
             fig.update_layout(yaxis=dict(title='Temperature [F]', range=[0,260]))
             fig.update_layout(yaxis2=dict(title='Flow [GPM] or Power [W]', range=[0,20]))
         elif plotting_temperatures and not plotting_power:
-            fig.update_layout(yaxis=dict(title='Temperature [F]'))
+            fig.update_layout(yaxis=dict(title='Temperature [F]', range=[0,260]))
         elif plotting_power and not plotting_temperatures:
-            fig.update_layout(yaxis=dict('Flow [GPM] or Power [W]'))
+            fig.update_layout(yaxis=dict(title='Flow [GPM] or Power [W]', range=[0,20]))
 
         fig.update_layout(
             title=dict(text='Distribution', x=0.5, xanchor='center'),
