@@ -195,6 +195,7 @@ class AlertReactionRequest(BaseModel):
 
 class ScadaUpdateRequest(BaseModel):
     selected_short_aliases: List[str]
+    update_packages: bool = False
 
 class VisualizerApi():
     def __init__(self):
@@ -3035,7 +3036,10 @@ class VisualizerApi():
                 continue
             
             try:
-                ssh_command = f"ssh -o StrictHostKeyChecking=no -A pi@{ssh_host} 'cd ~/gridworks-scada && git checkout main && git pull && /home/pi/.local/bin/gwstop && /home/pi/.local/bin/gwstart'"
+                if request.update_packages:
+                    ssh_command = f"ssh -o StrictHostKeyChecking=no -A pi@{ssh_host} 'cd ~/gridworks-scada && git checkout . && git checkout main && git pull && /home/pi/.local/bin/gwstop && ./tools/mkenv-pi.sh && /home/pi/.local/bin/gwstart'"
+                else:
+                    ssh_command = f"ssh -o StrictHostKeyChecking=no -A pi@{ssh_host} 'cd ~/gridworks-scada && git checkout . && git checkout main && git pull && /home/pi/.local/bin/gwstop && /home/pi/.local/bin/gwstart'"
                 process = await asyncio.create_subprocess_shell(
                     ssh_command,
                     stdout=asyncio.subprocess.PIPE,
