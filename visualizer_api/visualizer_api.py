@@ -3036,22 +3036,21 @@ class VisualizerApi():
                 continue
             
             try:
-                if request.update_packages:
-                    ssh_command = f"ssh -o StrictHostKeyChecking=no -A pi@{ssh_host} 'cd ~/gridworks-scada && git checkout . && git checkout main && git pull && /home/pi/.local/bin/gwstop && ./tools/mkenv-pi.sh && /home/pi/.local/bin/gwstart'"
-                else:
-                    ssh_command = f"ssh -o StrictHostKeyChecking=no -A pi@{ssh_host} 'cd ~/gridworks-scada && git checkout . && git checkout main && git pull && /home/pi/.local/bin/gwstop && /home/pi/.local/bin/gwstart'"
-                process = await asyncio.create_subprocess_shell(
-                    ssh_command,
+                # Step 1: Git operations (checkout, pull) and update database with commit hash
+                print(f"Step 1: Updating git repository for {house_alias}...")
+                git_ssh_command = f"ssh -o StrictHostKeyChecking=no -A pi@{ssh_host} 'cd ~/gridworks-scada && git checkout . && git checkout main && git pull'"
+                git_process = await asyncio.create_subprocess_shell(
+                    git_ssh_command,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE
                 )
-                stdout, stderr = await process.communicate()
+                git_stdout, git_stderr = await git_process.communicate()
                 
-                if process.returncode != 0:
-                    print(f"Failed to update SCADA code: {stderr.decode()}")
-                    # Update the database
+                if git_process.returncode != 0:
+                    print(f"Failed to update git repository: {git_stderr.decode()}")
+                    # Update the database with error status
                     try:
-                        commit_hash = 'unknown'
+                        commit_hash = 'git_update_failed'
                         print(f"Updating database with commit hash: {commit_hash}")
                         update_query = homes.update().where(homes.c.short_alias == house_alias).values(scada_git_commit=commit_hash)
                         db.execute(update_query)
@@ -3061,31 +3060,32 @@ class VisualizerApi():
                     results.append({
                         "house_alias": house_alias,
                         "status": "error",
-                        "message": f"Failed to update SCADA code: {stderr.decode()}"
+                        "message": f"Failed to update git repository: {git_stderr.decode()}"
                     })
                     continue
                 
-                # Now, get the git commit hash
-                git_command = f"ssh -o StrictHostKeyChecking=no pi@{ssh_host} 'cd ~/gridworks-scada && git rev-parse HEAD && git rev-parse --abbrev-ref HEAD && git log -1 --pretty=format:\"%h - %s (%cr)\"'"
-                git_process = await asyncio.create_subprocess_shell(
-                    git_command,
+                # Get the git commit hash after successful pull
+                git_info_command = f"ssh -o StrictHostKeyChecking=no pi@{ssh_host} 'cd ~/gridworks-scada && git rev-parse HEAD && git rev-parse --abbrev-ref HEAD && git log -1 --pretty=format:\"%h - %s (%cr)\"'"
+                git_info_process = await asyncio.create_subprocess_shell(
+                    git_info_command,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE
                 )
-                git_stdout, git_stderr = await git_process.communicate()
+                git_info_stdout, git_info_stderr = await git_info_process.communicate()
 
-                if git_process.returncode != 0:
-                    print(f"Failed to get git commit hash: {git_stderr.decode()}")
+                if git_info_process.returncode != 0:
+                    print(f"Failed to get git commit hash: {git_info_stderr.decode()}")
                     commit_info = "Failed to get commit information"
+                    commit_hash_with_branch = "unknown"
                 else:
-                    commit_info = git_stdout.decode().strip()
-                
-                # Update the database with the new commit hash
-                try:
+                    commit_info = git_info_stdout.decode().strip()
                     commit_lines = commit_info.split('\n')
                     commit_hash = commit_lines[0][:7] if commit_lines else "unknown"
                     branch_name = commit_lines[1] if len(commit_lines) > 1 else "unknown"
                     commit_hash_with_branch = f"{branch_name} / {commit_hash}"
+                
+                # Update the database with the new commit hash
+                try:
                     print(f"Updating database with commit hash: {commit_hash_with_branch}")
                     update_query = homes.update().where(homes.c.short_alias == house_alias).values(scada_git_commit=commit_hash_with_branch)
                     db.execute(update_query)
@@ -3093,13 +3093,35 @@ class VisualizerApi():
                 except Exception as db_error:
                     print(f"Error updating database with commit hash: {db_error}")
                 
-                results.append({
-                    "house_alias": house_alias,
-                    "status": "success",
-                    "message": "SCADA code updated and restarted successfully",
-                    "output": stdout.decode(),
-                    "commit_info": commit_info
-                })
+                # Step 2: Service management (stop, update packages if needed, start)
+                print(f"Step 2: Managing services for {house_alias}...")
+                if request.update_packages:
+                    service_ssh_command = f"ssh -o StrictHostKeyChecking=no -A pi@{ssh_host} 'cd ~/gridworks-scada && /home/pi/.local/bin/gwstop && ./tools/mkenv-pi.sh && /home/pi/.local/bin/gwstart'"
+                else:
+                    service_ssh_command = f"ssh -o StrictHostKeyChecking=no -A pi@{ssh_host} 'cd ~/gridworks-scada && /home/pi/.local/bin/gwstop && /home/pi/.local/bin/gwstart'"
+                
+                service_process = await asyncio.create_subprocess_shell(
+                    service_ssh_command,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                service_stdout, service_stderr = await service_process.communicate()
+                
+                if service_process.returncode != 0:
+                    print(f"Failed to manage services: {service_stderr.decode()}")
+                    results.append({
+                        "house_alias": house_alias,
+                        "status": "partial_success",
+                        "message": f"Git repository updated successfully, but service management failed: {service_stderr.decode()}",
+                        "commit_info": commit_info
+                    })
+                else:
+                    results.append({
+                        "house_alias": house_alias,
+                        "status": "success",
+                        "message": "SCADA code updated and services restarted successfully",
+                        "commit_info": commit_info
+                    })
                 
             except Exception as e:
                 results.append({
