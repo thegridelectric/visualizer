@@ -236,6 +236,7 @@ class VisualizerApi():
             'store-cold-pipe': 0.2*1000, #degCx1000
             'store-flow': 0.1*100, #GPMx100
             'store-pump-pwr': 0.1*10, #kWx100
+            'zone': 0,
         }
         self.data = {}
         self.timestamp_min_max = {}
@@ -281,7 +282,7 @@ class VisualizerApi():
         r, g, b, a = (int(c * 255) for c in rgba)
         return f'#{r:02x}{g:02x}{b:02x}'
     
-    def reduce_data_size(self, channel_data, channel_name):
+    def reduce_data_size(self, channel_data, channel_name, max_timestamp):
 
         start_time_reduction = time.time()
 
@@ -289,6 +290,8 @@ class VisualizerApi():
             channel_name = 'buffer-depths'
         if 'tank' in channel_name and 'depth' in channel_name and 'micro' not in channel_name:
             channel_name = 'tank-depths'
+        if 'zone' in channel_name:
+            channel_name = 'zone'
 
         if channel_name not in self.threshold_per_channel or not channel_data['values'] or len(channel_data['values']) < 2:
             return channel_data
@@ -303,6 +306,8 @@ class VisualizerApi():
         
         reduced_times.append(channel_data['times'][-1])
         reduced_values.append(channel_data['values'][-1])
+        # reduced_times.append(max_timestamp)
+        # reduced_values.append(reduced_values[-1])
         
         # print(f"{channel_name} reduction: {len(channel_data['values'])} -> {len(reduced_values)} points ({len(reduced_values)/len(channel_data['values'])*100:.1f}% kept)")
         self.time_spent_reducing_data += time.time() - start_time_reduction
@@ -422,7 +427,6 @@ class VisualizerApi():
             
             # Process reports
             print(f"Processing data...")
-            process_start = time.time()
             reports: List[MessageSql] = sorted(
                 [x for x in all_raw_messages if x.message_type_name in ['report', 'batched.readings']],
                 key = lambda x: x.message_persisted_ms
@@ -463,6 +467,7 @@ class VisualizerApi():
 
             min_timestamp = max(request.start_ms, min_timestamp)
             max_timestamp = min(request.end_ms, max_timestamp)
+            true_max_timestamp = max_timestamp
             # print(f"After edit: {self.to_datetime(min_timestamp)}")
             min_timestamp += -(max_timestamp-min_timestamp)*0.05
             max_timestamp += (max_timestamp-min_timestamp)*0.05
@@ -481,7 +486,8 @@ class VisualizerApi():
                 if not isinstance(request, CsvRequest):
                     self.data[request]['channels'][channel_name] = self.reduce_data_size(
                         self.data[request]['channels'][channel_name], 
-                        channel_name
+                        channel_name,
+                        true_max_timestamp
                     )  
 
                 # Convert timestamps to datetime (optimized)
