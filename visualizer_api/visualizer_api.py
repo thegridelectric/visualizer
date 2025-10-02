@@ -763,7 +763,10 @@ class VisualizerApi():
                 async with self.AsyncSessionLocal() as session:
                     if request.house_alias:
                         stmt = select(MessageSql).filter(
-                            MessageSql.from_alias == f"hw1.isone.me.versant.keene.{request.house_alias}.scada",
+                            (
+                                (MessageSql.from_alias == f"hw1.isone.me.versant.keene.{request.house_alias}.scada") |
+                                (MessageSql.from_alias == f"hw1.isone.me.versant.keene.{request.house_alias}.scada.s2")
+                            ),
                             MessageSql.message_type_name.in_(request.selected_message_types),
                             MessageSql.message_persisted_ms >= request.start_ms,
                             MessageSql.message_persisted_ms <= request.end_ms,
@@ -791,6 +794,7 @@ class VisualizerApi():
                     [m for m in messages if m.message_type_name == 'gridworks.event.problem'],
                     key=lambda x: (levels[x.payload['ProblemType']], x.payload['TimeCreatedMs'])
                 )
+                print(f"Unique aliases: {set([x.from_alias for x in sorted_problem_types])}")
                 for message in sorted_problem_types:
                     source = message.payload['Src']
                     if ".scada" in source and source.split('.')[-1] in ['scada', 's2']:
@@ -806,6 +810,7 @@ class VisualizerApi():
                     [m for m in messages if m.message_type_name == 'glitch'],
                     key=lambda x: (levels[str(x.payload['Type']).lower()], x.payload['CreatedMs'])
                 )
+                print(f"Unique aliases: {set([x.from_alias for x in sorted_glitches])}")
                 for message in sorted_glitches:
                     source = message.payload['FromGNodeAlias']
                     if ".scada" in source and source.split('.')[-1] in ['scada', 's2']:
