@@ -129,7 +129,7 @@ class Prices(BaseModel):
     energy: List[float]
     
 class BaseRequest(BaseModel):
-    house_alias: str
+    house_alias: Union[str, List[str]]
     password: str
     unique_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
 
@@ -762,11 +762,20 @@ class VisualizerApi():
 
                 async with self.AsyncSessionLocal() as session:
                     if request.house_alias:
+                        # Handle both single string and list of strings
+                        house_aliases = request.house_alias if isinstance(request.house_alias, list) else [request.house_alias]
+                        house_aliases = [x.replace(' ','') for x in house_aliases[0].split(',')]
+                        
+                        # Build OR conditions for each house alias
+                        house_alias_conditions = []
+                        for house_alias in house_aliases:
+                            house_alias_conditions.extend([
+                                MessageSql.from_alias == f"hw1.isone.me.versant.keene.{house_alias}.scada",
+                                MessageSql.from_alias == f"hw1.isone.me.versant.keene.{house_alias}.scada.s2"
+                            ])
+                        
                         stmt = select(MessageSql).filter(
-                            (
-                                (MessageSql.from_alias == f"hw1.isone.me.versant.keene.{request.house_alias}.scada") |
-                                (MessageSql.from_alias == f"hw1.isone.me.versant.keene.{request.house_alias}.scada.s2")
-                            ),
+                            or_(*house_alias_conditions),
                             MessageSql.message_type_name.in_(request.selected_message_types),
                             MessageSql.message_persisted_ms >= request.start_ms,
                             MessageSql.message_persisted_ms <= request.end_ms,
@@ -794,7 +803,6 @@ class VisualizerApi():
                     [m for m in messages if m.message_type_name == 'gridworks.event.problem'],
                     key=lambda x: (levels[x.payload['ProblemType']], x.payload['TimeCreatedMs'])
                 )
-                print(f"Unique aliases: {set([x.from_alias for x in sorted_problem_types])}")
                 for message in sorted_problem_types:
                     source = message.payload['Src']
                     if ".scada" in source and source.split('.')[-1] in ['scada', 's2']:
@@ -810,7 +818,6 @@ class VisualizerApi():
                     [m for m in messages if m.message_type_name == 'glitch'],
                     key=lambda x: (levels[str(x.payload['Type']).lower()], x.payload['CreatedMs'])
                 )
-                print(f"Unique aliases: {set([x.from_alias for x in sorted_glitches])}")
                 for message in sorted_glitches:
                     source = message.payload['FromGNodeAlias']
                     if ".scada" in source and source.split('.')[-1] in ['scada', 's2']:
