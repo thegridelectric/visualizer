@@ -1705,6 +1705,7 @@ class VisualizerApi():
                 self.data[request]['channels'][whitewire_ch]['values'] = [
                     int(abs(x)>threshold) for x in self.data[request]['channels'][whitewire_ch]['values']
                     ]
+                print(f"Whitewire {whitewire_ch}: {sum(self.data[request]['channels'][whitewire_ch]['values'])}")
                 ww_times = self.data[request]['channels'][whitewire_ch]['times']
                 ww_values = self.data[request]['channels'][whitewire_ch]['values']            
                 # Plot heat calls as periods
@@ -1714,6 +1715,7 @@ class VisualizerApi():
                     if ww_values[i] == 1:
                         # Start a heat call period
                         if not last_was_1 or 'show-points' in request.selected_channels and i>0: 
+                            print("HEAT CALL")
                             fig.add_trace(
                                 go.Scatter(
                                     x=[ww_times[i], ww_times[i]],
@@ -2703,7 +2705,7 @@ class VisualizerApi():
 
     async def login(self, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
         user = db.execute(users.select().where(users.c.username == form_data.username)).first()
-        if not user or not verify_password(form_data.password, user.password_hash):
+        if not user or not verify_password(form_data.password, user.hashed_password):
             raise HTTPException(
                 status_code=401,
                 detail="Incorrect username or password",
