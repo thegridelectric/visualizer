@@ -1705,7 +1705,6 @@ class VisualizerApi():
                 self.data[request]['channels'][whitewire_ch]['values'] = [
                     int(abs(x)>threshold) for x in self.data[request]['channels'][whitewire_ch]['values']
                     ]
-                print(f"Whitewire {whitewire_ch}: {sum(self.data[request]['channels'][whitewire_ch]['values'])}")
                 ww_times = self.data[request]['channels'][whitewire_ch]['times']
                 ww_values = self.data[request]['channels'][whitewire_ch]['values']            
                 # Plot heat calls as periods
