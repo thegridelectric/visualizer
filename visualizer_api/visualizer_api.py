@@ -1715,7 +1715,6 @@ class VisualizerApi():
                     if ww_values[i] == 1:
                         # Start a heat call period
                         if not last_was_1 or 'show-points' in request.selected_channels and i>0: 
-                            print("HEAT CALL")
                             fig.add_trace(
                                 go.Scatter(
                                     x=[ww_times[i], ww_times[i]],
@@ -1787,7 +1786,8 @@ class VisualizerApi():
                 ticks='outside',
                 showline=True,
                 linecolor='#b5b5b5' if request.darkmode else 'rgb(42,63,96)',
-                showgrid=False
+                showgrid=False,
+                type='date',
                 ),
             yaxis=dict(
                 range = [-0.5, len(self.data[request]['channels_by_zone'].keys())*1.3],
