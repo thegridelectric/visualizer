@@ -2591,12 +2591,19 @@ class VisualizerApi():
             "timezone_str": "America/New_York"
         }
         
-        async with httpx.AsyncClient() as client:
-            response = await client.post("https://price-forecasts.electricity.works/get_prices_visualizer", json=price_request)
-            response.raise_for_status()
-            data = response.json()
-            lmp_values = data['lmp']
-            dist_values = data['dist']
+        try:
+            print(f"Getting prices from price service...")
+            async with httpx.AsyncClient() as client:
+                response = await client.post("https://price-forecasts.electricity.works/get_prices_visualizer", json=price_request)
+                response.raise_for_status()
+                data = response.json()
+                lmp_values = data['lmp']
+                dist_values = data['dist']
+                print(f"Prices received from price service")
+        except Exception as e:
+            print(f"Error getting prices from price service: {e}")
+            lmp_values = []
+            dist_values = []
         
         # Generate time points for the prices
         price_times_s = [request.start_ms/1000 + x*3600 for x in range(len(lmp_values))]
