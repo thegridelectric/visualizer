@@ -13,6 +13,7 @@ import zipfile
 import traceback
 import numpy as np
 import pandas as pd
+import httpx
 from pydantic import BaseModel, Field
 from typing import List, Optional, Union
 import asyncio
@@ -346,6 +347,7 @@ class VisualizerApi():
         return None
     
     async def receive_prices(self, request: Prices):
+        '''function used only with aggregator page'''
         try:
             rows = []
             project_dir = os.path.dirname(os.path.abspath(__file__))
@@ -2582,24 +2584,24 @@ class VisualizerApi():
         plot_start = time.time()
         fig = go.Figure()
 
-        # Open and read the price CSV file
-        csv_times, csv_dist, csv_lmp = [], [], []
-        project_dir = os.path.dirname(os.path.abspath(__file__))
-        elec_file = os.path.join(project_dir, 'price_forecast_dates.csv')
-        with open(elec_file, newline='', encoding='utf-8') as csvfile:
-            csvreader = csv.reader(csvfile)
-            next(csvreader)
-            for row in csvreader:
-                csv_times.append(float(row[0]))
-                csv_dist.append(float(row[1])/10)
-                csv_lmp.append(float(row[2])/10)
-
-        request_hours = int((request.end_ms - request.start_ms)/1000 / 3600)
-        price_times_s = [request.start_ms/1000 + x*3600 for x in range(request_hours+2+48)]
-        lmp_values = [lmp for time, dist, lmp in zip(csv_times, csv_dist, csv_lmp) if time in price_times_s]
-        total_price_values = [lmp+dist for time, dist, lmp in zip(csv_times, csv_dist, csv_lmp) if time in price_times_s]
-        csv_times = [time for time in csv_times if time in price_times_s]
-        price_times = [self.to_datetime(x*1000) for x in csv_times]
+        # Query the external price API
+        price_request = {
+            "start_unix_s": request.start_ms/1000,
+            "end_unix_s": request.end_ms/1000 + 5*3600,
+            "timezone_str": "America/New_York"
+        }
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.post("https://price-forecasts.electricity.works/get_prices_visualizer", json=price_request)
+            response.raise_for_status()
+            data = response.json()
+            lmp_values = data['lmp']
+            dist_values = data['dist']
+        
+        # Generate time points for the prices
+        price_times_s = [request.start_ms/1000 + x*3600 for x in range(len(lmp_values))]
+        price_times = [self.to_datetime(x*1000) for x in price_times_s]
+        total_price_values = [x+y for x,y in zip(lmp_values, dist_values)]
 
         fig.add_trace(
             go.Scatter(
@@ -2781,6 +2783,7 @@ class VisualizerApi():
 
         white_color = '#858585' if request.darkmode else '#6c757d'
 
+        # TODO: store the real time prices somewhere and querry from here
         # Open and read the price CSV file
         csv_times, csv_dist, csv_lmp = [], [], []
         project_dir = os.path.dirname(os.path.abspath(__file__))
