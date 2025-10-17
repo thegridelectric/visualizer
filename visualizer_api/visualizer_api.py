@@ -2594,11 +2594,11 @@ class VisualizerApi():
         try:
             print(f"Getting prices from price service...")
             async with httpx.AsyncClient() as client:
-                response = await client.post("https://price-service.electricity.works/get_prices_visualizer", json=price_request)
+                response = await client.post("https://price-service.electricity.works/get_prices_visualizer/hw1-isone-me-versant-keene-ps/gw0-price-forecast", json=price_request)
                 response.raise_for_status()
                 data = response.json()
-                lmp_values = data['lmp']
-                dist_values = data['dist']
+                lmp_values = data['LmpList']
+                dist_values = data['DistList']
                 print(f"Prices received from price service")
         except Exception as e:
             print(f"Error getting prices from price service: {e}")
