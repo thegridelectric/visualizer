@@ -2594,7 +2594,7 @@ class VisualizerApi():
         try:
             print(f"Getting prices from price service...")
             async with httpx.AsyncClient() as client:
-                response = await client.post("https://price-forecasts.electricity.works/get_prices_visualizer", json=price_request)
+                response = await client.post("https://price-service.electricity.works/get_prices_visualizer", json=price_request)
                 response.raise_for_status()
                 data = response.json()
                 lmp_values = data['lmp']
