@@ -995,20 +995,19 @@ class VisualizerApi():
                 async with self.AsyncSessionLocal() as session:
                     stmt = select(MessageSql).filter(
                         MessageSql.message_type_name == "flo.params.house0",
-                        MessageSql.from_alias == f"hw1.isone.me.versant.keene.{request.house_alias}.scada",
+                        MessageSql.from_alias == f"hw1.isone.me.versant.keene.{request.house_alias}",
                         MessageSql.message_persisted_ms >= request.time_ms - 48*3600*1000,
                         MessageSql.message_persisted_ms <= request.time_ms,
                     ).order_by(desc(MessageSql.message_persisted_ms))
                     result = await session.execute(stmt)
                     flo_params_msg: MessageSql = result.scalars().first()
                 
-                print(f"Found FLO run at {self.to_datetime(flo_params_msg.message_persisted_ms)}")
-
                 if not flo_params_msg:
                     print(f"Could not find a FLO run in the 48 hours prior to {self.to_datetime(request.time_ms)}")
                     if os.path.exists('result.xlsx'):
                         os.remove('result.xlsx')
                     return
+                print(f"Found FLO run at {self.to_datetime(flo_params_msg.message_persisted_ms)}")
 
                 print("Running Dijkstra and saving analysis to excel...")
                 flo_params = FloParamsHouse0(**flo_params_msg.payload)
