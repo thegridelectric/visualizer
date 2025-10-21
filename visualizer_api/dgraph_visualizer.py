@@ -4,8 +4,9 @@ import pandas as pd
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
-from openpyxl.drawing.image import Image
 from datetime import datetime, timedelta
+from openpyxl.drawing.image import Image
+from openpyxl.worksheet.worksheet import Worksheet
 from flo import DGraph
 from dijkstra_types import DNode
 
@@ -202,19 +203,19 @@ class DGraphVisualizer():
         plt.close()
 
         # Write to Excel
-        start = datetime.fromtimestamp(self.g.params.start_time, tz=pytz.timezone("America/New_York")).strftime('%Y-%m-%d %H:%M')
+        # start = datetime.fromtimestamp(self.g.params.start_time, tz=pytz.timezone("America/New_York")).strftime('%Y-%m-%d %H:%M')
         # os.makedirs('results', exist_ok=True)
         # file_path = os.path.join('results', f'result_{start}.xlsx')
         file_path = 'result.xlsx'
         with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
 
             self.plot(show=False)
-            plot_sheet = writer.book.create_sheet(title='Plot')
+            plot_sheet: Worksheet = writer.book.create_sheet(title='Plot')
             plot_sheet.add_image(Image('plot.png'), 'A1')
 
             parameters_df.to_excel(writer, index=False, sheet_name='Parameters')
 
-            plot2_sheet = writer.book.create_sheet(title='PQ pairs')
+            plot2_sheet: Worksheet = writer.book.create_sheet(title='PQ pairs')
             pqpairs_df.to_excel(writer, index=False, sheet_name='PQ pairs')
             plot2_sheet.add_image(Image('plot_pq.png'), 'C1')
 

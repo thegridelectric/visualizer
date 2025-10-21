@@ -144,7 +144,7 @@ class DNode():
         self.energy = self.get_energy()
         # Dijkstra's algorithm
         self.pathcost = 0 if time_slice==self.params.horizon else 1e9
-        self.next_node = None        
+        self.next_node: DNode = None   
 
     def to_string(self):
         return f"{self.top_temp}({self.thermocline1}){self.middle_temp}({self.thermocline2}){self.bottom_temp}"
