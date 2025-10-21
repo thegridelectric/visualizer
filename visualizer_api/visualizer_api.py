@@ -573,6 +573,10 @@ class VisualizerApi():
             self.data[request]['aa_states'] = {'all': {'times':[], 'values':[]}}
             if 'a.aa' in relays:
                 for t, state in zip(relays['a.aa']['times'], relays['a.aa']['values']):
+                    if state == 'HpOn':
+                        state = 'HpOnStoreOff'
+                    if state == 'HpOff':
+                        state = 'HpOffStoreOff'
                     if state not in self.aa_states_order:
                         print(f"Warning: {state} is not a known AA state")
                         continue
