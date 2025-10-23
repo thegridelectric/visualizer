@@ -219,7 +219,7 @@ class SuperGraphGenerator():
         
     def save_to_json(self):
         print("\nSaving SuperGraph to JSON...")
-        json_file_path = "super_graph.json"
+        json_file_path = f"super_graph_{self.params.flo_params.StorageVolumeGallons}.json"
         with open(json_file_path, 'w') as f:
             json.dump(self.super_graph, f)
         print("Done.")
@@ -700,6 +700,7 @@ if __name__ == '__main__':
             message_created_ms=data.get("MessageCreatedMs")
         )
     flo_params = FloParamsHouse0(**message.payload)
+    # flo_params.StorageVolumeGallons = 120
 
     generator = SuperGraphGenerator(flo_params)
     generator.generate()
