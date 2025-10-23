@@ -2,7 +2,6 @@ import io
 import gc
 import os
 import csv
-from re import T
 import time
 import uuid
 import pytz
