@@ -351,7 +351,7 @@ class VisualizerApi():
         try:
             rows = []
             project_dir = os.path.dirname(os.path.abspath(__file__))
-            elec_file = os.path.join(project_dir, 'price_forecast_dates.csv')
+            elec_file = os.path.join(project_dir, 'data/price_forecast_dates.csv')
             with open(elec_file, mode='r', newline='') as file:
                 reader = csv.reader(file)
                 header = next(reader)
