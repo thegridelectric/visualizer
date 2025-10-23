@@ -38,8 +38,8 @@ from passlib.context import CryptContext
 from config import Settings
 from models import MessageSql
 from named_types import FloParamsHouse0
-from flo import DGraph
-from dgraph_visualizer import DGraphVisualizer
+from flo.flo import DGraph
+from flo.dgraph_visualizer import DGraphVisualizer
 
 
 CSV_SAMPLING = True

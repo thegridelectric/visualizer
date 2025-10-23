@@ -7,7 +7,7 @@ from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.linear_model import Ridge
 from sklearn.metrics import mean_squared_error, r2_score
 from named_types import FloParamsHouse0
-from dijkstra_types import DParams, DNode, to_kelvin
+from flo.dijkstra_types import DParams, DNode, to_kelvin
 
 
 class SuperGraphGenerator():

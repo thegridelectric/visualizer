@@ -3,7 +3,7 @@ import time
 import json
 import numpy as np
 from typing import Dict, List, Tuple
-from dijkstra_types import DParams, DNode, DEdge
+from flo.dijkstra_types import DParams, DNode, DEdge
 from named_types import FloParamsHouse0, PriceQuantityUnitless
 
 
@@ -36,7 +36,7 @@ class DGraph():
         print("Cleared super graph from memory")
         
     def load_super_graph(self):
-        with open(f"super_graph_{self.params.flo_params.StorageVolumeGallons}.json", 'r') as f:
+        with open(f"flo/super_graph_{self.params.flo_params.StorageVolumeGallons}.json", 'r') as f:
             self.super_graph: Dict = json.load(f)
         self.discretized_store_heat_in = [float(x) for x in list(self.super_graph.keys())]
         self.discretized_store_heat_in_array = np.array(self.discretized_store_heat_in)
