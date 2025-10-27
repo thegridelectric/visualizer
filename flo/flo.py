@@ -225,6 +225,9 @@ class DGraph():
                 parameters=self.params
             )
 
+            if self.initial_state.top_temp < self.initial_state.middle_temp:
+                self.initial_state.top_temp = self.initial_state.middle_temp
+
             top_temps = set([n.top_temp for n in self.bid_nodes[0]])
             closest_top_temp = min(top_temps, key=lambda x: abs(x-self.initial_state.top_temp))
 
@@ -249,6 +252,21 @@ class DGraph():
                 if n.thermocline1 == closest_thermocline1
             ]
 
+            if abs(self.initial_state.top_temp - self.initial_state.middle_temp) <= 5 and abs(self.initial_state.top_temp - self.initial_state.bottom_temp) > 5:
+                print(f"Little difference between top and middle")
+                similar_nodes = [
+                    n for n in self.bid_nodes[0]
+                    if n.top_temp == closest_top_temp
+                    and n.thermocline1 == 16
+                    and n.thermocline2 == 24
+                ]
+                if not similar_nodes:
+                    similar_nodes = [
+                        n for n in self.bid_nodes[0]
+                        if n.top_temp == closest_top_temp
+                        and n.thermocline1 == 16
+                    ]
+            
             self.initial_node = min(
                 similar_nodes, 
                 key=lambda x: abs(x.energy-self.initial_state.energy)
