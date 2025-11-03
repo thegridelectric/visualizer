@@ -1014,7 +1014,7 @@ class VisualizerApi():
 
                 print("Running Dijkstra and saving analysis to excel...")
                 flo_params = FloParamsHouse0(**flo_params_msg.payload)
-                g = DGraph(flo_params.model_dump_json().encode('utf-8'))
+                g = DGraph(flo_params.to_bytes())
                 g.solve_dijkstra()
                 g.find_initial_node()
                 print(f"\nInitial node: {g.initial_node}, energy {g.initial_node.energy}")
