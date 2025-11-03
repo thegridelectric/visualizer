@@ -36,7 +36,7 @@ from datetime import datetime, timedelta, timezone
 from passlib.context import CryptContext
 from config import Settings
 from models import MessageSql
-from named_types import FloParamsHouse0
+from gridflo.asl.types import FloParamsHouse0
 from gridflo import DGraph
 from gridflo import DGraphVisualizer
 
