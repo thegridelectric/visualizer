@@ -687,19 +687,9 @@ class DataBasedStorageModel():
     
 
 if __name__ == '__main__':
-
-    from models import MessageSql
-    with open('messages.json', 'r') as file:
+    with open('super_graph_flo_params.json', 'r') as file:
         data = json.load(file)
-        message = MessageSql(
-            message_id=data["MessageId"],
-            from_alias=data["FromAlias"],
-            message_type_name=data["MessageTypeName"],
-            message_persisted_ms=data["MessagePersistedMs"],
-            payload=data["Payload"],
-            message_created_ms=data.get("MessageCreatedMs")
-        )
-    flo_params = FloParamsHouse0(**message.payload)
+    flo_params = FloParamsHouse0(**data)
     # flo_params.StorageVolumeGallons = 120
 
     generator = SuperGraphGenerator(flo_params)
