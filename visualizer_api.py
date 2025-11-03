@@ -37,8 +37,8 @@ from passlib.context import CryptContext
 from config import Settings
 from models import MessageSql
 from named_types import FloParamsHouse0
-from flo.flo import DGraph
-from flo.dgraph_visualizer import DGraphVisualizer
+from gridflo import DGraph
+from gridflo import DGraphVisualizer
 
 
 CSV_SAMPLING = True
@@ -1014,7 +1014,7 @@ class VisualizerApi():
 
                 print("Running Dijkstra and saving analysis to excel...")
                 flo_params = FloParamsHouse0(**flo_params_msg.payload)
-                g = DGraph(flo_params)
+                g = DGraph(flo_params.model_dump_json().encode('utf-8'))
                 g.solve_dijkstra()
                 g.find_initial_node()
                 print(f"\nInitial node: {g.initial_node}, energy {g.initial_node.energy}")

@@ -7,8 +7,8 @@ from matplotlib.colors import Normalize
 from datetime import datetime, timedelta
 from openpyxl.drawing.image import Image
 from openpyxl.worksheet.worksheet import Worksheet
-from flo.flo import DGraph
-from flo.dijkstra_types import DNode
+from gridflo import DGraph
+from gridflo.dijkstra_types import DNode
 
 
 class DGraphVisualizer():
