@@ -37,6 +37,7 @@ from passlib.context import CryptContext
 from config import Settings
 from models import MessageSql
 from gridflo.asl.types import FloParamsHouse0
+from gridflo.dijkstra_types import DNode, DEdge
 from gridflo import DGraph
 from gridflo import DGraphVisualizer
 
@@ -1017,10 +1018,6 @@ class VisualizerApi():
                 g = DGraph(flo_params.to_bytes())
                 g.solve_dijkstra()
                 g.find_initial_node()
-                print(f"\nInitial node: {g.initial_node}, energy {g.initial_node.energy}")
-                print(f"Next node: {g.initial_node.next_node}, energy {g.initial_node.next_node.energy}")
-                print(f"First edge: {[e for e in g.edges[g.initial_node] if e.head==g.initial_node.next_node][0]}")
-                print(f"Load: {g.params.load_forecast[0]}\n")
                 v = DGraphVisualizer(g)
                 v.export_to_excel()
                 del g 
