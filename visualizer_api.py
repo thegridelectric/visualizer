@@ -1017,7 +1017,6 @@ class VisualizerApi():
                 flo_params = FloParamsHouse0(**flo_params_msg.payload)
                 g = DGraph(flo_params.to_bytes())
                 g.solve_dijkstra()
-                g.find_initial_node()
                 v = DGraphVisualizer(g)
                 v.export_to_excel()
                 del g 
