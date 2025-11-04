@@ -1,7 +1,7 @@
 results/
 messages.json
 result.xlsx
-super_graph_*.json
+super_*.json
 *energy_data*
 *storage_data*
 
