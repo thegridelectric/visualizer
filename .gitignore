@@ -1,7 +1,6 @@
 results/
 messages.json
 result.xlsx
-super_*.json
 *energy_data*
 *storage_data*
 
