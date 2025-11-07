@@ -2649,7 +2649,7 @@ class VisualizerApi():
                 showlegend=True,
                 line_shape='hv',
                 name='Total',
-                hovertemplate="%{x|%H:%M:%S} | %{y:.2f} cts/kWh"
+                hovertemplate="%{x|%H:%M:%S} | %{y:.2f} USD/MWh"
             )
         )
 
@@ -2664,7 +2664,7 @@ class VisualizerApi():
                 line_shape='hv',
                 yaxis='y2',
                 name='LMP',
-                hovertemplate="%{x|%H:%M:%S} | %{y:.2f} cts/kWh"
+                hovertemplate="%{x|%H:%M:%S} | %{y:.2f} USD/MWh"
             )
         )
 
@@ -2683,8 +2683,8 @@ class VisualizerApi():
             font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)'
             title_font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)'
             
-        fig.update_layout(yaxis=dict(title='Total price [cts/kWh]'))
-        fig.update_layout(yaxis2=dict(title='LMP [cts/kWh]'))
+        fig.update_layout(yaxis=dict(title='Total price [USD/MWh]'))
+        fig.update_layout(yaxis2=dict(title='LMP [USD/MWh]'))
         fig.update_layout(
             # shapes = shapes_list,
             title=dict(text='Price Forecast' if not aggregate else '', x=0.5, xanchor='center'),
@@ -2863,7 +2863,7 @@ class VisualizerApi():
                     line_shape='hv',
                     name='Electricity price',
                     yaxis='y2',
-                    hovertemplate="%{x|%H:%M} | %{y:.2f} cts/kWh<extra></extra>"
+                    hovertemplate="%{x|%H:%M} | %{y:.2f} USD/MWh<extra></extra>"
                 )
             )
                 
@@ -2894,7 +2894,7 @@ class VisualizerApi():
                 gridcolor=white_color
             ),
             yaxis2=dict(
-                title='Price [cts/kWh]',
+                title='Price [USD/MWh]',
                 range = [
                     0 if not total_price_values else min(total_price_values)-5, 
                     1.3*(10 if not total_price_values else max(total_price_values))
