@@ -1127,7 +1127,7 @@ class VisualizerApi():
                             plt.yticks(prices)
                         else:
                             plt.yticks(prices + [expected_price_usd_mwh])
-                        plt.ylabel("Price [USD/MWh]")
+                        plt.ylabel("Price [cts/kWh]")
                         plt.xlabel("Quantity [kWh]")
                         plt.title(self.to_datetime(g.params.start_time*1000).strftime('%Y-%m-%d %H:%M'))
                         plt.grid(alpha=0.3)
@@ -2649,7 +2649,7 @@ class VisualizerApi():
                 showlegend=True,
                 line_shape='hv',
                 name='Total',
-                hovertemplate="%{x|%H:%M:%S} | %{y:.2f} USD/MWh"
+                hovertemplate="%{x|%H:%M:%S} | %{y:.2f} $/MWh"
             )
         )
 
@@ -2664,7 +2664,7 @@ class VisualizerApi():
                 line_shape='hv',
                 yaxis='y2',
                 name='LMP',
-                hovertemplate="%{x|%H:%M:%S} | %{y:.2f} USD/MWh"
+                hovertemplate="%{x|%H:%M:%S} | %{y:.2f} $/MWh"
             )
         )
 
@@ -2683,8 +2683,8 @@ class VisualizerApi():
             font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)'
             title_font_color='#b5b5b5' if request.darkmode else 'rgb(42,63,96)'
             
-        fig.update_layout(yaxis=dict(title='Total price [USD/MWh]'))
-        fig.update_layout(yaxis2=dict(title='LMP [USD/MWh]'))
+        fig.update_layout(yaxis=dict(title='Total price [$/MWh]'))
+        fig.update_layout(yaxis2=dict(title='LMP [$/MWh]'))
         fig.update_layout(
             # shapes = shapes_list,
             title=dict(text='Price Forecast' if not aggregate else '', x=0.5, xanchor='center'),
@@ -2863,7 +2863,7 @@ class VisualizerApi():
                     line_shape='hv',
                     name='Electricity price',
                     yaxis='y2',
-                    hovertemplate="%{x|%H:%M} | %{y:.2f} USD/MWh<extra></extra>"
+                    hovertemplate="%{x|%H:%M} | %{y:.2f} $/MWh<extra></extra>"
                 )
             )
                 
@@ -2894,7 +2894,7 @@ class VisualizerApi():
                 gridcolor=white_color
             ),
             yaxis2=dict(
-                title='Price [USD/MWh]',
+                title='Price [$/MWh]',
                 range = [
                     0 if not total_price_values else min(total_price_values)-5, 
                     1.3*(10 if not total_price_values else max(total_price_values))
