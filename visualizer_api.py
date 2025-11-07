@@ -937,7 +937,6 @@ class VisualizerApi():
                             
                             # Ensure channel_df is sorted by times (required for merge_asof)
                             if not channel_df['times'].is_monotonic_increasing:
-                                print(f"Warning: Channel '{channel}' times not sorted, sorting now...")
                                 channel_df = channel_df.sort_values('times')
                             
                             # Remove any duplicate times (keep last value)
@@ -945,7 +944,6 @@ class VisualizerApi():
                             # and the same hour occurs twice (e.g., 2:00 AM EDT -> 1:00 AM EST)
                             if channel_df['times'].duplicated().any():
                                 num_duplicates = channel_df['times'].duplicated().sum()
-                                print(f"Warning: Channel '{channel}' has {num_duplicates} duplicate times (possibly due to DST), removing duplicates...")
                                 channel_df = channel_df.drop_duplicates(subset='times', keep='last').sort_values('times')
                             
                             # Verify both DataFrames are sorted
@@ -963,13 +961,7 @@ class VisualizerApi():
                             )
                             return channel, list(sampled['values'])
                         except Exception as e:
-                            print(f"Error resampling channel '{channel}': {e}")
-                            print(f"  Channel data length: {len(channel_data['times']) if 'times' in channel_data else 'N/A'}")
-                            if 'channel_df' in locals():
-                                print(f"  Channel DF length: {len(channel_df)}")
-                                print(f"  Channel DF times range: {channel_df['times'].min()} to {channel_df['times'].max()}")
-                            print(f"  Target DF times range: {target_df['times'].min()} to {target_df['times'].max()}")
-                            raise
+                            raise Exception(f"Error resampling channel '{channel}': {e}")
                     
                     # Run all channel resampling in parallel
                     results = await asyncio.gather(*[resample_channel(channel) for channel in channels_to_export])
