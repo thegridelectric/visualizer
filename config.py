@@ -12,10 +12,10 @@ class Settings(BaseSettings):
         "postgresql://persister:PASSWD@journaldb.electricity.works/journaldb"
     )
     gbo_db_url: SecretStr = SecretStr(
-        "postgresql://backofficedb:PASSWD@journaldb.electricity.works/backofficedb"
+        "postgresql://backofficedb:PASSWD@backofficedb.electricity.works/backofficedb"
     )
     gbo_db_url_no_async: SecretStr = SecretStr(
-        "postgresql://backofficedb:PASSWD@journaldb.electricity.works/backofficedb"
+        "postgresql://backofficedb:PASSWD@backofficedb.electricity.works/backofficedb"
     )
     secret_key: SecretStr = SecretStr("secret_key")
     ops_genie_api_key: SecretStr = SecretStr("OpsGenieAPIKey")
@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     google_maps_api_key: SecretStr = SecretStr("")
 
     model_config = ConfigDict(
-        env_prefix="gjk_",
+        env_prefix="vis_",
         env_nested_delimiter="__",
         extra="ignore",
     )
