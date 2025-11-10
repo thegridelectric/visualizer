@@ -2616,7 +2616,7 @@ class VisualizerApi():
         # Query the external price API
         price_request = {
             "start_unix_s": request.start_ms/1000,
-            "end_unix_s": request.end_ms/1000 + 5*3600,
+            "end_unix_s": request.end_ms/1000 + 48*3600,
             "timezone_str": "America/New_York"
         }
         
