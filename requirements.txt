@@ -1,0 +1,16 @@
+pandas>=2.3.3
+numpy>=2.3.3
+async-timeout
+pendulum
+sqlalchemy
+fastapi
+uvicorn
+pytz
+python-dotenv
+httpx
+pydantic>=2.0.0
+python-jose[cryptography]
+matplotlib
+plotly
+passlib[bcrypt]
+pydantic-settings
