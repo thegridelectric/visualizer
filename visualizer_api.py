@@ -485,12 +485,12 @@ class VisualizerApi():
                 self.data[request]['channels'][channel_name]['times'] = list(sorted_times)
 
                 # Apply data reduction before converting to datetime
-                if not isinstance(request, CsvRequest):
-                    self.data[request]['channels'][channel_name] = self.reduce_data_size(
-                        self.data[request]['channels'][channel_name], 
-                        channel_name,
-                        true_max_timestamp
-                    )  
+                # if not isinstance(request, CsvRequest):
+                #     self.data[request]['channels'][channel_name] = self.reduce_data_size(
+                #         self.data[request]['channels'][channel_name], 
+                #         channel_name,
+                #         true_max_timestamp
+                #     )  
 
                 # Convert timestamps to datetime (optimized)
                 if not isinstance(request, CsvRequest) or CSV_SAMPLING:
