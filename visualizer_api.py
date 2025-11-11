@@ -38,8 +38,7 @@ from config import Settings
 from models import MessageSql
 from gridflo.asl.types import FloParamsHouse0
 from gridflo.dijkstra_types import DNode, DEdge
-from gridflo import DGraph
-from gridflo import DGraphVisualizer
+from gridflo import Flo, DGraphVisualizer
 
 
 CSV_SAMPLING = True
@@ -1041,7 +1040,7 @@ class VisualizerApi():
 
                 print("Running Dijkstra and saving analysis to excel...")
                 flo_params = FloParamsHouse0(**flo_params_msg.payload)
-                g = DGraph(flo_params.to_bytes())
+                g = Flo(flo_params.to_bytes())
                 g.solve_dijkstra()
                 v = DGraphVisualizer(g)
                 v.export_to_excel()
@@ -1070,90 +1069,90 @@ class VisualizerApi():
                 print(f"Deleted request data")
             print(f"Unfinished requests in data: {len(self.data)}")
         
-    async def get_bids(self, request: DataRequest):
-        try:
-            async with async_timeout.timeout(self.timeout_seconds):
-                print("Getting bids...")
+    # async def get_bids(self, request: DataRequest):
+    #     try:
+    #         async with async_timeout.timeout(self.timeout_seconds):
+    #             print("Getting bids...")
 
-                async with self.AsyncSessionLocal() as session:
-                    stmt = select(MessageSql).filter(
-                        MessageSql.message_type_name == "flo.params.house0",
-                        MessageSql.from_alias == f"hw1.isone.me.versant.keene.{request.house_alias}.scada",
-                        MessageSql.message_persisted_ms >= request.start_ms,
-                        MessageSql.message_persisted_ms <= request.end_ms,
-                    ).order_by(desc(MessageSql.payload['StartUnixS']))
+    #             async with self.AsyncSessionLocal() as session:
+    #                 stmt = select(MessageSql).filter(
+    #                     MessageSql.message_type_name == "flo.params.house0",
+    #                     MessageSql.from_alias == f"hw1.isone.me.versant.keene.{request.house_alias}.scada",
+    #                     MessageSql.message_persisted_ms >= request.start_ms,
+    #                     MessageSql.message_persisted_ms <= request.end_ms,
+    #                 ).order_by(desc(MessageSql.payload['StartUnixS']))
                     
-                    result = await session.execute(stmt)
-                    flo_params_messages = result.scalars().all()
+    #                 result = await session.execute(stmt)
+    #                 flo_params_messages = result.scalars().all()
 
-                    flo_params_messages = [FloParamsHouse0(**x.payload) for x in flo_params_messages]
-                print(f"Found {len(flo_params_messages)} FLOs for {request.house_alias}")
+    #                 flo_params_messages = [FloParamsHouse0(**x.payload) for x in flo_params_messages]
+    #             print(f"Found {len(flo_params_messages)} FLOs for {request.house_alias}")
 
-                zip_buffer = io.BytesIO()
-                with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
-                    for i in range(len(flo_params_messages)):
-                        g = DGraph(flo_params_messages[i])
-                        g.solve_dijkstra()
-                        g.generate_bid()
-                        prices = [x.PriceTimes1000 for x in g.pq_pairs]
-                        quantities = [x.QuantityTimes1000/1000 for x in g.pq_pairs]
-                        # To plot quantities on x-axis and prices on y-axis
-                        ps, qs = [], []
-                        index_p = 0
-                        expected_price_usd_mwh = g.params.elec_price_forecast[0] * 10
-                        for p in sorted(list(range(min(prices), max(prices)+1)) + [expected_price_usd_mwh*1000]):
-                            ps.append(p/1000)
-                            if index_p+1 < len(prices) and p >= prices[index_p+1]:
-                                index_p += 1
-                            if p == expected_price_usd_mwh*1000:
-                                interesection = (quantities[index_p], expected_price_usd_mwh)
-                            qs.append(quantities[index_p])
-                        # Plot
-                        plt.plot(qs, ps, label='demand (bid)')
-                        prices = [x.PriceTimes1000/1000 for x in g.pq_pairs]
-                        plt.scatter(quantities, prices)
-                        plt.plot(
-                            [min(quantities)-1, max(quantities)+1],[expected_price_usd_mwh]*2, 
-                            label="supply (expected market price)"
-                            )
-                        plt.scatter(interesection[0], interesection[1])
-                        plt.text(
-                            interesection[0]+0.25, interesection[1]+15, 
-                            f'({round(interesection[0],3)}, {round(interesection[1],1)})', 
-                            fontsize=10, color='tab:orange'
-                            )
-                        plt.xticks(quantities)
-                        if min([abs(x-expected_price_usd_mwh) for x in prices]) < 5:
-                            plt.yticks(prices)
-                        else:
-                            plt.yticks(prices + [expected_price_usd_mwh])
-                        plt.ylabel("Price [cts/kWh]")
-                        plt.xlabel("Quantity [kWh]")
-                        plt.title(self.to_datetime(g.params.start_time*1000).strftime('%Y-%m-%d %H:%M'))
-                        plt.grid(alpha=0.3)
-                        plt.legend()
-                        plt.tight_layout()
-                        # Append plot to zip
-                        img_buf = io.BytesIO()
-                        plt.savefig(img_buf, format='png', dpi=300)
-                        img_buf.seek(0)
-                        zip_file.writestr(f'pq_plot_{i}.png', img_buf.getvalue())
-                        plt.close()
+    #             zip_buffer = io.BytesIO()
+    #             with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
+    #                 for i in range(len(flo_params_messages)):
+    #                     g = Flo(flo_params_messages[i])
+    #                     g.solve_dijkstra()
+    #                     g.generate_recommendation()
+    #                     prices = [x.PriceX1000 for x in g.pq_pairs]
+    #                     quantities = [x.QuantityX1000/1000 for x in g.pq_pairs]
+    #                     # To plot quantities on x-axis and prices on y-axis
+    #                     ps, qs = [], []
+    #                     index_p = 0
+    #                     expected_price_usd_mwh = g.params.elec_price_forecast[0] * 10
+    #                     for p in sorted(list(range(min(prices), max(prices)+1)) + [expected_price_usd_mwh*1000]):
+    #                         ps.append(p/1000)
+    #                         if index_p+1 < len(prices) and p >= prices[index_p+1]:
+    #                             index_p += 1
+    #                         if p == expected_price_usd_mwh*1000:
+    #                             interesection = (quantities[index_p], expected_price_usd_mwh)
+    #                         qs.append(quantities[index_p])
+    #                     # Plot
+    #                     plt.plot(qs, ps, label='demand (bid)')
+    #                     prices = [x.PriceTimes1000/1000 for x in g.pq_pairs]
+    #                     plt.scatter(quantities, prices)
+    #                     plt.plot(
+    #                         [min(quantities)-1, max(quantities)+1],[expected_price_usd_mwh]*2, 
+    #                         label="supply (expected market price)"
+    #                         )
+    #                     plt.scatter(interesection[0], interesection[1])
+    #                     plt.text(
+    #                         interesection[0]+0.25, interesection[1]+15, 
+    #                         f'({round(interesection[0],3)}, {round(interesection[1],1)})', 
+    #                         fontsize=10, color='tab:orange'
+    #                         )
+    #                     plt.xticks(quantities)
+    #                     if min([abs(x-expected_price_usd_mwh) for x in prices]) < 5:
+    #                         plt.yticks(prices)
+    #                     else:
+    #                         plt.yticks(prices + [expected_price_usd_mwh])
+    #                     plt.ylabel("Price [cts/kWh]")
+    #                     plt.xlabel("Quantity [kWh]")
+    #                     plt.title(self.to_datetime(g.params.start_time*1000).strftime('%Y-%m-%d %H:%M'))
+    #                     plt.grid(alpha=0.3)
+    #                     plt.legend()
+    #                     plt.tight_layout()
+    #                     # Append plot to zip
+    #                     img_buf = io.BytesIO()
+    #                     plt.savefig(img_buf, format='png', dpi=300)
+    #                     img_buf.seek(0)
+    #                     zip_file.writestr(f'pq_plot_{i}.png', img_buf.getvalue())
+    #                     plt.close()
 
-                del g
-                gc.collect()
-                zip_buffer.seek(0)
-                return StreamingResponse(
-                    zip_buffer, 
-                    media_type='application/zip', 
-                    headers={"Content-Disposition": "attachment; filename=plots.zip"}
-                    )
-        except asyncio.TimeoutError:
-            print("Timed out in get_bids()")
-            return {"success": False, "message": "The request timed out.", "reload": False}
-        except Exception as e:
-            print(f"An error occurred in get_bids():\n{traceback.format_exc()}")
-            return {"success": False, "message": "An error occurred while getting bids", "reload": False}
+    #             del g
+    #             gc.collect()
+    #             zip_buffer.seek(0)
+    #             return StreamingResponse(
+    #                 zip_buffer, 
+    #                 media_type='application/zip', 
+    #                 headers={"Content-Disposition": "attachment; filename=plots.zip"}
+    #                 )
+    #     except asyncio.TimeoutError:
+    #         print("Timed out in get_bids()")
+    #         return {"success": False, "message": "The request timed out.", "reload": False}
+    #     except Exception as e:
+    #         print(f"An error occurred in get_bids():\n{traceback.format_exc()}")
+    #         return {"success": False, "message": "An error occurred while getting bids", "reload": False}
         
     async def get_aggregate_plot(self, request: DataRequest):
         if request.selected_channels == ['prices']:
@@ -1236,9 +1235,9 @@ class VisualizerApi():
                     return error
                 
                 # If the request is just to plot bids
-                if request.selected_channels == ['bids']: 
-                    zip_bids = await self.get_bids(request)
-                    return zip_bids
+                # if request.selected_channels == ['bids']: 
+                #     zip_bids = await self.get_bids(request)
+                #     return zip_bids
                 
                 # Step 2: Plot generation
                 plot_start = time.time()
