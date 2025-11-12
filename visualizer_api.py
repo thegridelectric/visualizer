@@ -2925,6 +2925,13 @@ class VisualizerApi():
         return html_buffer
         
     async def get_electricity_use(self, request: ElectricityUseRequest, current_user = Depends(get_current_user), db: Session = Depends(get_db)):
+        if (
+            isinstance(request.selected_short_aliases, list) 
+            and len(request.selected_short_aliases) == 1 
+            and isinstance(request.selected_short_aliases[0], str) 
+            and ',' in request.selected_short_aliases[0]
+        ):
+            request.selected_short_aliases = [s.strip() for s in request.selected_short_aliases[0].split(',')]
         try:
             # Query the database for electricity records matching the selected short_aliases
             query = select(hourly_electricity).where(
@@ -2973,6 +2980,13 @@ class VisualizerApi():
             raise HTTPException(status_code=500, detail=f"Error getting electricity use: {str(e)}")
 
     async def get_electricity_use_csv(self, request: ElectricityUseRequest, current_user = Depends(get_current_user), db: Session = Depends(get_db)):
+        if (
+            isinstance(request.selected_short_aliases, list) 
+            and len(request.selected_short_aliases) == 1 
+            and isinstance(request.selected_short_aliases[0], str) 
+            and ',' in request.selected_short_aliases[0]
+        ):
+            request.selected_short_aliases = [s.strip() for s in request.selected_short_aliases[0].split(',')]
         try:
             # Query the database for electricity records matching the selected short_aliases
             query = select(hourly_electricity).where(
