@@ -2821,22 +2821,25 @@ class VisualizerApi():
         # TODO: store the real time prices somewhere and querry from here
         # Open and read the price CSV file
         csv_times, csv_dist, csv_lmp = [], [], []
+        price_times, total_price_values = [], []
         project_dir = os.path.dirname(os.path.abspath(__file__))
         elec_file = os.path.join(project_dir, 'price_forecast_dates.csv')
-        with open(elec_file, newline='', encoding='utf-8') as csvfile:
-            csvreader = csv.reader(csvfile)
-            next(csvreader)
-            for row in csvreader:
-                csv_times.append(float(row[0]))
-                csv_dist.append(float(row[1])/10)
-                csv_lmp.append(float(row[2])/10)
 
-        request_hours = int((request.end_ms - request.start_ms)/1000 / 3600)
-        price_times_s = [request.start_ms/1000 + x*3600 for x in range(request_hours)]
-        lmp_values = [lmp for time, dist, lmp in zip(csv_times, csv_dist, csv_lmp) if time in price_times_s]
-        total_price_values = [lmp+dist for time, dist, lmp in zip(csv_times, csv_dist, csv_lmp) if time in price_times_s]
-        csv_times = [time for time in csv_times if time in price_times_s]
-        price_times = [self.to_datetime(x*1000) for x in csv_times]
+        if os.path.exists(elec_file):
+            with open(elec_file, newline='', encoding='utf-8') as csvfile:
+                csvreader = csv.reader(csvfile)
+                next(csvreader)
+                for row in csvreader:
+                    csv_times.append(float(row[0]))
+                    csv_dist.append(float(row[1])/10)
+                    csv_lmp.append(float(row[2])/10)
+
+            request_hours = int((request.end_ms - request.start_ms)/1000 / 3600)
+            price_times_s = [request.start_ms/1000 + x*3600 for x in range(request_hours)]
+            lmp_values = [lmp for time, dist, lmp in zip(csv_times, csv_dist, csv_lmp) if time in price_times_s]
+            total_price_values = [lmp+dist for time, dist, lmp in zip(csv_times, csv_dist, csv_lmp) if time in price_times_s]
+            csv_times = [time for time in csv_times if time in price_times_s]
+            price_times = [self.to_datetime(x*1000) for x in csv_times]
 
         fig = go.Figure()
         fig.add_trace(
