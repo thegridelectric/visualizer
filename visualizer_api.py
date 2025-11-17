@@ -2951,11 +2951,12 @@ class VisualizerApi():
             timestamps = []
             total_kwh = []            
             for record in records:
-                if record.hour_start_s not in timestamps:
-                    timestamps.append(record.hour_start_s)
+                hour_start_s_rounded = (record.hour_start_s // 3600) * 3600
+                if hour_start_s_rounded not in timestamps:
+                    timestamps.append(hour_start_s_rounded)
                     total_kwh.append(record.hp_kwh_el)
                 else:
-                    idx = timestamps.index(record.hour_start_s)
+                    idx = timestamps.index(hour_start_s_rounded)
                     total_kwh[idx] += record.hp_kwh_el
 
             elec_use = {
@@ -3004,11 +3005,12 @@ class VisualizerApi():
             timestamps = []
             total_kwh = []            
             for record in records:
-                if record.hour_start_s not in timestamps:
-                    timestamps.append(record.hour_start_s)
+                hour_start_s_rounded = (record.hour_start_s // 3600) * 3600
+                if hour_start_s_rounded not in timestamps:
+                    timestamps.append(hour_start_s_rounded)
                     total_kwh.append(record.hp_kwh_el)
                 else:
-                    idx = timestamps.index(record.hour_start_s)
+                    idx = timestamps.index(hour_start_s_rounded)
                     total_kwh[idx] += record.hp_kwh_el
 
             # Convert timestamps to datetime objects in America/New_York timezone
