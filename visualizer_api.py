@@ -3061,6 +3061,9 @@ class VisualizerApi():
                     'zone2_heatcall_fraction': [x.zone2_heatcall_fraction for x in records],
                     'zone3_heatcall_fraction': [x.zone3_heatcall_fraction for x in records],
                     'zone4_heatcall_fraction': [x.zone4_heatcall_fraction for x in records],
+                    'oat_f': [x.oat_f for x in records],
+                    'ws_mph': [x.ws_mph for x in records],
+                    'total_usd_per_mwh': [x.total_usd_per_mwh for x in records],
                 })
 
             # Build file name
