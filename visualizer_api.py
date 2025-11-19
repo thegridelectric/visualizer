@@ -2813,61 +2813,40 @@ class VisualizerApi():
             print(f"Error fetching houses: {e}")
             raise HTTPException(status_code=500, detail=f"Error fetching houses: {str(e)}")
         
-    async def plot_electricity_use(self, elec_use, request: ElectricityUseRequest):
+    async def plot_electricity_use(self, hourly_data, request: ElectricityUseRequest):
         plot_start = time.time()
 
         white_color = '#858585' if request.darkmode else '#6c757d'
 
-        # TODO: store the real time prices somewhere and querry from here
-        # Open and read the price CSV file
-        csv_times, csv_dist, csv_lmp = [], [], []
-        price_times, total_price_values = [], []
-        project_dir = os.path.dirname(os.path.abspath(__file__))
-        elec_file = os.path.join(project_dir, 'price_forecast_dates.csv')
-
-        if os.path.exists(elec_file):
-            with open(elec_file, newline='', encoding='utf-8') as csvfile:
-                csvreader = csv.reader(csvfile)
-                next(csvreader)
-                for row in csvreader:
-                    csv_times.append(float(row[0]))
-                    csv_dist.append(float(row[1])/10)
-                    csv_lmp.append(float(row[2])/10)
-
-            request_hours = int((request.end_ms - request.start_ms)/1000 / 3600)
-            price_times_s = [request.start_ms/1000 + x*3600 for x in range(request_hours)]
-            lmp_values = [lmp for time, dist, lmp in zip(csv_times, csv_dist, csv_lmp) if time in price_times_s]
-            total_price_values = [lmp+dist for time, dist, lmp in zip(csv_times, csv_dist, csv_lmp) if time in price_times_s]
-            csv_times = [time for time in csv_times if time in price_times_s]
-            price_times = [self.to_datetime(x*1000) for x in csv_times]
-
         fig = go.Figure()
         fig.add_trace(
             go.Bar(
-                x=[x+timedelta(minutes=30) for x in elec_use['timestamps']],
-                y=elec_use['total_kwh'],
+                x=[x+timedelta(minutes=30) for x in hourly_data['timestamps']],
+                y=hourly_data['total_kwh'],
                 opacity=0.6 if request.darkmode else 0.3,
                 marker=dict(color='#2a4ca2', line=dict(width=0)),
                 name='Electricity used',
                 hovertemplate="%{x|%H}:00-%{x|%H}:59 | %{y:.1f} kWh<extra></extra>",
-                width=[3600000/1.2] * len(elec_use['timestamps']),
+                width=[3600000/1.2] * len(hourly_data['timestamps']),
             )
         )
         
-        if price_times and total_price_values and len(price_times) == len(total_price_values):
-            fig.add_trace(
-                go.Scatter(
-                    x=price_times,
-                    y=total_price_values,
-                    mode='lines',
-                    opacity=0.8,
-                    showlegend=True,
-                    line_shape='hv',
-                    name='Electricity price',
-                    yaxis='y2',
-                    hovertemplate="%{x|%H:%M} | %{y:.2f} $/MWh<extra></extra>"
-                )
+        fig.add_trace(
+            go.Scatter(
+                x=hourly_data['timestamps'],
+                y=hourly_data['prices'],
+                mode='lines',
+                opacity=0.8,
+                showlegend=True,
+                line_shape='hv',
+                name='Electricity price',
+                yaxis='y2',
+                hovertemplate="%{x|%H:%M} | %{y:.2f} $/MWh<extra></extra>"
             )
+        )
+
+        hourly_data['prices'] = [x for x in hourly_data['prices'] if x is not None]
+        hourly_data['total_kwh'] = [x for x in hourly_data['total_kwh'] if x is not None]
                 
         fig.update_layout(
             title=dict(text='', x=0.5, xanchor='center'),
@@ -2885,7 +2864,7 @@ class VisualizerApi():
             ),
             yaxis=dict(
                 title='Quantity [kWh]',
-                range = [0, (1.3*max(elec_use['total_kwh']) if max(elec_use['total_kwh']) > 3 else 1.3*3)],
+                range = [0, (1.3*max(hourly_data['total_kwh']) if max(hourly_data['total_kwh']) > 3 else 1.3*3)],
                 mirror=True,
                 ticks='outside',
                 showline=True,
@@ -2898,9 +2877,9 @@ class VisualizerApi():
             yaxis2=dict(
                 title='Price [$/MWh]',
                 range = [
-                    0 if not total_price_values else min(total_price_values)-5, 
-                    1.3*(10 if not total_price_values else max(total_price_values))
-                    ],
+                    0 if not hourly_data['prices'] else min(hourly_data['prices'])-5, 
+                    1.3*(10 if not hourly_data['prices'] else max(hourly_data['prices']))
+                ],
                 mirror=True,
                 ticks='outside',
                 zeroline=False,
@@ -2949,24 +2928,38 @@ class VisualizerApi():
             
             # Group the data by timestamp and sum the kwh values
             timestamps = []
-            total_kwh = []            
+            total_kwh = []   
+            prices = []
             for record in records:
                 hour_start_s_rounded = (record.hour_start_s // 3600) * 3600
                 if hour_start_s_rounded not in timestamps:
                     timestamps.append(hour_start_s_rounded)
                     total_kwh.append(record.hp_kwh_el)
+                    if record.total_usd_per_mwh is not None:
+                        prices.append(record.total_usd_per_mwh)
+                    else:
+                        date_time = pendulum.from_timestamp(hour_start_s_rounded, tz='America/New_York')
+                        hour = date_time.hour
+                        weekday = date_time.weekday()
+                        dist_price = (
+                            487.63 if hour in [7,8,9,10,11,16,17,18,19] and weekday<5 
+                            else 54.98 if hour in [12,13,14,15] and weekday<5
+                            else 50.13
+                        )
+                        prices.append(dist_price)
                 else:
                     idx = timestamps.index(hour_start_s_rounded)
                     total_kwh[idx] += record.hp_kwh_el
 
-            elec_use = {
+            hourly_data = {
                 "timestamps": [self.to_datetime(x*1000) for x in timestamps],
-                "total_kwh": total_kwh
+                "total_kwh": total_kwh,
+                "prices": prices
             }
 
             zip_buffer = io.BytesIO()
             with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
-                html_buffer = await self.plot_electricity_use(elec_use, request)
+                html_buffer = await self.plot_electricity_use(hourly_data, request)
                 zip_file.writestr('plot1.html', html_buffer.read())
             zip_buffer.seek(0)
 
