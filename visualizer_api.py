@@ -1651,7 +1651,7 @@ class VisualizerApi():
                     line=dict(color='pink', dash='solid', shape='hv'),
                     name='Distribution pump power /10',
                     yaxis = y_axis_power,
-                    visible='legendonly',
+                    # visible='legendonly',
                     hovertemplate="%{x|%H:%M:%S} | %{y:.1f}*10 W<extra></extra>"
                     )
                 )
@@ -2161,7 +2161,7 @@ class VisualizerApi():
                     line=dict(color='pink', dash='solid', shape='hv'),
                     name='Storage pump power x1000',
                     yaxis=y_axis_power,
-                    visible='legendonly',
+                    # visible='legendonly',
                     hovertemplate="%{x|%H:%M:%S} | %{y:.1f}/1000 kW<extra></extra>"
                     )
                 )
