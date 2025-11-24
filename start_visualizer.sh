@@ -1,8 +1,18 @@
 #!/bin/bash
 
 # Script to start the visualizer API in a tmux session
-
 SESSION_NAME="api"
+
+# If tmux is not installed, run without tmux
+if ! command -v tmux &>/dev/null; then
+    echo "tmux is not installed. Running without tmux."
+    # Run 'gw' if available, then start the visualizer API
+    if command -v gw &>/dev/null; then
+        gw
+    fi
+    python visualizer_api.py
+    exit 0
+fi
 
 # Check if tmux session already exists
 if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
@@ -13,12 +23,13 @@ else
     
     # Create a new tmux session and run commands
     tmux new-session -d -s "$SESSION_NAME" -c "$(pwd)"
+    sleep 0.5
     
     # Run 'gw' command (your alias)
     tmux send-keys -t "$SESSION_NAME" "gw" C-m
     
     # Wait a moment for gw to complete
-    sleep 1
+    sleep 0.5
     
     # Start the visualizer API
     tmux send-keys -t "$SESSION_NAME" "python visualizer_api.py" C-m
