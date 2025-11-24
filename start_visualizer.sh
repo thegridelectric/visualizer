@@ -10,7 +10,7 @@ if ! command -v tmux &>/dev/null; then
     if command -v gw &>/dev/null; then
         gw
     fi
-    python visualizer_api.py
+    python gridworks-visualizer/visualizer_api.py
     exit 0
 fi
 
@@ -32,7 +32,7 @@ else
     sleep 0.5
     
     # Start the visualizer API
-    tmux send-keys -t "$SESSION_NAME" "python visualizer_api.py" C-m
+    tmux send-keys -t "$SESSION_NAME" "python gridworks-visualizer/visualizer_api.py" C-m
     
     # Attach to the session
     tmux attach-session -t "$SESSION_NAME"
