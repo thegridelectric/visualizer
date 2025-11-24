@@ -13,7 +13,7 @@ for session in "${sessions[@]}"; do
         tmux send-keys -t "$session" "./start_websocket_server.sh" C-m
         echo "Started websocket server for $session"
     else
-        echo "Websocket server for $session is already running. Attaching to session..."
+        echo "Found existing websocket server for $session"
     fi
 done
 
