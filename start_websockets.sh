@@ -11,11 +11,10 @@ for session in "${sessions[@]}"; do
         tmux send-keys -t "$session" "gw" C-m
         tmux send-keys -t "$session" "cd ${session}-webinter" C-m
         tmux send-keys -t "$session" "./start_websocket_server.sh" C-m
+        echo "Session $session created"
     fi
+    echo "Session $session already exists"
 done
 
-echo "Started all websocket servers in tmux sessions:"
-for session in "${sessions[@]}"; do
-    echo "  - $session: tmux attach -t $session"
-done
+echo "Started all websocket servers in tmux sessions."
 
