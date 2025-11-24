@@ -13,7 +13,7 @@ import traceback
 import numpy as np
 import pandas as pd
 import httpx
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional, Union
 import asyncio
 import async_timeout
@@ -40,6 +40,7 @@ from gridflo.asl.types import FloParamsHouse0
 from gridflo.dijkstra_types import DNode, DEdge
 from gridflo import Flo, DGraphVisualizer
 
+print("Starting API...")
 
 CSV_SAMPLING = True
 
@@ -166,14 +167,15 @@ class TokenData(BaseModel):
     username: Optional[str] = None
 
 class User(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     username: str
     email: Optional[str] = None
     is_active: Optional[bool] = None
 
-    class Config:
-        from_attributes = True
-
 class House(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     short_alias: Optional[str] = None
     address: Optional[dict] = None
     primary_contact: Optional[dict] = None
@@ -185,9 +187,6 @@ class House(BaseModel):
     representation_status: Optional[str] = None
     scada_ip_address: str
     scada_git_commit: str
-
-    class Config:
-        from_attributes = True
 
 class AlertReactionRequest(BaseModel):
     house_alias: str
@@ -240,7 +239,7 @@ class VisualizerApi():
         }
         self.data = {}
         self.timestamp_min_max = {}
-        print(f"Running {'locally' if self.running_locally else 'on EC2'}")
+        print(f"Running API {'locally' if self.running_locally else 'on EC2'}")
 
     def start(self):
         self.app = FastAPI()
