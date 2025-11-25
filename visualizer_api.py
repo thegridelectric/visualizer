@@ -2154,7 +2154,7 @@ class VisualizerApi():
             fig.add_trace(
                 go.Scatter(
                     x=self.data[request]['channels']['store-pump-pwr']['times'], 
-                    y=[x for x in self.data[request]['channels']['store-pump-pwr']['values']], 
+                    y=self.data[request]['channels']['store-pump-pwr']['values'], 
                     mode='lines+markers' if 'show-points'in request.selected_channels else 'lines', 
                     opacity=0.7,
                     line=dict(color='pink', dash='solid', shape='hv'),
@@ -2207,11 +2207,28 @@ class VisualizerApi():
                     hovertemplate="%{x|%H:%M:%S} | %{y:.1f} kWh<extra></extra>"
                     )
                 )
-            max_power = max([x/1000 for x in self.data[request]['channels']['required-energy']['values']])*4
-            
+        if 'required-energy' in request.selected_channels and 'usable-energy' in request.selected_channels:
+            max_required_energy = max([x/1000 for x in self.data[request]['channels']['required-energy']['values']])*4
+        else:
+            max_required_energy = 0
+        if 'usable-energy' in request.selected_channels and 'usable-energy' in self.data[request]['channels']:
+            max_usable_energy = max([x/1000 for x in self.data[request]['channels']['usable-energy']['values']])
+        else:
+            max_usable_energy = 0
+        if 'store-pump-pwr' in request.selected_channels and 'store-pump-pwr' in self.data[request]['channels']:
+            max_store_pump_pwr = max(self.data[request]['channels']['store-pump-pwr']['values'])
+        else:
+            max_store_pump_pwr = 0
+        if 'store-flow' in request.selected_channels and 'store-flow' in self.data[request]['channels']:
+            max_store_flow = max([x/100*10 for x in self.data[request]['channels']['store-flow']['values']])
+        else:
+            max_store_flow = 0
+        max_power = max(max_required_energy, max_usable_energy, max_store_pump_pwr, max_store_flow)
+        print(f"Max power: {max_power}")
+
         if plotting_temperatures and plotting_power:
             fig.update_layout(yaxis=dict(title='Temperature [F]', range=[min_store_temp-80, max_store_temp+80]))
-            fig.update_layout(yaxis2=dict(title='GPM, kW, or kWh', range=[-1, max_power]))
+            fig.update_layout(yaxis2=dict(title='GPM, kW, or kWh', range=[-1, max_power*3.5]))
         elif plotting_temperatures and not plotting_power:
             min_store_temp = 20 if min_store_temp<0 else min_store_temp
             fig.update_layout(yaxis=dict(title='Temperature [F]', range=[min_store_temp-20, max_store_temp+60]))
