@@ -3056,6 +3056,15 @@ class VisualizerApi():
                     'oat_f': [x.oat_f for x in records],
                     'ws_mph': [x.ws_mph for x in records],
                     'total_usd_per_mwh': [x.total_usd_per_mwh for x in records],
+                    'running_flo': [x.flo for x in records],
+                    'alpha': [x.alpha for x in records],
+                    'beta': [x.beta for x in records],
+                    'gamma': [x.gamma for x in records],
+                    'intermediate_power_kw': [x.intermediate_power_kw for x in records],
+                    'intermediate_rswt': [x.intermediate_rswt for x in records],
+                    'dd_power_kw': [x.dd_power_kw for x in records],
+                    'dd_rswt': [x.dd_rswt for x in records],
+                    'dd_delta_t': [x.dd_delta_t for x in records],
                 })
 
             # Build file name
